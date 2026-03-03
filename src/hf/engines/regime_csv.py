@@ -41,20 +41,29 @@ class CSVRegimeEngine(RegimeEngine):
         for c in candles.values():
             ts_ms = int(pd.Timestamp(c.ts).value // 1_000_000)  # ns->ms
             break
-        if ts_ms is None or ts_ms not in self._df.index:
-            # if missing, default OFF (conservative)
+        if ts_ms is None:
             return {sym: RegimeState(on=False, reason="missing_csv_ts") for sym in candles.keys()}
 
-        row = self._df.loc[ts_ms]
+        # Prefer exact match; otherwise use last known regime at or before ts (asof)
+        if ts_ms in self._df.index:
+            row = self._df.loc[ts_ms]
+            reason = "csv"
+        else:
+            idx = self._df.index
+            pos = idx.searchsorted(ts_ms, side="right") - 1
+            if pos < 0:
+                return {sym: RegimeState(on=False, reason="missing_csv_ts") for sym in candles.keys()}
+            row = self._df.iloc[pos]
+            reason = "csv_asof"
         btc_on = bool(row[self.btc_col])
         sol_on = bool(row[self.sol_col])
 
         out = {}
         for sym in candles.keys():
             if "BTC" in sym:
-                out[sym] = RegimeState(on=btc_on, reason="csv")
+                out[sym] = RegimeState(on=btc_on, reason=reason)
             elif "SOL" in sym:
-                out[sym] = RegimeState(on=sol_on, reason="csv")
+                out[sym] = RegimeState(on=sol_on, reason=reason)
             else:
                 out[sym] = RegimeState(on=False, reason="csv_unknown_symbol")
         return out
