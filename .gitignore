@@ -20,3 +20,7 @@ results/*
 reports_out/*
 !results/.gitkeep
 !reports_out/.gitkeep
+
+# Local data / caches (do not commit)
+.cache/
+*.csv.gz
