@@ -13,6 +13,9 @@ class Candle:
     close: float
     volume: float
 
+
+    features: dict[str, float] | None = None
+
 @dataclass(frozen=True)
 class Signal:
     symbol: str
