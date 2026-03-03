@@ -643,6 +643,7 @@ def simulate_trend(df: pd.DataFrame, params: Dict, initial_balance: float, maker
 
     balance = initial_balance
     pos_side: Optional[str] = None
+    entry_ts_open = 0  # timestamp of entry candle open (for Trade log)
     entry_px = 0.0
     qty = 0.0
 
@@ -797,6 +798,7 @@ def simulate_trend(df: pd.DataFrame, params: Dict, initial_balance: float, maker
                 qty = notional / entry
                 balance -= notional * maker_fee
                 pos_side = "long"; entry_px = entry
+                entry_ts_open = ts
                 entry_adx = adx_v
                 entry_atrp = atrp if "atrp" in locals() else float("nan")
                 entry_slope_atr = (slope/atr_v if atr_v else float("nan"))
@@ -818,6 +820,10 @@ def simulate_trend(df: pd.DataFrame, params: Dict, initial_balance: float, maker
                 qty = notional / entry
                 balance -= notional * maker_fee
                 pos_side = "short"; entry_px = entry
+                entry_adx = adx_v
+                entry_atrp = atrp if "atrp" in locals() else float("nan")
+                entry_slope_atr = (slope/atr_v if atr_v else float("nan"))
+                entry_ts_open = ts
 
     return pd.DataFrame([t.__dict__ for t in trades]), pd.DataFrame(equity_rows)
 
