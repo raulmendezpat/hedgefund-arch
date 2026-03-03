@@ -8,6 +8,7 @@ import pandas as pd
 
 from hf.core.types import Candle, Allocation
 from hf.engines.regime_csv import CSVRegimeEngine
+from hf.engines.alloc_from_trades import TradeHoldAllocator
 
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
@@ -30,7 +31,7 @@ def _row_to_candle(ts: int, row: pd.Series) -> Candle:
     )
 
 
-def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str, refresh_cache: bool, regime_csv: str) -> pd.DataFrame:
+def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str, refresh_cache: bool, regime_csv: str, trades_csv: str) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
 
@@ -53,7 +54,7 @@ def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str
 
     sig_engine = PlaceholderSignalEngine()
     reg_engine = CSVRegimeEngine(csv_path=regime_csv)
-    allocator = DynamicAllocator(both_btc_weight=0.75, sticky_when_both_off=True)
+    allocator = TradeHoldAllocator(trades_csv=trades_csv, sticky_when_flat=True)
 
     prev_alloc: Optional[Allocation] = None
     rows = []
@@ -89,10 +90,11 @@ def main() -> None:
     ap.add_argument("--exchange", default="bitget")
     ap.add_argument("--cache-dir", default=".cache/ohlcv")
     ap.add_argument("--regime-csv", default="results/portfolio_regime_flags_v8ml_from_newrepo.csv")
+    ap.add_argument("--trades-csv", default="results/portfolio_trades_v8ml_regime3_flags.csv")
     ap.add_argument("--refresh-cache", action="store_true")
     args = ap.parse_args()
 
-    df = run(args.name, args.start, args.end, args.exchange, args.cache_dir, args.refresh_cache, args.regime_csv)
+    df = run(args.name, args.start, args.end, args.exchange, args.cache_dir, args.refresh_cache, args.regime_csv, args.trades_csv)
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
 
