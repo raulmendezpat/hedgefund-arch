@@ -79,7 +79,7 @@ params = {
     # v8: ML quality filter (ensemble LR + RF)
     "ml_filter": {
         "enabled": True,
-        "model_path": str(MODEL_DIR / 'sol_bbrsi_v8_ensemble.joblib'),
+        "model_path": '__HF_MODEL__/sol_bbrsi_v8_ensemble.joblib',
         "threshold": 0.660,
         "w_lr": 0.0,
         "w_rf": 1.0,
