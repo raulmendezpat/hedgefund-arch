@@ -5,10 +5,11 @@ from dataclasses import asdict
 from typing import Dict, Optional
 
 import pandas as pd
+import numpy as np
 
 from hf.core.types import Candle, Allocation
-from hf.engines.regime_csv import CSVRegimeEngine
 from hf.engines.alloc_from_trades import TradeHoldAllocator
+from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
@@ -19,7 +20,45 @@ from hf.engines.legacy_wrappers import (
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 
 
-def _row_to_candle(ts: int, row: pd.Series) -> Candle:
+
+def _ema(series: pd.Series, span: int) -> pd.Series:
+    return series.ewm(span=int(span), adjust=False).mean()
+
+def _atr(df: pd.DataFrame, period: int) -> pd.Series:
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        (high - low).abs(),
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    # Wilder smoothing
+    return tr.ewm(alpha=1.0/float(period), adjust=False).mean()
+
+def _adx(df: pd.DataFrame, period: int) -> pd.Series:
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+
+    atr = _atr(df, period)
+    atr_safe = atr.replace(0.0, np.nan)
+
+    plus_di = 100.0 * pd.Series(plus_dm, index=df.index).ewm(alpha=1.0/float(period), adjust=False).mean() / atr_safe
+    minus_di = 100.0 * pd.Series(minus_dm, index=df.index).ewm(alpha=1.0/float(period), adjust=False).mean() / atr_safe
+
+    dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0.0, np.nan)
+    adx = dx.ewm(alpha=1.0/float(period), adjust=False).mean()
+    return adx
+
+
+def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = None) -> Candle:
     # ts in ms
     return Candle(
         ts=pd.to_datetime(int(ts), unit="ms", utc=True),
@@ -28,10 +67,13 @@ def _row_to_candle(ts: int, row: pd.Series) -> Candle:
         low=float(row["low"]),
         close=float(row["close"]),
         volume=float(row.get("volume", 0.0)),
+        features=features,
     )
 
 
-def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str, refresh_cache: bool, regime_csv: str, trades_csv: str) -> pd.DataFrame:
+def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str, refresh_cache: bool, trades_csv: str,
+        sol_atrp_min: float, sol_adx_max: float, btc_adx_min: float, btc_slope_min: float,
+        sticky_flat: bool = False) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
 
@@ -52,17 +94,47 @@ def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str
     if len(common_ts) < 10:
         raise SystemExit(f"Not enough overlapping candles: {len(common_ts)}")
 
+
+    # --- feature calc (for Regime3Engine) ---
+    # BTC
+    btc_close = btc["close"].astype(float)
+    btc_atr = _atr(btc, 14)
+    btc_adx = _adx(btc, 14)
+    btc_ema_fast = _ema(btc_close, 20)
+    btc_ema_slow = _ema(btc_close, 200)
+
+    # SOL
+    sol_close = sol["close"].astype(float)
+    sol_atr = _atr(sol, 14)
+    sol_adx = _adx(sol, 14)
+    sol_atrp = sol_atr / sol_close.replace(0.0, np.nan)
+    # ---------------------------------------
+
     sig_engine = PlaceholderSignalEngine()
-    reg_engine = CSVRegimeEngine(csv_path=regime_csv)
-    allocator = TradeHoldAllocator(trades_csv=trades_csv, sticky_when_flat=True)
+    reg_engine = Regime3Engine(
+        sol_atrp_min=float(sol_atrp_min),
+        sol_adx_max=float(sol_adx_max),
+        btc_adx_min=float(btc_adx_min),
+        btc_slope_min=float(btc_slope_min),
+    )
+    allocator = TradeHoldAllocator(trades_csv=trades_csv, sticky_when_flat=bool(sticky_flat))
 
     prev_alloc: Optional[Allocation] = None
     rows = []
 
     for ts in common_ts:
         candles: Dict[str, Candle] = {
-            btc_sym: _row_to_candle(ts, btc.loc[ts]),
-            sol_sym: _row_to_candle(ts, sol.loc[ts]),
+            btc_sym: _row_to_candle(ts, btc.loc[ts], features={
+                'adx': float(btc_adx.loc[ts]) if ts in btc_adx.index else float('nan'),
+                'atr': float(btc_atr.loc[ts]) if ts in btc_atr.index else float('nan'),
+                'ema_fast': float(btc_ema_fast.loc[ts]) if ts in btc_ema_fast.index else float('nan'),
+                'ema_slow': float(btc_ema_slow.loc[ts]) if ts in btc_ema_slow.index else float('nan'),
+            }),
+            sol_sym: _row_to_candle(ts, sol.loc[ts], features={
+                'adx': float(sol_adx.loc[ts]) if ts in sol_adx.index else float('nan'),
+                'atr': float(sol_atr.loc[ts]) if ts in sol_atr.index else float('nan'),
+                'atrp': float(sol_atrp.loc[ts]) if ts in sol_atrp.index else float('nan'),
+            }),
         }
         signals = sig_engine.generate(candles)
         regimes = reg_engine.evaluate(candles, signals)
@@ -89,14 +161,25 @@ def main() -> None:
     ap.add_argument("--end", default=None)
     ap.add_argument("--exchange", default="bitget")
     ap.add_argument("--cache-dir", default=".cache/ohlcv")
-    ap.add_argument("--regime-csv", default="results/portfolio_regime_flags_v8ml_from_newrepo.csv")
     ap.add_argument("--trades-csv", default="results/portfolio_trades_v8ml_regime3_flags.csv")
     ap.add_argument("--refresh-cache", action="store_true")
+
+    # Regime3 thresholds (core)
+    ap.add_argument("--sol-atrp-min", type=float, default=0.0030)
+    ap.add_argument("--sol-adx-max", type=float, default=24.0)
+    ap.add_argument("--btc-adx-min", type=float, default=18.0)
+    ap.add_argument("--btc-slope-min", type=float, default=1.5)
+
+    ap.add_argument("--sticky-flat", action="store_true", help="If set: keep previous weights when flat (no active trades)")
     args = ap.parse_args()
 
-    df = run(args.name, args.start, args.end, args.exchange, args.cache_dir, args.refresh_cache, args.regime_csv, args.trades_csv)
+    df = run(
+        args.name, args.start, args.end, args.exchange, args.cache_dir, args.refresh_cache,
+        args.trades_csv,
+        args.sol_atrp_min, args.sol_adx_max, args.btc_adx_min, args.btc_slope_min,
+        sticky_flat=bool(args.sticky_flat),
+    )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
-
 
 if __name__ == "__main__":
     main()
