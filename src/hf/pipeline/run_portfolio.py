@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 
 import argparse
 from dataclasses import asdict
@@ -9,6 +10,8 @@ import numpy as np
 
 from hf.core.types import Candle, Allocation
 from hf.engines.alloc_regime import RegimeAllocator
+from hf.engines.portfolio_engine import SimplePortfolioEngine
+from hf.engines.portfolio_metrics import PortfolioMetricsEngine
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.legacy_wrappers import (
@@ -145,6 +148,11 @@ def run(
     prev_alloc: Optional[Allocation] = None
     rows = []
 
+    # PortfolioEngine buffers (alineados 1:1 con common_ts)
+    candles_by_symbol = {btc_sym: [], sol_sym: []}
+    allocs = []
+
+
     for ts in common_ts:
         candles: Dict[str, Candle] = {
             btc_sym: _row_to_candle(ts, btc.loc[ts], features={
@@ -159,10 +167,16 @@ def run(
                 'atrp': float(sol_atrp.loc[ts]) if ts in sol_atrp.index else float('nan'),
             }),
         }
+
+        # collect candles for PortfolioEngine
+        candles_by_symbol[btc_sym].append(candles[btc_sym])
+        candles_by_symbol[sol_sym].append(candles[sol_sym])
+
         signals = sig_engine.generate(candles)
         regimes = reg_engine.evaluate(candles, signals)
         alloc = allocator.allocate(candles, signals, regimes, prev_alloc)
         prev_alloc = alloc
+        allocs.append(alloc)
 
         rows.append({
             "ts": int(ts),
@@ -174,6 +188,17 @@ def run(
 
     df = pd.DataFrame(rows)
     df.to_csv(f"results/pipeline_allocations_{name}.csv", index=False)
+
+    # Portfolio performance (equity/drawdown) - research-grade, no fees/slippage
+    pe = SimplePortfolioEngine(initial_equity=1000.0)
+    perf = pe.run(candles_by_symbol=candles_by_symbol, allocations=allocs, symbols=(btc_sym, sol_sym))
+    perf.reset_index().to_csv(f"results/pipeline_equity_{name}.csv", index=False)
+
+    # Portfolio metrics (hedge-fund style summary)
+    metrics = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(perf_df=perf.reset_index(), alloc_df=df)
+    with open(f"results/pipeline_metrics_{name}.json", "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2, sort_keys=True)
+
     return df
 
 
