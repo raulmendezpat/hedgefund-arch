@@ -16,6 +16,7 @@ from hf.engines.report_engine import ReportEngine
 from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulator
 from hf.engines.regime_regime3 import Regime3Engine
 
+from hf.engines.signals import FlatSignalEngine, BtcTrendSignalEngine
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
@@ -88,6 +89,7 @@ def run(
     sol_adx_max: float,
     btc_adx_min: float,
     btc_slope_min: float,
+    signal_engine: str = "flat",
     sticky_flat: bool = False,
     # allocator policy knobs
     both_btc_weight: float = 0.75,
@@ -130,7 +132,11 @@ def run(
     sol_atrp = sol_atr / sol_close.replace(0.0, np.nan)
     # ---------------------------------------
 
-    sig_engine = PlaceholderSignalEngine()
+    # SignalEngine layer (default: flat placeholder)
+    if signal_engine == "btc_trend":
+        sig_engine = BtcTrendSignalEngine(adx_min=float(btc_adx_min))
+    else:
+        sig_engine = FlatSignalEngine()
     reg_engine = Regime3Engine(
         sol_atrp_min=float(sol_atrp_min),
         sol_adx_max=float(sol_adx_max),
@@ -263,6 +269,12 @@ def main() -> None:
     ap.add_argument("--sol-adx-max", type=float, default=24.0)
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
+    ap.add_argument(
+        "--signal-engine",
+        choices=["flat", "btc_trend"],
+        default="flat",
+        help="Signal engine to use (default: flat placeholder).",
+    )
 
     ap.add_argument("--sticky-flat", action="store_true", help="If set: keep previous weights when flat (no active trades)")
     args = ap.parse_args()
@@ -270,7 +282,7 @@ def main() -> None:
     df = run(
         args.name, args.start, args.end, args.exchange, args.cache_dir, args.refresh_cache,
         args.trades_csv,
-        args.sol_atrp_min, args.sol_adx_max, args.btc_adx_min, args.btc_slope_min,
+        args.sol_atrp_min, args.sol_adx_max, args.btc_adx_min, args.btc_slope_min, args.signal_engine,
         sticky_flat=bool(args.sticky_flat),
         both_btc_weight=float(args.both_btc_weight),
         sticky_when_off=bool(args.sticky_when_off),
