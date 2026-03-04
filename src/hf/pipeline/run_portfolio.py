@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 from hf.core.types import Candle, Allocation
-from hf.engines.alloc_from_trades import TradeHoldAllocator
+from hf.engines.alloc_regime import RegimeAllocator
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.legacy_wrappers import (
@@ -71,9 +71,25 @@ def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = 
     )
 
 
-def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str, refresh_cache: bool, trades_csv: str,
-        sol_atrp_min: float, sol_adx_max: float, btc_adx_min: float, btc_slope_min: float,
-        sticky_flat: bool = False) -> pd.DataFrame:
+def run(
+    name: str,
+    start: str,
+    end: Optional[str],
+    exchange: str,
+    cache_dir: str,
+    refresh_cache: bool,
+    trades_csv: str,
+    sol_atrp_min: float,
+    sol_adx_max: float,
+    btc_adx_min: float,
+    btc_slope_min: float,
+    sticky_flat: bool = False,
+    # allocator policy knobs
+    both_btc_weight: float = 0.75,
+    sticky_when_off: bool = False,
+    fallback_btc_weight: float = 1.0,
+    fallback_sol_weight: float = 0.0,
+) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
 
@@ -117,7 +133,14 @@ def run(name: str, start: str, end: Optional[str], exchange: str, cache_dir: str
         btc_adx_min=float(btc_adx_min),
         btc_slope_min=float(btc_slope_min),
     )
-    allocator = TradeHoldAllocator(trades_csv=trades_csv, sticky_when_flat=bool(sticky_flat))
+    allocator = RegimeAllocator(
+        both_btc_weight=float(both_btc_weight),
+        sticky_when_off=bool(sticky_when_off),
+        fallback_btc_weight=float(fallback_btc_weight),
+        fallback_sol_weight=float(fallback_sol_weight),
+        btc_symbol=btc_sym,
+        sol_symbol=sol_sym,
+    )
 
     prev_alloc: Optional[Allocation] = None
     rows = []
@@ -161,6 +184,10 @@ def main() -> None:
     ap.add_argument("--end", default=None)
     ap.add_argument("--exchange", default="bitget")
     ap.add_argument("--cache-dir", default=".cache/ohlcv")
+    ap.add_argument("--both-btc-weight", type=float, default=0.75)
+    ap.add_argument("--sticky-when-off", action="store_true", help="If set: when both regimes are OFF, keep previous weights")
+    ap.add_argument("--fallback-btc-weight", type=float, default=1.0)
+    ap.add_argument("--fallback-sol-weight", type=float, default=0.0)
     ap.add_argument("--trades-csv", default="results/portfolio_trades_v8ml_regime3_flags.csv")
     ap.add_argument("--refresh-cache", action="store_true")
 
@@ -178,6 +205,10 @@ def main() -> None:
         args.trades_csv,
         args.sol_atrp_min, args.sol_adx_max, args.btc_adx_min, args.btc_slope_min,
         sticky_flat=bool(args.sticky_flat),
+        both_btc_weight=float(args.both_btc_weight),
+        sticky_when_off=bool(args.sticky_when_off),
+        fallback_btc_weight=float(args.fallback_btc_weight),
+        fallback_sol_weight=float(args.fallback_sol_weight),
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
