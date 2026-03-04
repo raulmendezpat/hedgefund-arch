@@ -12,6 +12,7 @@ from hf.core.types import Candle, Allocation
 from hf.engines.alloc_regime import RegimeAllocator
 from hf.engines.portfolio_engine import SimplePortfolioEngine
 from hf.engines.portfolio_metrics import PortfolioMetricsEngine
+from hf.engines.report_engine import ReportEngine
 from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulator
 from hf.engines.regime_regime3 import Regime3Engine
 
@@ -219,6 +220,24 @@ def run(
         metrics_net = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(perf_df=perf_net, alloc_df=df)
         with open(f"results/pipeline_metrics_net_{name}.json", "w", encoding="utf-8") as f:
             json.dump(metrics_net, f, indent=2, sort_keys=True)
+
+    # Consolidated report (gross + net + case counts + config)
+    ReportEngine().build(
+        name=name,
+        config={
+            'both_btc_weight': float(both_btc_weight),
+            'sticky_when_off': bool(sticky_when_off),
+            'fallback_btc_weight': float(fallback_btc_weight),
+            'fallback_sol_weight': float(fallback_sol_weight),
+            'fee_bps': float(fee_bps),
+            'slippage_bps': float(slippage_bps),
+            'sol_atrp_min': float(sol_atrp_min),
+            'sol_adx_max': float(sol_adx_max),
+            'btc_adx_min': float(btc_adx_min),
+            'btc_slope_min': float(btc_slope_min),
+        },
+        write=True,
+    )
 
     return df
 
