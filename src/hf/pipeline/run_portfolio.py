@@ -12,6 +12,7 @@ from hf.core.types import Candle, Allocation
 from hf.engines.alloc_regime import RegimeAllocator
 from hf.engines.portfolio_engine import SimplePortfolioEngine
 from hf.engines.portfolio_metrics import PortfolioMetricsEngine
+from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulator
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.legacy_wrappers import (
@@ -91,8 +92,7 @@ def run(
     both_btc_weight: float = 0.75,
     sticky_when_off: bool = False,
     fallback_btc_weight: float = 1.0,
-    fallback_sol_weight: float = 0.0,
-) -> pd.DataFrame:
+    fallback_sol_weight: float = 0.0,  fee_bps: float = 0.0, slippage_bps: float = 0.0) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
 
@@ -199,6 +199,27 @@ def run(
     with open(f"results/pipeline_metrics_{name}.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, sort_keys=True)
 
+    # Net-of-costs simulation (turnover-based fees+slippage)
+    _fee_bps = float(locals().get('fee_bps', 0.0) or 0.0)
+    _slip_bps = float(locals().get('slippage_bps', 0.0) or 0.0)
+    if _fee_bps > 0.0 or _slip_bps > 0.0:
+        sim = ExecutionSimulator(
+            cost_model=ExecutionCostModel(fee_bps=_fee_bps, slippage_bps=_slip_bps),
+            initial_equity=float(perf['equity'].iloc[0]) if 'equity' in perf.columns else 1000.0,
+        )
+        net = sim.apply_costs(perf_df=perf.reset_index(), alloc_df=df)
+        net.to_csv(f"results/pipeline_equity_net_{name}.csv", index=False)
+
+        perf_net = pd.DataFrame({
+            'ts': net['ts'],
+            'equity': net['net_equity'],
+            'port_ret': net['net_ret'],
+            'drawdown_pct': net['net_drawdown_pct'],
+        })
+        metrics_net = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(perf_df=perf_net, alloc_df=df)
+        with open(f"results/pipeline_metrics_net_{name}.json", "w", encoding="utf-8") as f:
+            json.dump(metrics_net, f, indent=2, sort_keys=True)
+
     return df
 
 
@@ -213,6 +234,8 @@ def main() -> None:
     ap.add_argument("--sticky-when-off", action="store_true", help="If set: when both regimes are OFF, keep previous weights")
     ap.add_argument("--fallback-btc-weight", type=float, default=1.0)
     ap.add_argument("--fallback-sol-weight", type=float, default=0.0)
+    ap.add_argument("--fee-bps", type=float, default=0.0, help="Execution fee in bps applied to turnover (net simulation)")
+    ap.add_argument("--slippage-bps", type=float, default=0.0, help="Execution slippage in bps applied to turnover (net simulation)")
     ap.add_argument("--trades-csv", default="results/portfolio_trades_v8ml_regime3_flags.csv")
     ap.add_argument("--refresh-cache", action="store_true")
 
@@ -234,6 +257,8 @@ def main() -> None:
         sticky_when_off=bool(args.sticky_when_off),
         fallback_btc_weight=float(args.fallback_btc_weight),
         fallback_sol_weight=float(args.fallback_sol_weight),
+        fee_bps=float(args.fee_bps),
+        slippage_bps=float(args.slippage_bps),
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
