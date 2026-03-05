@@ -45,9 +45,14 @@ class BtcTrendSignalEngine(SignalEngine):
         out: Dict[str, Signal] = {}
 
         for sym, c in candles.items():
+            # engine applies only to BTC
+            if "BTC" not in sym:
+                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend", "skip": "not_btc"})
+                continue
+
             # Solo aplicamos a BTC; el resto queda flat
             if self.only_if_symbol_contains and (self.only_if_symbol_contains not in sym):
-                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend_min", "skip": "not_btc"})
+                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={ "engine": "btc_trend_min", 'reason': "not_btc" })
                 continue
 
             adx = _feat(c, self.adx_key)
@@ -55,11 +60,11 @@ class BtcTrendSignalEngine(SignalEngine):
             ema_slow = _feat(c, self.ema_slow_key)
 
             if adx is None or ema_fast is None or ema_slow is None:
-                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend_min", "skip": "missing_features"})
+                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={ "engine": "btc_trend_min", 'reason': "missing_features" })
                 continue
 
             if adx < float(self.adx_min):
-                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend_min", "skip": "adx_below_min", "adx": adx})
+                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={ "engine": "btc_trend_min", 'reason': "adx_below_min", "adx": adx })
                 continue
 
             if ema_fast > ema_slow:
