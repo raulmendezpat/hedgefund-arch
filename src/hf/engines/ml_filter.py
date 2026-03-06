@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import pickle
 from pathlib import Path
@@ -10,6 +11,34 @@ import pandas as pd
 from hf.core.types import Candle, Signal
 
 
+FEATURE_COLUMNS = [
+    "is_btc",
+    "is_sol",
+    "side_long",
+    "side_short",
+    "strength",
+    "close",
+    "open",
+    "high",
+    "low",
+    "volume",
+    "adx",
+    "atr",
+    "atrp",
+    "ema_fast",
+    "ema_slow",
+    "ema_gap",
+    "ema_gap_pct",
+    "rsi",
+    "bb_mid",
+    "bb_up",
+    "bb_low",
+    "bb_width",
+    "bb_span",
+    "bb_pos",
+]
+
+
 def load_model(path: Optional[str]) -> Any:
     if not path:
         return None
@@ -18,6 +47,35 @@ def load_model(path: Optional[str]) -> Any:
         return None
     with p.open("rb") as f:
         return pickle.load(f)
+
+
+def load_model_registry(path: Optional[str]) -> Dict[str, Any]:
+    if not path:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    out: Dict[str, Any] = {}
+    for k, v in (data or {}).items():
+        if isinstance(v, str) and v:
+            out[k] = load_model(v)
+    return out
+
+
+def select_model_for_signal(model: Any, registry: Dict[str, Any], symbol: str, side: str) -> Any:
+    if registry:
+        candidates = [
+            f"{symbol}|{side}",
+            f"{symbol}|*",
+            f"*|{side}",
+            "*|*",
+        ]
+        for key in candidates:
+            if key in registry and registry[key] is not None:
+                return registry[key]
+        return None
+    return model
 
 
 def _safe_float(x: Any, default: float = 0.0) -> float:
@@ -50,7 +108,6 @@ def build_feature_row(symbol: str, candle: Candle, signal: Signal) -> Dict[str, 
     for k, v in feats.items():
         row[str(k)] = _safe_float(v, 0.0)
 
-    # compatibility aliases
     if "atr" in row and "atrp" not in row and row.get("close", 0.0) != 0.0:
         row["atrp"] = row["atr"] / row["close"]
 
@@ -67,13 +124,18 @@ def build_feature_row(symbol: str, candle: Candle, signal: Signal) -> Dict[str, 
         else:
             row["bb_pos"] = 0.0
 
-    return row
+    normalized = {col: _safe_float(row.get(col, 0.0), 0.0) for col in FEATURE_COLUMNS}
+    return normalized
+
+
+def _features_to_frame(features: Dict[str, float]) -> pd.DataFrame:
+    row = {col: _safe_float(features.get(col, 0.0), 0.0) for col in FEATURE_COLUMNS}
+    return pd.DataFrame([row], columns=FEATURE_COLUMNS)
 
 
 def predict_proba(model: Any, features: Dict[str, float]) -> float:
-    # model contract 1: sklearn-like predict_proba(DataFrame)
     if model is not None and hasattr(model, "predict_proba"):
-        X = pd.DataFrame([features])
+        X = _features_to_frame(features)
         proba = model.predict_proba(X)
         try:
             if hasattr(proba, "shape") and len(proba.shape) == 2 and proba.shape[1] >= 2:
@@ -82,14 +144,12 @@ def predict_proba(model: Any, features: Dict[str, float]) -> float:
         except Exception:
             pass
 
-    # model contract 2: callable(features_dict) -> float
     if callable(model):
         try:
             return _safe_float(model(features), 0.5)
         except Exception:
             pass
 
-    # fallback stub heuristic
     score = 0.5
     score += min(max(features.get("adx", 0.0) - 18.0, -10.0), 10.0) * 0.01
     score += min(max(features.get("ema_gap_pct", 0.0), -0.05), 0.05) * 2.0
@@ -114,9 +174,11 @@ def apply_ml_filter_to_signals(
     signals: Dict[str, Signal],
     model: Any,
     threshold: float,
+    model_registry: Optional[Dict[str, Any]] = None,
 ) -> tuple[Dict[str, Signal], Dict[str, int]]:
     out: Dict[str, Signal] = {}
     rejected: Dict[str, int] = {}
+    model_registry = dict(model_registry or {})
 
     for sym, sig in (signals or {}).items():
         if sig is None:
@@ -136,7 +198,13 @@ def apply_ml_filter_to_signals(
             continue
 
         feats = build_feature_row(sym, candle, sig)
-        p_win = predict_proba(model, feats)
+        chosen_model = select_model_for_signal(model, model_registry, sym, side)
+
+        if model_registry and chosen_model is None:
+            out[sym] = sig
+            continue
+
+        p_win = predict_proba(chosen_model, feats)
 
         if p_win < float(threshold):
             rejected[sym] = int(rejected.get(sym, 0)) + 1

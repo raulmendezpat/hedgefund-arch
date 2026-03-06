@@ -17,7 +17,7 @@ from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulato
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.signals import PortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
-from hf.engines.ml_filter import apply_ml_filter_to_signals, load_model
+from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
@@ -132,7 +132,10 @@ def run(
     sol_bb_std: float = 2.0,
     ml_filter: bool = False,
     ml_model_path: Optional[str] = None,
+    ml_model_registry: Optional[str] = None,
     ml_threshold: float = 0.55,
+    ml_export_features: bool = False,
+    ml_features_out: Optional[str] = None,
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -228,7 +231,9 @@ def run(
     )
 
     ml_model = load_model(ml_model_path) if bool(ml_filter) else None
+    ml_model_registry_loaded = load_model_registry(ml_model_registry) if bool(ml_filter) else {}
     ml_rejected_counts_by_symbol = {}
+    ml_feature_rows = []
 
     prev_alloc: Optional[Allocation] = None
     rows = []
@@ -277,6 +282,32 @@ def run(
         candles_by_symbol[sol_sym].append(candles[sol_sym])
 
         signals = sig_engine.generate(candles)
+        raw_signals = dict(signals or {})
+
+        if bool(ml_export_features):
+            for _sym, _sig in (raw_signals or {}).items():
+                if _sig is None:
+                    continue
+                _meta = dict(getattr(_sig, "meta", {}) or {})
+                if "skip" in _meta:
+                    continue
+                _side = getattr(_sig, "side", "flat")
+                if _side == "flat":
+                    continue
+                _candle = candles.get(_sym)
+                if _candle is None:
+                    continue
+                _feat_row = build_feature_row(_sym, _candle, _sig)
+                _p_win_preview = predict_proba(ml_model if bool(ml_filter) else None, _feat_row)
+                ml_feature_rows.append({
+                    "ts": int(ts),
+                    "symbol": _sym,
+                    "side_raw": _side,
+                    "side_final": _side,
+                    "p_win": float(_p_win_preview),
+                    "ml_rejected": 0,
+                    **{col: float(_feat_row.get(col, 0.0)) for col in FEATURE_COLUMNS},
+                })
 
         if bool(ml_filter):
             signals, _ml_rejected = apply_ml_filter_to_signals(
@@ -284,9 +315,29 @@ def run(
                 signals=signals,
                 model=ml_model,
                 threshold=float(ml_threshold),
+                model_registry=ml_model_registry_loaded,
             )
             for _sym, _n in (_ml_rejected or {}).items():
                 ml_rejected_counts_by_symbol[_sym] = int(ml_rejected_counts_by_symbol.get(_sym, 0)) + int(_n)
+
+            if bool(ml_export_features) and ml_feature_rows:
+                _ts_now = int(ts)
+                _idx = {}
+                for i in range(len(ml_feature_rows) - 1, -1, -1):
+                    _r = ml_feature_rows[i]
+                    if int(_r.get("ts", -1)) != _ts_now:
+                        break
+                    _idx[(int(_r["ts"]), _r["symbol"])] = i
+
+                for _sym, _sig in (signals or {}).items():
+                    _k = (_ts_now, _sym)
+                    if _k not in _idx:
+                        continue
+                    _row = ml_feature_rows[_idx[_k]]
+                    _row["side_final"] = getattr(_sig, "side", "flat")
+                    _meta2 = dict(getattr(_sig, "meta", {}) or {})
+                    _row["p_win"] = float(_meta2.get("p_win", _row.get("p_win", 0.0)))
+                    _row["ml_rejected"] = 1 if _meta2.get("reason") == "ml_filter" else 0
 
         # --- count signal sides + skip flags ---
         for _sym, _sig in (signals or {}).items():
@@ -342,6 +393,46 @@ def run(
 
     df = pd.DataFrame(rows)
     df.to_csv(f"results/pipeline_allocations_{name}.csv", index=False)
+
+    if bool(ml_export_features):
+        _ml_out = ml_features_out or f"results/ml_features_{name}.csv"
+        _ml_df = pd.DataFrame(ml_feature_rows)
+
+        if not _ml_df.empty:
+            _close_map = {
+                btc_sym: btc["close"].astype(float),
+                sol_sym: sol["close"].astype(float),
+            }
+
+            _parts = []
+            for _sym, _g in _ml_df.groupby("symbol", sort=False):
+                _g = _g.sort_values("ts").copy()
+                _close_series = _close_map.get(_sym)
+                if _close_series is None:
+                    _parts.append(_g)
+                    continue
+
+                _px_now = _g["ts"].map(_close_series.to_dict()).astype(float)
+
+                for _h in (1, 3, 6, 12):
+                    _future_close = _g["ts"].map(_close_series.shift(-_h).to_dict()).astype(float)
+                    _ret = (_future_close / _px_now) - 1.0
+
+                    _g[f"future_ret_{_h}"] = _ret
+
+                    _is_long = _g["side_raw"] == "long"
+                    _is_short = _g["side_raw"] == "short"
+
+                    _y = pd.Series(0, index=_g.index, dtype="int64")
+                    _y.loc[_is_long & (_ret > 0)] = 1
+                    _y.loc[_is_short & (_ret < 0)] = 1
+                    _g[f"y_win_{_h}"] = _y
+
+                _parts.append(_g)
+
+            _ml_df = pd.concat(_parts, ignore_index=True)
+
+        _ml_df.to_csv(_ml_out, index=False)
 
     # Portfolio performance (equity/drawdown) - research-grade, no fees/slippage
     pe = SimplePortfolioEngine(initial_equity=1000.0)
@@ -410,6 +501,7 @@ def run(
             'signal_skip_counts': dict(signal_skip_counts),
             'ml_filter_enabled': bool(ml_filter),
             'ml_model_path': ml_model_path,
+            'ml_model_registry_path': ml_model_registry,
             'ml_threshold': float(ml_threshold),
             'ml_rejected_counts_by_symbol': dict(ml_rejected_counts_by_symbol),
         },
@@ -451,7 +543,10 @@ def main() -> None:
     ap.add_argument("--sol-bb-std", type=float, default=2.0)
     ap.add_argument("--ml-filter", action="store_true", help="Enable optional ML probability-of-win filter on raw signals.")
     ap.add_argument("--ml-model-path", default=None, help="Path to serialized ML model (pickle/joblib-compatible pickle load).")
+    ap.add_argument("--ml-model-registry", default=None, help="Optional JSON registry mapping 'SYMBOL|side' to model path.")
     ap.add_argument("--ml-threshold", type=float, default=0.55, help="Reject signal if p_win < threshold.")
+    ap.add_argument("--ml-export-features", action="store_true", help="Export ML feature rows for raw/final signals.")
+    ap.add_argument("--ml-features-out", default=None, help="Optional CSV path for exported ML features.")
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
@@ -488,7 +583,10 @@ def main() -> None:
     sol_bb_std=float(args.sol_bb_std),
     ml_filter=bool(args.ml_filter),
     ml_model_path=args.ml_model_path,
+    ml_model_registry=args.ml_model_registry,
     ml_threshold=float(args.ml_threshold),
+    ml_export_features=bool(args.ml_export_features),
+    ml_features_out=args.ml_features_out,
 
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
