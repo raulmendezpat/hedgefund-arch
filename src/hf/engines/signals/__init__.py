@@ -1,11 +1,11 @@
-"""Signal engines (entry/exit logic).
+from hf.engines.signals.flat import FlatSignalEngine
+from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
+from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
+from hf.engines.signals.portfolio_signal import PortfolioSignalEngine
 
-Paquete dedicado a generación de señales.
-Step-1 scaffold: engine plano (flat) para no cambiar el comportamiento actual.
-"""
-
-from .flat import FlatSignalEngine
-from .btc_trend_signal import BtcTrendSignalEngine
-from .sol_bbrsi_signal import SolBbrsiSignalEngine
-
-__all__ = ["FlatSignalEngine", "BtcTrendSignalEngine", "SolBbrsiSignalEngine"]
+__all__ = [
+    "FlatSignalEngine",
+    "BtcTrendSignalEngine",
+    "SolBbrsiSignalEngine",
+    "PortfolioSignalEngine",
+]

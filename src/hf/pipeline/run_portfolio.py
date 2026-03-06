@@ -16,7 +16,8 @@ from hf.engines.report_engine import ReportEngine
 from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulator
 from hf.engines.regime_regime3 import Regime3Engine
 
-from hf.engines.signals import FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
+from hf.engines.signals import PortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
+from hf.engines.ml_filter import apply_ml_filter_to_signals, load_model
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
@@ -129,6 +130,9 @@ def run(
     sol_bb_width_max: float = 0.120,
     sol_bb_period: int = 20,
     sol_bb_std: float = 2.0,
+    ml_filter: bool = False,
+    ml_model_path: Optional[str] = None,
+    ml_threshold: float = 0.55,
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -165,6 +169,21 @@ def run(
     sol_adx = _adx(sol, 14)
     sol_atrp = sol_atr / sol_close.replace(0.0, np.nan)
 
+    # SOL SignalEngine indicators (BBRSI)
+    _sol_delta = sol_close.diff()
+    _sol_gain = _sol_delta.clip(lower=0.0)
+    _sol_loss = (-_sol_delta.clip(upper=0.0))
+    _sol_avg_gain = _sol_gain.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).mean()
+    _sol_avg_loss = _sol_loss.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).mean()
+    _sol_rs = _sol_avg_gain / _sol_avg_loss.replace(0.0, np.nan)
+    sol_rsi = 100.0 - (100.0 / (1.0 + _sol_rs))
+
+    sol_bb_mid = sol_close.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).mean()
+    _sol_bb_stddev = sol_close.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).std(ddof=0)
+    sol_bb_up = sol_bb_mid + float(sol_bb_std) * _sol_bb_stddev
+    sol_bb_low = sol_bb_mid - float(sol_bb_std) * _sol_bb_stddev
+    sol_bb_width = (sol_bb_up - sol_bb_low) / sol_bb_mid.replace(0.0, np.nan)
+
     # SignalEngine layer (default: flat placeholder)
     if signal_engine == "btc_trend":
         sig_engine = BtcTrendSignalEngine(adx_min=float(btc_adx_min))
@@ -177,6 +196,19 @@ def run(
             atrp_max=float(locals().get("sol_atrp_max_signal", 0.0350)),
             bb_width_min=float(locals().get("sol_bb_width_min", 0.0041)),
             bb_width_max=float(locals().get("sol_bb_width_max", 0.120)),
+        )
+    elif signal_engine == "portfolio":
+        sig_engine = PortfolioSignalEngine(
+            btc_engine=BtcTrendSignalEngine(adx_min=float(btc_adx_min)),
+            sol_engine=SolBbrsiSignalEngine(
+                rsi_long_max=float(locals().get("sol_rsi_long_max", 36.0)),
+                rsi_short_min=float(locals().get("sol_rsi_short_min", 64.0)),
+                adx_hard=float(locals().get("sol_adx_hard_signal", 24.0)),
+                atrp_min=float(locals().get("sol_atrp_min_signal", 0.003279)),
+                atrp_max=float(locals().get("sol_atrp_max_signal", 0.0350)),
+                bb_width_min=float(locals().get("sol_bb_width_min", 0.0041)),
+                bb_width_max=float(locals().get("sol_bb_width_max", 0.120)),
+            ),
         )
     else:
         sig_engine = FlatSignalEngine()
@@ -194,6 +226,9 @@ def run(
         btc_symbol=btc_sym,
         sol_symbol=sol_sym,
     )
+
+    ml_model = load_model(ml_model_path) if bool(ml_filter) else None
+    ml_rejected_counts_by_symbol = {}
 
     prev_alloc: Optional[Allocation] = None
     rows = []
@@ -229,11 +264,11 @@ def run(
                 'adx': float(sol_adx.loc[ts]) if ts in sol_adx.index else float('nan'),
                 'atr': float(sol_atr.loc[ts]) if ts in sol_atr.index else float('nan'),
                 'atrp': float(sol_atrp.loc[ts]) if ts in sol_atrp.index else float('nan'),
-                'rsi': float('nan'),
-                'bb_mid': float('nan'),
-                'bb_up': float('nan'),
-                'bb_low': float('nan'),
-                'bb_width': float('nan'),
+                'rsi': float(sol_rsi.loc[ts]) if ts in sol_rsi.index else float('nan'),
+                'bb_mid': float(sol_bb_mid.loc[ts]) if ts in sol_bb_mid.index else float('nan'),
+                'bb_up': float(sol_bb_up.loc[ts]) if ts in sol_bb_up.index else float('nan'),
+                'bb_low': float(sol_bb_low.loc[ts]) if ts in sol_bb_low.index else float('nan'),
+                'bb_width': float(sol_bb_width.loc[ts]) if ts in sol_bb_width.index else float('nan'),
             }),
         }
 
@@ -242,6 +277,17 @@ def run(
         candles_by_symbol[sol_sym].append(candles[sol_sym])
 
         signals = sig_engine.generate(candles)
+
+        if bool(ml_filter):
+            signals, _ml_rejected = apply_ml_filter_to_signals(
+                candles=candles,
+                signals=signals,
+                model=ml_model,
+                threshold=float(ml_threshold),
+            )
+            for _sym, _n in (_ml_rejected or {}).items():
+                ml_rejected_counts_by_symbol[_sym] = int(ml_rejected_counts_by_symbol.get(_sym, 0)) + int(_n)
+
         # --- count signal sides + skip flags ---
         for _sym, _sig in (signals or {}).items():
             _side = getattr(_sig, 'side', 'flat') if _sig is not None else 'flat'
@@ -362,6 +408,10 @@ def run(
             'signal_gated_counts': dict(signal_gated_counts),
             'signal_side_counts': dict(signal_side_counts),
             'signal_skip_counts': dict(signal_skip_counts),
+            'ml_filter_enabled': bool(ml_filter),
+            'ml_model_path': ml_model_path,
+            'ml_threshold': float(ml_threshold),
+            'ml_rejected_counts_by_symbol': dict(ml_rejected_counts_by_symbol),
         },
         write=True,
     )
@@ -399,13 +449,16 @@ def main() -> None:
     ap.add_argument("--sol-bb-width-max", type=float, default=0.120)
     ap.add_argument("--sol-bb-period", type=int, default=20)
     ap.add_argument("--sol-bb-std", type=float, default=2.0)
+    ap.add_argument("--ml-filter", action="store_true", help="Enable optional ML probability-of-win filter on raw signals.")
+    ap.add_argument("--ml-model-path", default=None, help="Path to serialized ML model (pickle/joblib-compatible pickle load).")
+    ap.add_argument("--ml-threshold", type=float, default=0.55, help="Reject signal if p_win < threshold.")
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
-        choices=["flat", "btc_trend", "sol_bbrsi"],
+        choices=["flat", "btc_trend", "sol_bbrsi", "portfolio"],
         default="flat",
-        help="Signal engine to use (default: flat placeholder).",
+        help="Signal engine to use: flat, btc_trend, sol_bbrsi, portfolio (default: flat placeholder).",
     )
 
     ap.add_argument("--sticky-flat", action="store_true", help="If set: keep previous weights when flat (no active trades)")
@@ -433,7 +486,9 @@ def main() -> None:
     sol_bb_period=int(args.sol_bb_period),
 
     sol_bb_std=float(args.sol_bb_std),
-
+    ml_filter=bool(args.ml_filter),
+    ml_model_path=args.ml_model_path,
+    ml_threshold=float(args.ml_threshold),
 
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
