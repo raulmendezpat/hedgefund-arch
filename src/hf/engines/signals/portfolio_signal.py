@@ -110,7 +110,16 @@ class RegistryPortfolioSignalEngine(SignalEngine):
         )
         opportunities = book.generate(candles, ts=None, print_debug=print_debug)
         self.last_opportunities = list(opportunities or [])
-        return to_signal_dict(opportunities, symbols=list(candles.keys()), selection_mode=self.selection_mode)
+
+        compatible_selection_mode = self.selection_mode
+        if str(self.selection_mode or "").strip() == "all":
+            compatible_selection_mode = "best_per_symbol"
+
+        return to_signal_dict(
+            opportunities,
+            symbols=list(candles.keys()),
+            selection_mode=compatible_selection_mode,
+        )
 
 
 @dataclass

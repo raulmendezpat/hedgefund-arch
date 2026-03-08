@@ -10,6 +10,7 @@ import numpy as np
 
 from hf.core.types import Candle, Allocation, Signal
 from hf.engines.alloc_regime import RegimeAllocator
+from hf.engines.alloc_multi_strategy import MultiStrategyAllocator
 from hf.engines.portfolio_engine import SimplePortfolioEngine
 from hf.engines.portfolio_metrics import PortfolioMetricsEngine
 from hf.engines.report_engine import ReportEngine
@@ -172,6 +173,9 @@ def run(
     ml_size_pwin_threshold: float = 0.55,
     strategy_registry_path: str = "artifacts/strategy_registry.json",
     opportunity_selection_mode: str = "best_per_symbol",
+    allocation_engine_mode: str = "regime",
+    strategy_score_power: float = 1.0,
+    strategy_symbol_score_agg: str = "sum",
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -331,6 +335,10 @@ def run(
         btc_symbol=btc_sym,
         sol_symbol=sol_sym,
     )
+    multi_allocator = MultiStrategyAllocator(
+        score_power=float(strategy_score_power),
+        symbol_score_agg=str(strategy_symbol_score_agg),
+    )
 
     ml_enabled_for_scores = bool(ml_filter or ml_position_sizing)
     ml_model = load_model(ml_model_path) if ml_enabled_for_scores else None
@@ -362,6 +370,7 @@ def run(
     rows = []
     opportunity_rows = []
     selected_opportunity_rows = []
+    strategy_allocation_rows = []
     final_selected_rows = []
 
     # PortfolioEngine buffers (alineados 1:1 con common_ts)
@@ -384,6 +393,7 @@ def run(
 
 
     for ts in common_ts:
+        selected_opps_for_alloc = []
         candles: Dict[str, Candle] = {
             btc_sym: _row_to_candle(ts, btc.loc[ts], features={
                 'adx': float(btc_adx.loc[ts]) if ts in btc_adx.index else float('nan'),
@@ -452,6 +462,7 @@ def run(
                     _opp.meta = _meta
 
             _selected_opps = select_opportunities(_last_opps, mode=str(opportunity_selection_mode)) if _last_opps else []
+            selected_opps_for_alloc = list(_selected_opps)
 
             _rebuilt_signals = {}
             for _opp in _selected_opps:
@@ -595,7 +606,37 @@ def run(
                 signal_skip_counts[_sym] = int(signal_skip_counts.get(_sym, 0)) + 1
         # --- end counts ---
         regimes = reg_engine.evaluate(candles, signals)
-        alloc = allocator.allocate(candles, signals, regimes, prev_alloc)
+        if (
+            str(signal_engine) == "registry_portfolio"
+            and str(allocation_engine_mode) == "multi_strategy"
+            and selected_opps_for_alloc
+        ):
+            alloc = multi_allocator.allocate_from_opportunities(
+                candles=candles,
+                opportunities=selected_opps_for_alloc,
+                prev_allocation=prev_alloc,
+            )
+        else:
+            alloc = allocator.allocate(candles, signals, regimes, prev_alloc)
+
+        _alloc_meta = dict(getattr(alloc, "meta", {}) or {})
+        _strategy_weights = dict(_alloc_meta.get("strategy_weights", {}) or {})
+        _symbol_budget = dict(_alloc_meta.get("symbol_budget", {}) or {})
+
+        for _k, _w in _strategy_weights.items():
+            if "::" in _k:
+                _symbol, _strategy_id = _k.split("::", 1)
+            else:
+                _symbol, _strategy_id = _k, "unknown_strategy"
+
+            strategy_allocation_rows.append({
+                "ts": int(ts),
+                "symbol": str(_symbol),
+                "strategy_id": str(_strategy_id),
+                "strategy_weight": float(_w or 0.0),
+                "symbol_budget": float(_symbol_budget.get(_symbol, 0.0) or 0.0),
+                "allocation_case": str(_alloc_meta.get("case", "")),
+            })
 
         if ml_position_sizer is not None:
             alloc = ml_position_sizer.apply_to_allocation(
@@ -723,6 +764,12 @@ def run(
         _sel_engine_name = "portfolio_registry" if str(signal_engine) == "registry_portfolio" else str(signal_engine)
         pd.DataFrame(final_selected_rows).to_csv(
             f"results/opportunity_book_{_sel_engine_name}_sel_{opportunity_selection_mode}_final.csv",
+            index=False,
+        )
+
+    if strategy_allocation_rows:
+        pd.DataFrame(strategy_allocation_rows).to_csv(
+            f"results/strategy_allocations_{name}.csv",
             index=False,
         )
 
@@ -859,6 +906,9 @@ def run(
             'ml_threshold': float(ml_threshold),
             'ml_rejected_counts_by_symbol': dict(ml_rejected_counts_by_symbol),
             'ml_position_sized_counts_by_symbol': dict(ml_position_sized_counts_by_symbol),
+            'allocation_engine_mode': str(allocation_engine_mode),
+            'strategy_score_power': float(strategy_score_power),
+            'strategy_symbol_score_agg': str(strategy_symbol_score_agg),
         },
         write=True,
     )
@@ -932,6 +982,24 @@ def main() -> None:
         choices=["best_per_symbol", "all", "competitive"],
         help="Opportunity selection mode for registry_portfolio.",
     )
+    ap.add_argument(
+        "--allocation-engine-mode",
+        default="regime",
+        choices=["regime", "multi_strategy"],
+        help="Allocation mode: legacy regime allocator or multi-strategy soft allocator.",
+    )
+    ap.add_argument(
+        "--strategy-score-power",
+        type=float,
+        default=1.0,
+        help="Exponent applied to competitive score before intra-symbol normalization.",
+    )
+    ap.add_argument(
+        "--strategy-symbol-score-agg",
+        default="sum",
+        choices=["sum", "max"],
+        help="How to aggregate strategy scores into a symbol budget.",
+    )
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
@@ -1002,6 +1070,9 @@ def main() -> None:
         ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
         strategy_registry_path=str(args.strategy_registry),
         opportunity_selection_mode=str(args.opportunity_selection_mode),
+        allocation_engine_mode=str(args.allocation_engine_mode),
+        strategy_score_power=float(args.strategy_score_power),
+        strategy_symbol_score_agg=str(args.strategy_symbol_score_agg),
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
