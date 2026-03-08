@@ -7,6 +7,15 @@
     "params": {}
   },
   {
+    "strategy_id": "btc_trend_loose",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "params": {
+      "adx_min": 12.0
+    }
+  },
+  {
     "strategy_id": "sol_bbrsi",
     "symbol": "SOL/USDT:USDT",
     "engine": "sol_bbrsi_signal",
