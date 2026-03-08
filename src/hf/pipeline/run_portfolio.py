@@ -8,7 +8,7 @@ from typing import Dict, Optional
 import pandas as pd
 import numpy as np
 
-from hf.core.types import Candle, Allocation
+from hf.core.types import Candle, Allocation, Signal
 from hf.engines.alloc_regime import RegimeAllocator
 from hf.engines.portfolio_engine import SimplePortfolioEngine
 from hf.engines.portfolio_metrics import PortfolioMetricsEngine
@@ -17,7 +17,7 @@ from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulato
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.signals import PortfolioSignalEngine, RegistryPortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
-from hf.engines.opportunity_book import select_opportunities, compute_competitive_score
+from hf.engines.opportunity_book import select_opportunities, compute_competitive_score, compute_post_ml_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
 from hf.engines.legacy_wrappers import (
@@ -234,13 +234,13 @@ def run(
                     adx_min=float((cfg.get("params", {}) or {}).get("adx_min", btc_adx_min))
                 ),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(
-                    rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", locals().get("sol_rsi_long_max", 36.0))),
-                    rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", locals().get("sol_rsi_short_min", 64.0))),
-                    adx_hard=float((cfg.get("params", {}) or {}).get("adx_hard", locals().get("sol_adx_hard_signal", 24.0))),
-                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", locals().get("sol_atrp_min_signal", 0.003279))),
-                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", locals().get("sol_atrp_max_signal", 0.0350))),
-                    bb_width_min=float((cfg.get("params", {}) or {}).get("bb_width_min", locals().get("sol_bb_width_min", 0.0041))),
-                    bb_width_max=float((cfg.get("params", {}) or {}).get("bb_width_max", locals().get("sol_bb_width_max", 0.120))),
+                    rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", sol_rsi_long_max)),
+                    rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", sol_rsi_short_min)),
+                    adx_hard=float((cfg.get("params", {}) or {}).get("adx_hard", sol_adx_hard_signal)),
+                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", sol_atrp_min_signal)),
+                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", sol_atrp_max_signal)),
+                    bb_width_min=float((cfg.get("params", {}) or {}).get("bb_width_min", sol_bb_width_min)),
+                    bb_width_max=float((cfg.get("params", {}) or {}).get("bb_width_max", sol_bb_width_max)),
                 ),
             },
         )
@@ -275,6 +275,17 @@ def run(
         base_size=float(ml_size_base),
         pwin_threshold=float(ml_size_pwin_threshold),
     ) if bool(ml_position_sizing) else None
+
+    ml_score_position_sizer = ml_position_sizer or (
+        MlPositionSizingEngine(
+            scale=float(ml_size_scale),
+            min_mult=float(ml_size_min),
+            max_mult=float(ml_size_max),
+            mode=str(ml_size_mode),
+            base_size=float(ml_size_base),
+            pwin_threshold=float(ml_size_pwin_threshold),
+        ) if ml_enabled_for_scores else None
+    )
 
     prev_alloc: Optional[Allocation] = None
     rows = []
@@ -329,7 +340,62 @@ def run(
 
         if signal_engine == "registry_portfolio":
             _last_opps = list(getattr(sig_engine, "last_opportunities", []) or [])
+
+            if ml_enabled_for_scores and _last_opps:
+                from hf.engines.ml_filter import select_model_for_signal
+
+                for _opp in _last_opps:
+                    _meta = dict(getattr(_opp, "meta", {}) or {})
+                    _side = str(getattr(_opp, "side", "flat"))
+                    _sym = str(getattr(_opp, "symbol", ""))
+
+                    if _side == "flat":
+                        _opp.meta = _meta
+                        continue
+
+                    _candle = candles.get(_sym)
+                    if _candle is None:
+                        _opp.meta = _meta
+                        continue
+
+                    _tmp_sig = Signal(
+                        symbol=_sym,
+                        side=_side,
+                        strength=float(getattr(_opp, "strength", 0.0) or 0.0),
+                        meta=_meta,
+                    )
+                    _feat_row = build_feature_row(_sym, _candle, _tmp_sig)
+                    _chosen_model = select_model_for_signal(ml_model, ml_model_registry_loaded, _sym, _side)
+                    _p_win = float(predict_proba(_chosen_model, _feat_row))
+                    _meta["p_win"] = _p_win
+
+                    if ml_score_position_sizer is not None:
+                        _meta["ml_position_size_mult"] = float(ml_score_position_sizer.size_from_pwin(_p_win))
+                        _meta["ml_position_size_scale"] = float(ml_score_position_sizer.scale)
+
+                    _opp.meta = _meta
+
             _selected_opps = select_opportunities(_last_opps, mode=str(opportunity_selection_mode)) if _last_opps else []
+
+            _rebuilt_signals = {}
+            for _opp in _selected_opps:
+                _rebuilt_signals[str(_opp.symbol)] = Signal(
+                    symbol=str(_opp.symbol),
+                    side=str(getattr(_opp, "side", "flat")),
+                    strength=float(getattr(_opp, "strength", 0.0) or 0.0),
+                    meta=dict(getattr(_opp, "meta", {}) or {}),
+                )
+
+            for _sym in candles.keys():
+                if _sym not in _rebuilt_signals:
+                    _rebuilt_signals[_sym] = Signal(
+                        symbol=_sym,
+                        side="flat",
+                        strength=0.0,
+                        meta={"engine": "opportunity_adapter", "skip": "no_opportunity"},
+                    )
+
+            signals = _rebuilt_signals
 
             for _opp in _last_opps:
                 _meta = dict(getattr(_opp, "meta", {}) or {})
@@ -347,7 +413,7 @@ def run(
                     "ml_position_size_mult": float(_meta.get("ml_position_size_mult", 0.0) or 0.0),
                     "is_active": bool(_opp.is_active()) if hasattr(_opp, "is_active") else False,
                     "competitive_score": float(compute_competitive_score(_opp)),
-                    "post_ml_score": float((compute_competitive_score(_opp) or 0.0) * float(_meta.get("p_win", 0.0) or 0.0)),
+                    "post_ml_score": float(compute_post_ml_competitive_score(_opp)),
                 })
 
             for _opp in _selected_opps:
@@ -369,7 +435,7 @@ def run(
                     "ml_position_size_mult": _ml_mult,
                     "is_active": bool(_opp.is_active()) if hasattr(_opp, "is_active") else False,
                     "competitive_score": float(compute_competitive_score(_opp)),
-                    "post_ml_score": float((compute_competitive_score(_opp) or 0.0) * _p_win),
+                    "post_ml_score": float(compute_post_ml_competitive_score(_opp)),
                 })
         raw_signals = dict(signals or {})
 
@@ -536,6 +602,8 @@ def run(
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
             "w_btc": float(alloc.weights.get(btc_sym, 0.0)),
             "w_sol": float(alloc.weights.get(sol_sym, 0.0)),
+            "btc_side": str(getattr(signals.get(btc_sym), "side", "flat")),
+            "sol_side": str(getattr(signals.get(sol_sym), "side", "flat")),
             "btc_p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
             "sol_p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
             "btc_post_ml_score": float((btc_meta.get("competitive_score", 0.0) or 0.0) * (btc_meta.get("p_win", 0.0) or 0.0)),
@@ -545,11 +613,16 @@ def run(
             "case": (alloc.meta or {}).get("case", ""),
             "btc_strategy_id": btc_meta.get("strategy_id"),
             "btc_engine": btc_meta.get("engine"),
+            "btc_reason": ((getattr(signals.get(btc_sym), "meta", {}) or {}).get("reason") or (getattr(signals.get(btc_sym), "meta", {}) or {}).get("skip")),
             "btc_registry_symbol": btc_meta.get("registry_symbol"),
             "btc_base_weight": float(btc_meta.get("base_weight", 1.0) or 1.0),
             "btc_competitive_score": float(btc_meta.get("competitive_score", 0.0) or 0.0),
             "sol_strategy_id": sol_meta.get("strategy_id"),
             "sol_engine": sol_meta.get("engine"),
+            "sol_reason": ((getattr(signals.get(sol_sym), "meta", {}) or {}).get("reason") or (getattr(signals.get(sol_sym), "meta", {}) or {}).get("skip")),
+            "sol_adx": float(((getattr(signals.get(sol_sym), "meta", {}) or {}).get("adx")) or 0.0),
+            "sol_atrp": float(((getattr(signals.get(sol_sym), "meta", {}) or {}).get("atrp")) or 0.0),
+            "sol_bb_width": float(((getattr(signals.get(sol_sym), "meta", {}) or {}).get("bb_width")) or 0.0),
             "sol_registry_symbol": sol_meta.get("registry_symbol"),
             "sol_base_weight": float(sol_meta.get("base_weight", 1.0) or 1.0),
             "sol_competitive_score": float(sol_meta.get("competitive_score", 0.0) or 0.0),

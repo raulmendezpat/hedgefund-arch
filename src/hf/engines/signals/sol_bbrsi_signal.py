@@ -34,7 +34,7 @@ class SolBbrsiSignalEngine(SignalEngine):
     atrp_min: float = 0.003279
     atrp_max: float = 0.0350
     bb_width_min: float = 0.0041
-    bb_width_max: float = 0.120
+    bb_width_max: float = 0.25
 
     adx_key: str = "adx"
     atrp_key: str = "atrp"

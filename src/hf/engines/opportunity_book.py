@@ -162,17 +162,37 @@ def compute_competitive_score(opp: Opportunity) -> float:
 
 
 def compute_post_ml_competitive_score(opp: Opportunity) -> float:
-    base_score = compute_competitive_score(opp)
+    """
+    Competitive score after ML enrichment.
+
+    Formula:
+        base_score * p_win_factor * size_factor
+
+    Notes:
+    - p_win_factor falls back to 1.0 when missing/invalid
+    - size_factor is derived from ml_position_size_mult and clipped to
+      a safe range to avoid destabilizing ranking
+    """
+    base_score = float(compute_competitive_score(opp))
     meta = dict(getattr(opp, "meta", {}) or {})
 
     try:
-        p_win = float(meta.get("p_win", 0.0) or 0.0)
+        p_win_factor = float(meta.get("p_win", 1.0) or 1.0)
     except (TypeError, ValueError):
-        p_win = 0.0
+        p_win_factor = 1.0
+    if p_win_factor <= 0.0:
+        p_win_factor = 1.0
 
-    p_win_factor = p_win if p_win > 0.0 else 1.0
-    return base_score * p_win_factor
+    try:
+        size_factor = float(meta.get("ml_position_size_mult", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        size_factor = 1.0
+    if size_factor <= 0.0:
+        size_factor = 1.0
 
+    size_factor = max(0.50, min(1.50, size_factor))
+
+    return float(base_score * p_win_factor * size_factor)
 
 def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[Opportunity]:
     best_by_symbol: Dict[str, Opportunity] = {}
