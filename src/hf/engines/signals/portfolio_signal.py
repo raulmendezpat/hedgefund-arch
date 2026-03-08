@@ -99,6 +99,7 @@ class RegistryPortfolioSignalEngine(SignalEngine):
             strict_symbol_match=self.strict_symbol_match,
         )
         opportunities = book.generate(candles, ts=None, print_debug=print_debug)
+        self.last_opportunities = list(opportunities or [])
         return to_signal_dict(opportunities, symbols=list(candles.keys()))
 
 

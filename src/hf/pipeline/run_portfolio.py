@@ -275,6 +275,7 @@ def run(
 
     prev_alloc: Optional[Allocation] = None
     rows = []
+    opportunity_rows = []
 
     # PortfolioEngine buffers (alineados 1:1 con common_ts)
     candles_by_symbol = {btc_sym: [], sol_sym: []}
@@ -320,6 +321,22 @@ def run(
         candles_by_symbol[sol_sym].append(candles[sol_sym])
 
         signals = sig_engine.generate(candles)
+
+        if signal_engine == "registry_portfolio":
+            _last_opps = list(getattr(sig_engine, "last_opportunities", []) or [])
+            for _opp in _last_opps:
+                _meta = dict(getattr(_opp, "meta", {}) or {})
+                opportunity_rows.append({
+                    "ts": int(ts),
+                    "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+                    "strategy_id": str(getattr(_opp, "strategy_id", "")),
+                    "symbol": str(getattr(_opp, "symbol", "")),
+                    "side": str(getattr(_opp, "side", "flat")),
+                    "strength": float(getattr(_opp, "strength", 0.0) or 0.0),
+                    "engine": _meta.get("engine"),
+                    "registry_symbol": _meta.get("registry_symbol"),
+                    "is_active": bool(_opp.is_active()) if hasattr(_opp, "is_active") else False,
+                })
         raw_signals = dict(signals or {})
 
         if bool(ml_export_features):
@@ -466,6 +483,9 @@ def run(
 
     df = pd.DataFrame(rows)
     df.to_csv(f"results/pipeline_allocations_{name}.csv", index=False)
+
+    if opportunity_rows:
+        pd.DataFrame(opportunity_rows).to_csv(f"results/opportunity_book_{name}.csv", index=False)
 
     if bool(ml_export_features):
         _ml_out = ml_features_out or f"results/ml_features_{name}.csv"
