@@ -10,6 +10,7 @@ from hf.core.types import Candle, Signal
 from hf.core.opportunity import Opportunity
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
+from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 
 
 def _default_registry() -> List[dict]:
@@ -30,6 +31,14 @@ def _default_registry() -> List[dict]:
             "base_weight": 1.0,
             "params": {},
         },
+        {
+            "strategy_id": "sol_vol_breakout",
+            "symbol": "SOL/USDT:USDT",
+            "engine": "sol_vol_breakout_signal",
+            "enabled": True,
+            "base_weight": 1.0,
+            "params": {},
+        },
     ]
 
 
@@ -44,6 +53,7 @@ class RegistryOpportunityBook:
             self.engine_factories = {
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:

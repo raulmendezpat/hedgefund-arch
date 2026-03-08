@@ -24,5 +24,20 @@
     "enabled": true,
     "params": {},
     "base_weight": 1.0
+  },
+  {
+    "strategy_id": "sol_vol_breakout",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_vol_breakout_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {
+      "breakout_lookback": 20,
+      "adx_min": 18.0,
+      "atrp_min": 0.008,
+      "atrp_max": 0.08,
+      "range_expansion_min": 1.1,
+      "confirm_close_buffer": 0.0
+    }
   }
 ]

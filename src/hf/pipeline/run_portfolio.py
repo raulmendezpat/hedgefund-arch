@@ -17,6 +17,7 @@ from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulato
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.signals import PortfolioSignalEngine, RegistryPortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
+from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 from hf.engines.opportunity_book import select_opportunities, compute_competitive_score, compute_post_ml_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
@@ -88,6 +89,14 @@ def _bbands(series: pd.Series, period: int, std_mult: float):
     return mid, up, low
 
 
+def _donchian(df: pd.DataFrame, lookback: int):
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    dc_high = high.shift(1).rolling(window=int(lookback), min_periods=int(lookback)).max()
+    dc_low = low.shift(1).rolling(window=int(lookback), min_periods=int(lookback)).min()
+    return dc_high, dc_low
+
+
 def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = None) -> Candle:
     # ts in ms
     return Candle(
@@ -132,6 +141,12 @@ def run(
     sol_bb_width_max: float = 0.120,
     sol_bb_period: int = 20,
     sol_bb_std: float = 2.0,
+    sol_vol_breakout_lookback: int = 20,
+    sol_vol_adx_min: float = 18.0,
+    sol_vol_atrp_min: float = 0.008,
+    sol_vol_atrp_max: float = 0.080,
+    sol_vol_range_expansion_min: float = 1.10,
+    sol_vol_confirm_close_buffer: float = 0.0,
     ml_filter: bool = False,
     ml_model_path: Optional[str] = None,
     ml_model_registry: Optional[str] = None,
@@ -191,12 +206,18 @@ def run(
     _sol_avg_loss = _sol_loss.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).mean()
     _sol_rs = _sol_avg_gain / _sol_avg_loss.replace(0.0, np.nan)
     sol_rsi = 100.0 - (100.0 / (1.0 + _sol_rs))
+    sol_ema_fast = _ema(sol_close, 20)
+    sol_ema_slow = _ema(sol_close, 50)
 
     sol_bb_mid = sol_close.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).mean()
     _sol_bb_stddev = sol_close.rolling(int(sol_bb_period), min_periods=int(sol_bb_period)).std(ddof=0)
     sol_bb_up = sol_bb_mid + float(sol_bb_std) * _sol_bb_stddev
     sol_bb_low = sol_bb_mid - float(sol_bb_std) * _sol_bb_stddev
     sol_bb_width = (sol_bb_up - sol_bb_low) / sol_bb_mid.replace(0.0, np.nan)
+
+    sol_vol_dc_high, sol_vol_dc_low = _donchian(sol, int(sol_vol_breakout_lookback))
+    sol_atr_ema20 = _ema(sol_atr, 20)
+    sol_range_expansion = sol_atr / sol_atr_ema20.replace(0.0, np.nan)
 
     # SignalEngine layer (default: flat placeholder)
     if signal_engine == "btc_trend":
@@ -210,6 +231,15 @@ def run(
             atrp_max=float(locals().get("sol_atrp_max_signal", 0.0350)),
             bb_width_min=float(locals().get("sol_bb_width_min", 0.0041)),
             bb_width_max=float(locals().get("sol_bb_width_max", 0.120)),
+        )
+    elif signal_engine == "sol_vol_breakout":
+        sig_engine = SolVolBreakoutSignalEngine(
+            breakout_lookback=int(locals().get("sol_vol_breakout_lookback", 20)),
+            adx_min=float(locals().get("sol_vol_adx_min", 18.0)),
+            atrp_min=float(locals().get("sol_vol_atrp_min", 0.008)),
+            atrp_max=float(locals().get("sol_vol_atrp_max", 0.080)),
+            range_expansion_min=float(locals().get("sol_vol_range_expansion_min", 1.10)),
+            confirm_close_buffer=float(locals().get("sol_vol_confirm_close_buffer", 0.0)),
         )
     elif signal_engine == "portfolio":
         sig_engine = PortfolioSignalEngine(
@@ -241,6 +271,14 @@ def run(
                     atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", sol_atrp_max_signal)),
                     bb_width_min=float((cfg.get("params", {}) or {}).get("bb_width_min", sol_bb_width_min)),
                     bb_width_max=float((cfg.get("params", {}) or {}).get("bb_width_max", sol_bb_width_max)),
+                ),
+                "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(
+                    breakout_lookback=int((cfg.get("params", {}) or {}).get("breakout_lookback", sol_vol_breakout_lookback)),
+                    adx_min=float((cfg.get("params", {}) or {}).get("adx_min", sol_vol_adx_min)),
+                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", sol_vol_atrp_min)),
+                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", sol_vol_atrp_max)),
+                    range_expansion_min=float((cfg.get("params", {}) or {}).get("range_expansion_min", sol_vol_range_expansion_min)),
+                    confirm_close_buffer=float((cfg.get("params", {}) or {}).get("confirm_close_buffer", sol_vol_confirm_close_buffer)),
                 ),
             },
         )
@@ -329,6 +367,11 @@ def run(
                 'bb_up': float(sol_bb_up.loc[ts]) if ts in sol_bb_up.index else float('nan'),
                 'bb_low': float(sol_bb_low.loc[ts]) if ts in sol_bb_low.index else float('nan'),
                 'bb_width': float(sol_bb_width.loc[ts]) if ts in sol_bb_width.index else float('nan'),
+                'ema_fast': float(sol_ema_fast.loc[ts]) if ts in sol_ema_fast.index else float('nan'),
+                'ema_slow': float(sol_ema_slow.loc[ts]) if ts in sol_ema_slow.index else float('nan'),
+                'donchian_high': float(sol_vol_dc_high.loc[ts]) if ts in sol_vol_dc_high.index else float('nan'),
+                'donchian_low': float(sol_vol_dc_low.loc[ts]) if ts in sol_vol_dc_low.index else float('nan'),
+                'range_expansion': float(sol_range_expansion.loc[ts]) if ts in sol_range_expansion.index else float('nan'),
             }),
         }
 
@@ -746,6 +789,12 @@ def run(
             'slippage_bps': float(slippage_bps),
             'sol_atrp_min': float(sol_atrp_min),
             'sol_adx_max': float(sol_adx_max),
+            'sol_vol_breakout_lookback': int(sol_vol_breakout_lookback),
+            'sol_vol_adx_min': float(sol_vol_adx_min),
+            'sol_vol_atrp_min': float(sol_vol_atrp_min),
+            'sol_vol_atrp_max': float(sol_vol_atrp_max),
+            'sol_vol_range_expansion_min': float(sol_vol_range_expansion_min),
+            'sol_vol_confirm_close_buffer': float(sol_vol_confirm_close_buffer),
             'btc_adx_min': float(btc_adx_min),
             'btc_slope_min': float(btc_slope_min),
             'signal_engine': str(signal_engine),
@@ -803,6 +852,12 @@ def main() -> None:
     ap.add_argument("--sol-bb-width-max", type=float, default=0.120)
     ap.add_argument("--sol-bb-period", type=int, default=20)
     ap.add_argument("--sol-bb-std", type=float, default=2.0)
+    ap.add_argument("--sol-vol-breakout-lookback", type=int, default=20)
+    ap.add_argument("--sol-vol-adx-min", type=float, default=18.0)
+    ap.add_argument("--sol-vol-atrp-min", type=float, default=0.008)
+    ap.add_argument("--sol-vol-atrp-max", type=float, default=0.080)
+    ap.add_argument("--sol-vol-range-expansion-min", type=float, default=1.10)
+    ap.add_argument("--sol-vol-confirm-close-buffer", type=float, default=0.0)
     ap.add_argument("--ml-filter", action="store_true", help="Enable optional ML probability-of-win filter on raw signals.")
     ap.add_argument("--ml-model-path", default=None, help="Path to serialized ML model (pickle/joblib-compatible pickle load).")
     ap.add_argument("--ml-model-registry", default=None, help="Optional JSON registry mapping 'SYMBOL|side' to model path.")
@@ -827,7 +882,7 @@ def main() -> None:
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
-        choices=["flat", "btc_trend", "sol_bbrsi", "portfolio", "registry_portfolio"],
+        choices=["flat", "btc_trend", "sol_bbrsi", "sol_vol_breakout", "portfolio", "registry_portfolio"],
         default="flat",
         help="Signal engine to use: flat, btc_trend, sol_bbrsi, portfolio, registry_portfolio (default: flat placeholder).",
     )
@@ -836,9 +891,18 @@ def main() -> None:
     args = ap.parse_args()
 
     df = run(
-        args.name, args.start, args.end, args.exchange, args.cache_dir, args.refresh_cache,
-        args.trades_csv,
-        args.sol_atrp_min, args.sol_adx_max, args.btc_adx_min, args.btc_slope_min, args.signal_engine,
+        name=args.name,
+        start=args.start,
+        end=args.end,
+        exchange=args.exchange,
+        cache_dir=args.cache_dir,
+        refresh_cache=args.refresh_cache,
+        trades_csv=args.trades_csv,
+        sol_atrp_min=float(args.sol_atrp_min),
+        sol_adx_max=float(args.sol_adx_max),
+        btc_adx_min=float(args.btc_adx_min),
+        btc_slope_min=float(args.btc_slope_min),
+        signal_engine=str(args.signal_engine),
         sticky_flat=bool(args.sticky_flat),
         both_btc_weight=float(args.both_btc_weight),
         sticky_when_off=bool(args.sticky_when_off),
@@ -846,33 +910,37 @@ def main() -> None:
         fallback_sol_weight=float(args.fallback_sol_weight),
         fee_bps=float(args.fee_bps),
         slippage_bps=float(args.slippage_bps),
-    sol_rsi_long_max=float(args.sol_rsi_long_max),
-    sol_rsi_short_min=float(args.sol_rsi_short_min),
-    sol_adx_hard_signal=float(args.sol_adx_hard_signal),
-    sol_atrp_min_signal=float(args.sol_atrp_min_signal),
-    sol_atrp_max_signal=float(args.sol_atrp_max_signal),
-    sol_bb_width_min=float(args.sol_bb_width_min),
-    sol_bb_width_max=float(args.sol_bb_width_max),
-
-    sol_bb_period=int(args.sol_bb_period),
-
-    sol_bb_std=float(args.sol_bb_std),
-    ml_filter=bool(args.ml_filter),
-    ml_model_path=args.ml_model_path,
-    ml_model_registry=args.ml_model_registry,
-    ml_threshold=float(args.ml_threshold),
-    ml_export_features=bool(args.ml_export_features),
-    ml_features_out=args.ml_features_out,
-    ml_position_sizing=bool(args.ml_position_sizing),
-    ml_size_scale=float(args.ml_size_scale),
-    ml_size_min=float(args.ml_size_min),
-    ml_size_max=float(args.ml_size_max),
-    ml_size_mode=str(args.ml_size_mode),
-    ml_size_base=float(args.ml_size_base),
-    ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
+        sol_rsi_long_max=float(args.sol_rsi_long_max),
+        sol_rsi_short_min=float(args.sol_rsi_short_min),
+        sol_adx_hard_signal=float(args.sol_adx_hard_signal),
+        sol_atrp_min_signal=float(args.sol_atrp_min_signal),
+        sol_atrp_max_signal=float(args.sol_atrp_max_signal),
+        sol_bb_width_min=float(args.sol_bb_width_min),
+        sol_bb_width_max=float(args.sol_bb_width_max),
+        sol_bb_period=int(args.sol_bb_period),
+        sol_bb_std=float(args.sol_bb_std),
+        sol_vol_breakout_lookback=int(args.sol_vol_breakout_lookback),
+        sol_vol_adx_min=float(args.sol_vol_adx_min),
+        sol_vol_atrp_min=float(args.sol_vol_atrp_min),
+        sol_vol_atrp_max=float(args.sol_vol_atrp_max),
+        sol_vol_range_expansion_min=float(args.sol_vol_range_expansion_min),
+        sol_vol_confirm_close_buffer=float(args.sol_vol_confirm_close_buffer),
+        ml_filter=bool(args.ml_filter),
+        ml_model_path=args.ml_model_path,
+        ml_model_registry=args.ml_model_registry,
+        ml_threshold=float(args.ml_threshold),
+        ml_export_features=bool(args.ml_export_features),
+        ml_features_out=args.ml_features_out,
+        ml_position_sizing=bool(args.ml_position_sizing),
+        ml_size_scale=float(args.ml_size_scale),
+        ml_size_min=float(args.ml_size_min),
+        ml_size_max=float(args.ml_size_max),
+        ml_size_mode=str(args.ml_size_mode),
+        ml_size_base=float(args.ml_size_base),
+        ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
         strategy_registry_path=str(args.strategy_registry),
         opportunity_selection_mode=str(args.opportunity_selection_mode),
-)
+    )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
 if __name__ == "__main__":

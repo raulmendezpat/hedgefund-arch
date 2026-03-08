@@ -9,6 +9,7 @@ from hf.core.interfaces import SignalEngine
 from hf.core.types import Candle, Signal
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
+from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 from hf.engines.opportunity_book import RegistryOpportunityBook, to_signal_dict
 
 
@@ -28,6 +29,13 @@ def _default_registry() -> List[dict]:
             "enabled": True,
             "params": {},
         },
+        {
+            "strategy_id": "sol_vol_breakout",
+            "symbol": "SOL/USDT:USDT",
+            "engine": "sol_vol_breakout_signal",
+            "enabled": True,
+            "params": {},
+        },
     ]
 
 
@@ -43,6 +51,7 @@ class RegistryPortfolioSignalEngine(SignalEngine):
             self.engine_factories = {
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:
@@ -108,14 +117,17 @@ class RegistryPortfolioSignalEngine(SignalEngine):
 class PortfolioSignalEngine(RegistryPortfolioSignalEngine):
     btc_engine: Optional[BtcTrendSignalEngine] = None
     sol_engine: Optional[SolBbrsiSignalEngine] = None
+    sol_vol_breakout_engine: Optional[SolVolBreakoutSignalEngine] = None
 
     def __post_init__(self) -> None:
         btc_engine = self.btc_engine or BtcTrendSignalEngine()
         sol_engine = self.sol_engine or SolBbrsiSignalEngine()
+        sol_vol_breakout_engine = self.sol_vol_breakout_engine or SolVolBreakoutSignalEngine()
 
         self.engine_factories = {
             "btc_trend_signal": lambda cfg: btc_engine,
             "sol_bbrsi_signal": lambda cfg: sol_engine,
+            "sol_vol_breakout_signal": lambda cfg: sol_vol_breakout_engine,
         }
 
         if not getattr(self, "registry_path", None):
