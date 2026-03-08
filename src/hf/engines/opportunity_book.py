@@ -128,7 +128,7 @@ def _opportunity_rank(opp: Opportunity) -> tuple:
     return (active, strength)
 
 
-def to_signal_dict(opportunities: List[Opportunity], symbols: Optional[List[str]] = None) -> Dict[str, Signal]:
+def select_best_opportunities_per_symbol(opportunities: List[Opportunity]) -> List[Opportunity]:
     best_by_symbol: Dict[str, Opportunity] = {}
 
     for opp in opportunities or []:
@@ -137,10 +137,15 @@ def to_signal_dict(opportunities: List[Opportunity], symbols: Optional[List[str]
         if prev is None or _opportunity_rank(opp) > _opportunity_rank(prev):
             best_by_symbol[sym] = opp
 
+    return list(best_by_symbol.values())
+
+
+def to_signal_dict(opportunities: List[Opportunity], symbols: Optional[List[str]] = None) -> Dict[str, Signal]:
+    selected = select_best_opportunities_per_symbol(opportunities)
     out: Dict[str, Signal] = {}
 
-    for sym, opp in best_by_symbol.items():
-        out[sym] = Signal(
+    for opp in selected:
+        out[str(opp.symbol)] = Signal(
             symbol=opp.symbol,
             side=opp.side,
             strength=float(getattr(opp, "strength", 0.0) or 0.0),
