@@ -9,6 +9,7 @@ from hf.core.interfaces import SignalEngine
 from hf.core.types import Candle, Signal
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
+from hf.engines.opportunity_book import RegistryOpportunityBook, to_signal_dict
 
 
 def _default_registry() -> List[dict]:
@@ -92,53 +93,13 @@ class RegistryPortfolioSignalEngine(SignalEngine):
         return (has_skip, not_flat, strength)
 
     def generate(self, candles: Dict[str, Candle], print_debug: bool = False) -> Dict[str, Signal]:
-        registry = self._load_registry()
-        best_by_symbol: Dict[str, Signal] = {}
-
-        for cfg in registry:
-            if not bool(cfg.get("enabled", True)):
-                continue
-
-            engine_name = str(cfg.get("engine", "") or "").strip()
-            strategy_id = str(cfg.get("strategy_id", "") or "").strip()
-            target_symbol = str(cfg.get("symbol", "") or "").strip()
-
-            if not engine_name:
-                continue
-            if not strategy_id:
-                continue
-            if not target_symbol:
-                continue
-            if engine_name not in self.engine_factories:
-                raise ValueError(f"Unknown signal engine in registry: {engine_name}")
-
-            sub_candles = self._select_symbol_candles(candles, target_symbol)
-            if not sub_candles:
-                continue
-
-            engine = self.engine_factories[engine_name](cfg)
-            try:
-                generated = engine.generate(sub_candles, print_debug=print_debug)  # type: ignore[arg-type]
-            except TypeError:
-                generated = engine.generate(sub_candles)
-
-            for sym, sig in (generated or {}).items():
-                decorated = self._decorate_signal(cfg=cfg, signal=sig)
-
-                prev = best_by_symbol.get(sym)
-                if prev is None or self._candidate_rank(decorated) > self._candidate_rank(prev):
-                    best_by_symbol[sym] = decorated
-
-        for sym in candles.keys():
-            if sym not in best_by_symbol:
-                best_by_symbol[sym] = Signal(
-                    symbol=sym,
-                    side="flat",
-                    strength=0.0,
-                    meta={"engine": "registry_portfolio", "skip": "not_registered"},
-                )
-
-        return best_by_symbol
+        book = RegistryOpportunityBook(
+            registry_path=self.registry_path,
+            engine_factories=self.engine_factories,
+            strict_symbol_match=self.strict_symbol_match,
+        )
+        opportunities = book.generate(candles, ts=None, print_debug=print_debug)
+        return to_signal_dict(opportunities, symbols=list(candles.keys()))
 
 
 @dataclass
