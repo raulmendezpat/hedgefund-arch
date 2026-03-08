@@ -18,6 +18,7 @@ from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.signals import PortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
+from hf.engines.ml_position_sizer import MlPositionSizingEngine
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
@@ -136,6 +137,13 @@ def run(
     ml_threshold: float = 0.55,
     ml_export_features: bool = False,
     ml_features_out: Optional[str] = None,
+    ml_position_sizing: bool = False,
+    ml_size_scale: float = 1.0,
+    ml_size_min: float = 0.0,
+    ml_size_max: float = 1.0,
+    ml_size_mode: str = "linear_edge",
+    ml_size_base: float = 0.25,
+    ml_size_pwin_threshold: float = 0.55,
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -230,10 +238,20 @@ def run(
         sol_symbol=sol_sym,
     )
 
-    ml_model = load_model(ml_model_path) if bool(ml_filter) else None
-    ml_model_registry_loaded = load_model_registry(ml_model_registry) if bool(ml_filter) else {}
+    ml_enabled_for_scores = bool(ml_filter or ml_position_sizing)
+    ml_model = load_model(ml_model_path) if ml_enabled_for_scores else None
+    ml_model_registry_loaded = load_model_registry(ml_model_registry) if ml_enabled_for_scores else {}
     ml_rejected_counts_by_symbol = {}
+    ml_position_sized_counts_by_symbol = {}
     ml_feature_rows = []
+    ml_position_sizer = MlPositionSizingEngine(
+        scale=float(ml_size_scale),
+        min_mult=float(ml_size_min),
+        max_mult=float(ml_size_max),
+        mode=str(ml_size_mode),
+        base_size=float(ml_size_base),
+        pwin_threshold=float(ml_size_pwin_threshold),
+    ) if bool(ml_position_sizing) else None
 
     prev_alloc: Optional[Allocation] = None
     rows = []
@@ -298,7 +316,12 @@ def run(
                 if _candle is None:
                     continue
                 _feat_row = build_feature_row(_sym, _candle, _sig)
-                _p_win_preview = predict_proba(ml_model if bool(ml_filter) else None, _feat_row)
+                _side_preview = getattr(_sig, "side", "flat")
+                _chosen_preview_model = None
+                if ml_enabled_for_scores:
+                    from hf.engines.ml_filter import select_model_for_signal
+                    _chosen_preview_model = select_model_for_signal(ml_model, ml_model_registry_loaded, _sym, _side_preview)
+                _p_win_preview = predict_proba(_chosen_preview_model, _feat_row)
                 ml_feature_rows.append({
                     "ts": int(ts),
                     "symbol": _sym,
@@ -339,6 +362,17 @@ def run(
                     _row["p_win"] = float(_meta2.get("p_win", _row.get("p_win", 0.0)))
                     _row["ml_rejected"] = 1 if _meta2.get("reason") == "ml_filter" else 0
 
+        if ml_position_sizer is not None:
+            signals, _ml_sized = ml_position_sizer.apply_to_signals(
+                candles=candles,
+                signals=signals,
+                model=ml_model,
+                model_registry=ml_model_registry_loaded,
+            )
+            for _sym, _mult in (_ml_sized or {}).items():
+                if float(_mult) != 1.0:
+                    ml_position_sized_counts_by_symbol[_sym] = int(ml_position_sized_counts_by_symbol.get(_sym, 0)) + 1
+
         # --- count signal sides + skip flags ---
         for _sym, _sig in (signals or {}).items():
             _side = getattr(_sig, 'side', 'flat') if _sig is not None else 'flat'
@@ -349,6 +383,12 @@ def run(
         # --- end counts ---
         regimes = reg_engine.evaluate(candles, signals)
         alloc = allocator.allocate(candles, signals, regimes, prev_alloc)
+
+        if ml_position_sizer is not None:
+            alloc = ml_position_sizer.apply_to_allocation(
+                allocation=alloc,
+                signals=signals,
+            )
 
         # --- Signal gating (solo para engines reales, NO para 'flat') ---
         # Si el SignalEngine aplica al símbolo (meta no contiene 'skip') y la señal es flat,
@@ -388,6 +428,10 @@ def run(
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
             "w_btc": float(alloc.weights.get(btc_sym, 0.0)),
             "w_sol": float(alloc.weights.get(sol_sym, 0.0)),
+            "btc_p_win": float((getattr(signals.get(btc_sym), "meta", {}) or {}).get("p_win", 0.0) or 0.0),
+            "sol_p_win": float((getattr(signals.get(sol_sym), "meta", {}) or {}).get("p_win", 0.0) or 0.0),
+            "btc_ml_size_mult": float((getattr(signals.get(btc_sym), "meta", {}) or {}).get("ml_position_size_mult", 0.0) or 0.0),
+            "sol_ml_size_mult": float((getattr(signals.get(sol_sym), "meta", {}) or {}).get("ml_position_size_mult", 0.0) or 0.0),
             "case": (alloc.meta or {}).get("case", ""),
         })
 
@@ -500,10 +544,18 @@ def run(
             'signal_side_counts': dict(signal_side_counts),
             'signal_skip_counts': dict(signal_skip_counts),
             'ml_filter_enabled': bool(ml_filter),
+            'ml_position_sizing_enabled': bool(ml_position_sizing),
+            'ml_size_mode': str(ml_size_mode),
+            'ml_size_scale': float(ml_size_scale),
+            'ml_size_min': float(ml_size_min),
+            'ml_size_max': float(ml_size_max),
+            'ml_size_base': float(ml_size_base),
+            'ml_size_pwin_threshold': float(ml_size_pwin_threshold),
             'ml_model_path': ml_model_path,
             'ml_model_registry_path': ml_model_registry,
             'ml_threshold': float(ml_threshold),
             'ml_rejected_counts_by_symbol': dict(ml_rejected_counts_by_symbol),
+            'ml_position_sized_counts_by_symbol': dict(ml_position_sized_counts_by_symbol),
         },
         write=True,
     )
@@ -547,6 +599,13 @@ def main() -> None:
     ap.add_argument("--ml-threshold", type=float, default=0.55, help="Reject signal if p_win < threshold.")
     ap.add_argument("--ml-export-features", action="store_true", help="Export ML feature rows for raw/final signals.")
     ap.add_argument("--ml-features-out", default=None, help="Optional CSV path for exported ML features.")
+    ap.add_argument("--ml-position-sizing", action="store_true", help="Enable ML-based position sizing using p_win -> size multiplier.")
+    ap.add_argument("--ml-size-mode", type=str, default="linear_edge", choices=["linear_edge", "calibrated"], help="Sizing transform mode.")
+    ap.add_argument("--ml-size-scale", type=float, default=1.0, help="Scale factor for the selected sizing mode.")
+    ap.add_argument("--ml-size-min", type=float, default=0.0, help="Minimum size multiplier after transform.")
+    ap.add_argument("--ml-size-max", type=float, default=1.0, help="Maximum size multiplier after transform.")
+    ap.add_argument("--ml-size-base", type=float, default=0.25, help="Base position size for calibrated mode.")
+    ap.add_argument("--ml-size-pwin-threshold", type=float, default=0.55, help="Probability threshold used by calibrated mode.")
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
@@ -587,6 +646,13 @@ def main() -> None:
     ml_threshold=float(args.ml_threshold),
     ml_export_features=bool(args.ml_export_features),
     ml_features_out=args.ml_features_out,
+    ml_position_sizing=bool(args.ml_position_sizing),
+    ml_size_scale=float(args.ml_size_scale),
+    ml_size_min=float(args.ml_size_min),
+    ml_size_max=float(args.ml_size_max),
+    ml_size_mode=str(args.ml_size_mode),
+    ml_size_base=float(args.ml_size_base),
+    ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
 
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
