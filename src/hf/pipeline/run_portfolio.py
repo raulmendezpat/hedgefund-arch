@@ -18,6 +18,7 @@ from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.signals import PortfolioSignalEngine, RegistryPortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
+from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
 from hf.engines.opportunity_book import select_opportunities, compute_competitive_score, compute_post_ml_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
@@ -147,6 +148,15 @@ def run(
     sol_vol_atrp_max: float = 0.080,
     sol_vol_range_expansion_min: float = 1.10,
     sol_vol_confirm_close_buffer: float = 0.0,
+    sol_trend_pullback_rsi_long_min: float = 40.0,
+    sol_trend_pullback_rsi_long_max: float = 55.0,
+    sol_trend_pullback_rsi_short_min: float = 45.0,
+    sol_trend_pullback_rsi_short_max: float = 60.0,
+    sol_trend_pullback_ema_pullback_max: float = 0.015,
+    sol_trend_pullback_atrp_min: float = 0.004,
+    sol_trend_pullback_atrp_max: float = 0.050,
+    sol_trend_pullback_require_adx: bool = False,
+    sol_trend_pullback_adx_min: float = 18.0,
     ml_filter: bool = False,
     ml_model_path: Optional[str] = None,
     ml_model_registry: Optional[str] = None,
@@ -241,6 +251,18 @@ def run(
             range_expansion_min=float(locals().get("sol_vol_range_expansion_min", 1.10)),
             confirm_close_buffer=float(locals().get("sol_vol_confirm_close_buffer", 0.0)),
         )
+    elif signal_engine == "sol_trend_pullback":
+        sig_engine = SolTrendPullbackSignalEngine(
+            rsi_long_min=float(locals().get("sol_trend_pullback_rsi_long_min", 40.0)),
+            rsi_long_max=float(locals().get("sol_trend_pullback_rsi_long_max", 55.0)),
+            rsi_short_min=float(locals().get("sol_trend_pullback_rsi_short_min", 45.0)),
+            rsi_short_max=float(locals().get("sol_trend_pullback_rsi_short_max", 60.0)),
+            ema_pullback_max=float(locals().get("sol_trend_pullback_ema_pullback_max", 0.015)),
+            atrp_min=float(locals().get("sol_trend_pullback_atrp_min", 0.004)),
+            atrp_max=float(locals().get("sol_trend_pullback_atrp_max", 0.050)),
+            require_adx=bool(locals().get("sol_trend_pullback_require_adx", False)),
+            adx_min=float(locals().get("sol_trend_pullback_adx_min", 18.0)),
+        )
     elif signal_engine == "portfolio":
         sig_engine = PortfolioSignalEngine(
             registry_path=str(strategy_registry_path),
@@ -279,6 +301,17 @@ def run(
                     atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", sol_vol_atrp_max)),
                     range_expansion_min=float((cfg.get("params", {}) or {}).get("range_expansion_min", sol_vol_range_expansion_min)),
                     confirm_close_buffer=float((cfg.get("params", {}) or {}).get("confirm_close_buffer", sol_vol_confirm_close_buffer)),
+                ),
+                "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(
+                    rsi_long_min=float((cfg.get("params", {}) or {}).get("rsi_long_min", sol_trend_pullback_rsi_long_min)),
+                    rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", sol_trend_pullback_rsi_long_max)),
+                    rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", sol_trend_pullback_rsi_short_min)),
+                    rsi_short_max=float((cfg.get("params", {}) or {}).get("rsi_short_max", sol_trend_pullback_rsi_short_max)),
+                    ema_pullback_max=float((cfg.get("params", {}) or {}).get("ema_pullback_max", sol_trend_pullback_ema_pullback_max)),
+                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", sol_trend_pullback_atrp_min)),
+                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", sol_trend_pullback_atrp_max)),
+                    require_adx=bool((cfg.get("params", {}) or {}).get("require_adx", sol_trend_pullback_require_adx)),
+                    adx_min=float((cfg.get("params", {}) or {}).get("adx_min", sol_trend_pullback_adx_min)),
                 ),
             },
         )
@@ -647,6 +680,8 @@ def run(
             "w_sol": float(alloc.weights.get(sol_sym, 0.0)),
             "btc_side": str(getattr(signals.get(btc_sym), "side", "flat")),
             "sol_side": str(getattr(signals.get(sol_sym), "side", "flat")),
+            "btc_strength": float(getattr(signals.get(btc_sym), "strength", 0.0) or 0.0),
+            "sol_strength": float(getattr(signals.get(sol_sym), "strength", 0.0) or 0.0),
             "btc_p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
             "sol_p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
             "btc_post_ml_score": float((btc_meta.get("competitive_score", 0.0) or 0.0) * (btc_meta.get("p_win", 0.0) or 0.0)),
@@ -795,6 +830,15 @@ def run(
             'sol_vol_atrp_max': float(sol_vol_atrp_max),
             'sol_vol_range_expansion_min': float(sol_vol_range_expansion_min),
             'sol_vol_confirm_close_buffer': float(sol_vol_confirm_close_buffer),
+            'sol_trend_pullback_rsi_long_min': float(sol_trend_pullback_rsi_long_min),
+            'sol_trend_pullback_rsi_long_max': float(sol_trend_pullback_rsi_long_max),
+            'sol_trend_pullback_rsi_short_min': float(sol_trend_pullback_rsi_short_min),
+            'sol_trend_pullback_rsi_short_max': float(sol_trend_pullback_rsi_short_max),
+            'sol_trend_pullback_ema_pullback_max': float(sol_trend_pullback_ema_pullback_max),
+            'sol_trend_pullback_atrp_min': float(sol_trend_pullback_atrp_min),
+            'sol_trend_pullback_atrp_max': float(sol_trend_pullback_atrp_max),
+            'sol_trend_pullback_require_adx': bool(sol_trend_pullback_require_adx),
+            'sol_trend_pullback_adx_min': float(sol_trend_pullback_adx_min),
             'btc_adx_min': float(btc_adx_min),
             'btc_slope_min': float(btc_slope_min),
             'signal_engine': str(signal_engine),
@@ -857,6 +901,15 @@ def main() -> None:
     ap.add_argument("--sol-vol-atrp-min", type=float, default=0.008)
     ap.add_argument("--sol-vol-atrp-max", type=float, default=0.080)
     ap.add_argument("--sol-vol-range-expansion-min", type=float, default=1.10)
+    ap.add_argument("--sol-trend-pullback-rsi-long-min", type=float, default=40.0)
+    ap.add_argument("--sol-trend-pullback-rsi-long-max", type=float, default=55.0)
+    ap.add_argument("--sol-trend-pullback-rsi-short-min", type=float, default=45.0)
+    ap.add_argument("--sol-trend-pullback-rsi-short-max", type=float, default=60.0)
+    ap.add_argument("--sol-trend-pullback-ema-pullback-max", type=float, default=0.015)
+    ap.add_argument("--sol-trend-pullback-atrp-min", type=float, default=0.004)
+    ap.add_argument("--sol-trend-pullback-atrp-max", type=float, default=0.050)
+    ap.add_argument("--sol-trend-pullback-require-adx", action="store_true")
+    ap.add_argument("--sol-trend-pullback-adx-min", type=float, default=18.0)
     ap.add_argument("--sol-vol-confirm-close-buffer", type=float, default=0.0)
     ap.add_argument("--ml-filter", action="store_true", help="Enable optional ML probability-of-win filter on raw signals.")
     ap.add_argument("--ml-model-path", default=None, help="Path to serialized ML model (pickle/joblib-compatible pickle load).")
@@ -882,7 +935,7 @@ def main() -> None:
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
-        choices=["flat", "btc_trend", "sol_bbrsi", "sol_vol_breakout", "portfolio", "registry_portfolio"],
+        choices=["flat", "btc_trend", "sol_bbrsi", "sol_vol_breakout", "portfolio", "registry_portfolio", "sol_trend_pullback"],
         default="flat",
         help="Signal engine to use: flat, btc_trend, sol_bbrsi, portfolio, registry_portfolio (default: flat placeholder).",
     )
@@ -925,6 +978,15 @@ def main() -> None:
         sol_vol_atrp_max=float(args.sol_vol_atrp_max),
         sol_vol_range_expansion_min=float(args.sol_vol_range_expansion_min),
         sol_vol_confirm_close_buffer=float(args.sol_vol_confirm_close_buffer),
+        sol_trend_pullback_rsi_long_min=float(args.sol_trend_pullback_rsi_long_min),
+        sol_trend_pullback_rsi_long_max=float(args.sol_trend_pullback_rsi_long_max),
+        sol_trend_pullback_rsi_short_min=float(args.sol_trend_pullback_rsi_short_min),
+        sol_trend_pullback_rsi_short_max=float(args.sol_trend_pullback_rsi_short_max),
+        sol_trend_pullback_ema_pullback_max=float(args.sol_trend_pullback_ema_pullback_max),
+        sol_trend_pullback_atrp_min=float(args.sol_trend_pullback_atrp_min),
+        sol_trend_pullback_atrp_max=float(args.sol_trend_pullback_atrp_max),
+        sol_trend_pullback_require_adx=bool(args.sol_trend_pullback_require_adx),
+        sol_trend_pullback_adx_min=float(args.sol_trend_pullback_adx_min),
         ml_filter=bool(args.ml_filter),
         ml_model_path=args.ml_model_path,
         ml_model_registry=args.ml_model_registry,

@@ -11,6 +11,7 @@ from hf.core.opportunity import Opportunity
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
+from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
 
 
 def _default_registry() -> List[dict]:
@@ -54,6 +55,17 @@ class RegistryOpportunityBook:
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
+        "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(
+            rsi_long_min=float((cfg.get("params", {}) or {}).get("rsi_long_min", 40.0)),
+            rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", 55.0)),
+            rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", 45.0)),
+            rsi_short_max=float((cfg.get("params", {}) or {}).get("rsi_short_max", 60.0)),
+            ema_pullback_max=float((cfg.get("params", {}) or {}).get("ema_pullback_max", 0.015)),
+            atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", 0.004)),
+            atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", 0.050)),
+            require_adx=bool((cfg.get("params", {}) or {}).get("require_adx", False)),
+            adx_min=float((cfg.get("params", {}) or {}).get("adx_min", 18.0)),
+        ),
             }
 
     def _load_registry(self) -> List[dict]:
