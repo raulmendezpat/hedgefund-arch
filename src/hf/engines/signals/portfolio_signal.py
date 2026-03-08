@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+import json
 
 from hf.core.interfaces import SignalEngine
 from hf.core.types import Candle, Signal
@@ -9,45 +11,149 @@ from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 
 
+def _default_registry() -> List[dict]:
+    return [
+        {
+            "strategy_id": "btc_trend",
+            "symbol": "BTC/USDT:USDT",
+            "engine": "btc_trend_signal",
+            "enabled": True,
+            "params": {},
+        },
+        {
+            "strategy_id": "sol_bbrsi",
+            "symbol": "SOL/USDT:USDT",
+            "engine": "sol_bbrsi_signal",
+            "enabled": True,
+            "params": {},
+        },
+    ]
+
+
 @dataclass
-class PortfolioSignalEngine(SignalEngine):
-    btc_engine: BtcTrendSignalEngine = field(default_factory=BtcTrendSignalEngine)
-    sol_engine: SolBbrsiSignalEngine = field(default_factory=SolBbrsiSignalEngine)
+class RegistryPortfolioSignalEngine(SignalEngine):
+    registry_path: str = "artifacts/strategy_registry.json"
+    engine_factories: Dict[str, Callable[[dict], SignalEngine]] = field(default_factory=dict)
+    strict_symbol_match: bool = False
 
-    def generate(self, candles, print_debug: bool = False) -> Dict[str, Signal]:
-        out: Dict[str, Signal] = {}
+    def __post_init__(self) -> None:
+        if not self.engine_factories:
+            self.engine_factories = {
+                "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
+            }
 
-        btc_signals = self.btc_engine.generate(candles)
-        sol_signals = self.sol_engine.generate(candles, print_debug=print_debug)
+    def _load_registry(self) -> List[dict]:
+        p = Path(self.registry_path)
+        if not p.exists():
+            return _default_registry()
+
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            raise ValueError(f"Strategy registry must be a list, got: {type(data).__name__}")
+        return data
+
+    def _select_symbol_candles(self, candles: Dict[str, Candle], symbol: str) -> Dict[str, Candle]:
+        if symbol in candles:
+            return {symbol: candles[symbol]}
+
+        if self.strict_symbol_match:
+            return {}
+
+        out = {}
+        wanted = str(symbol).upper()
+        for sym, candle in candles.items():
+            if str(sym).upper() == wanted:
+                out[sym] = candle
+        return out
+
+    def _decorate_signal(self, *, cfg: dict, signal: Signal) -> Signal:
+        meta = dict(getattr(signal, "meta", {}) or {})
+        return Signal(
+            symbol=signal.symbol,
+            side=signal.side,
+            strength=float(getattr(signal, "strength", 0.0) or 0.0),
+            meta={
+                **meta,
+                "strategy_id": cfg.get("strategy_id"),
+                "registry_symbol": cfg.get("symbol"),
+                "engine": cfg.get("engine"),
+            },
+        )
+
+    def _candidate_rank(self, sig: Optional[Signal]) -> tuple:
+        if sig is None:
+            return (0, 0, 0.0)
+
+        meta = dict(getattr(sig, "meta", {}) or {})
+        has_skip = 1 if "skip" not in meta else 0
+        not_flat = 1 if getattr(sig, "side", "flat") != "flat" else 0
+        strength = abs(float(getattr(sig, "strength", 0.0) or 0.0))
+        return (has_skip, not_flat, strength)
+
+    def generate(self, candles: Dict[str, Candle], print_debug: bool = False) -> Dict[str, Signal]:
+        registry = self._load_registry()
+        best_by_symbol: Dict[str, Signal] = {}
+
+        for cfg in registry:
+            if not bool(cfg.get("enabled", True)):
+                continue
+
+            engine_name = str(cfg.get("engine", "") or "").strip()
+            strategy_id = str(cfg.get("strategy_id", "") or "").strip()
+            target_symbol = str(cfg.get("symbol", "") or "").strip()
+
+            if not engine_name:
+                continue
+            if not strategy_id:
+                continue
+            if not target_symbol:
+                continue
+            if engine_name not in self.engine_factories:
+                raise ValueError(f"Unknown signal engine in registry: {engine_name}")
+
+            sub_candles = self._select_symbol_candles(candles, target_symbol)
+            if not sub_candles:
+                continue
+
+            engine = self.engine_factories[engine_name](cfg)
+            try:
+                generated = engine.generate(sub_candles, print_debug=print_debug)  # type: ignore[arg-type]
+            except TypeError:
+                generated = engine.generate(sub_candles)
+
+            for sym, sig in (generated or {}).items():
+                decorated = self._decorate_signal(cfg=cfg, signal=sig)
+
+                prev = best_by_symbol.get(sym)
+                if prev is None or self._candidate_rank(decorated) > self._candidate_rank(prev):
+                    best_by_symbol[sym] = decorated
 
         for sym in candles.keys():
-            sig_btc: Optional[Signal] = btc_signals.get(sym)
-            sig_sol: Optional[Signal] = sol_signals.get(sym)
+            if sym not in best_by_symbol:
+                best_by_symbol[sym] = Signal(
+                    symbol=sym,
+                    side="flat",
+                    strength=0.0,
+                    meta={"engine": "registry_portfolio", "skip": "not_registered"},
+                )
 
-            btc_skip = isinstance(getattr(sig_btc, "meta", None), dict) and ("skip" in (sig_btc.meta or {}))
-            sol_skip = isinstance(getattr(sig_sol, "meta", None), dict) and ("skip" in (sig_sol.meta or {}))
+        return best_by_symbol
 
-            if sig_btc is not None and not btc_skip:
-                out[sym] = sig_btc
-                continue
 
-            if sig_sol is not None and not sol_skip:
-                out[sym] = sig_sol
-                continue
+@dataclass
+class PortfolioSignalEngine(RegistryPortfolioSignalEngine):
+    btc_engine: Optional[BtcTrendSignalEngine] = None
+    sol_engine: Optional[SolBbrsiSignalEngine] = None
 
-            if sig_btc is not None:
-                out[sym] = sig_btc
-                continue
+    def __post_init__(self) -> None:
+        btc_engine = self.btc_engine or BtcTrendSignalEngine()
+        sol_engine = self.sol_engine or SolBbrsiSignalEngine()
 
-            if sig_sol is not None:
-                out[sym] = sig_sol
-                continue
+        self.engine_factories = {
+            "btc_trend_signal": lambda cfg: btc_engine,
+            "sol_bbrsi_signal": lambda cfg: sol_engine,
+        }
 
-            out[sym] = Signal(
-                symbol=sym,
-                side="flat",
-                strength=0.0,
-                meta={"engine": "portfolio", "skip": "not_supported"},
-            )
-
-        return out
+        if not getattr(self, "registry_path", None):
+            self.registry_path = "artifacts/strategy_registry.json"

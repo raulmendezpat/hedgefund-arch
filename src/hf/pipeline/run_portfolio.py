@@ -16,7 +16,7 @@ from hf.engines.report_engine import ReportEngine
 from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulator
 from hf.engines.regime_regime3 import Regime3Engine
 
-from hf.engines.signals import PortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
+from hf.engines.signals import PortfolioSignalEngine, RegistryPortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
 from hf.engines.legacy_wrappers import (
@@ -144,6 +144,7 @@ def run(
     ml_size_mode: str = "linear_edge",
     ml_size_base: float = 0.25,
     ml_size_pwin_threshold: float = 0.55,
+    strategy_registry_path: str = "artifacts/strategy_registry.json",
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -210,6 +211,7 @@ def run(
         )
     elif signal_engine == "portfolio":
         sig_engine = PortfolioSignalEngine(
+            registry_path=str(strategy_registry_path),
             btc_engine=BtcTrendSignalEngine(adx_min=float(btc_adx_min)),
             sol_engine=SolBbrsiSignalEngine(
                 rsi_long_max=float(locals().get("sol_rsi_long_max", 36.0)),
@@ -220,6 +222,24 @@ def run(
                 bb_width_min=float(locals().get("sol_bb_width_min", 0.0041)),
                 bb_width_max=float(locals().get("sol_bb_width_max", 0.120)),
             ),
+        )
+    elif signal_engine == "registry_portfolio":
+        sig_engine = RegistryPortfolioSignalEngine(
+            registry_path=str(strategy_registry_path),
+            engine_factories={
+                "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(
+                    adx_min=float((cfg.get("params", {}) or {}).get("adx_min", btc_adx_min))
+                ),
+                "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(
+                    rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", locals().get("sol_rsi_long_max", 36.0))),
+                    rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", locals().get("sol_rsi_short_min", 64.0))),
+                    adx_hard=float((cfg.get("params", {}) or {}).get("adx_hard", locals().get("sol_adx_hard_signal", 24.0))),
+                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", locals().get("sol_atrp_min_signal", 0.003279))),
+                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", locals().get("sol_atrp_max_signal", 0.0350))),
+                    bb_width_min=float((cfg.get("params", {}) or {}).get("bb_width_min", locals().get("sol_bb_width_min", 0.0041))),
+                    bb_width_max=float((cfg.get("params", {}) or {}).get("bb_width_max", locals().get("sol_bb_width_max", 0.120))),
+                ),
+            },
         )
     else:
         sig_engine = FlatSignalEngine()
@@ -423,16 +443,25 @@ def run(
         prev_alloc = alloc
         allocs.append(alloc)
 
+        btc_meta = dict(getattr(signals.get(btc_sym), "meta", {}) or {})
+        sol_meta = dict(getattr(signals.get(sol_sym), "meta", {}) or {})
+
         rows.append({
             "ts": int(ts),
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
             "w_btc": float(alloc.weights.get(btc_sym, 0.0)),
             "w_sol": float(alloc.weights.get(sol_sym, 0.0)),
-            "btc_p_win": float((getattr(signals.get(btc_sym), "meta", {}) or {}).get("p_win", 0.0) or 0.0),
-            "sol_p_win": float((getattr(signals.get(sol_sym), "meta", {}) or {}).get("p_win", 0.0) or 0.0),
-            "btc_ml_size_mult": float((getattr(signals.get(btc_sym), "meta", {}) or {}).get("ml_position_size_mult", 0.0) or 0.0),
-            "sol_ml_size_mult": float((getattr(signals.get(sol_sym), "meta", {}) or {}).get("ml_position_size_mult", 0.0) or 0.0),
+            "btc_p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
+            "sol_p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
+            "btc_ml_size_mult": float(btc_meta.get("ml_position_size_mult", 0.0) or 0.0),
+            "sol_ml_size_mult": float(sol_meta.get("ml_position_size_mult", 0.0) or 0.0),
             "case": (alloc.meta or {}).get("case", ""),
+            "btc_strategy_id": btc_meta.get("strategy_id"),
+            "btc_engine": btc_meta.get("engine"),
+            "btc_registry_symbol": btc_meta.get("registry_symbol"),
+            "sol_strategy_id": sol_meta.get("strategy_id"),
+            "sol_engine": sol_meta.get("engine"),
+            "sol_registry_symbol": sol_meta.get("registry_symbol"),
         })
 
     df = pd.DataFrame(rows)
@@ -607,12 +636,13 @@ def main() -> None:
     ap.add_argument("--ml-size-base", type=float, default=0.25, help="Base position size for calibrated mode.")
     ap.add_argument("--ml-size-pwin-threshold", type=float, default=0.55, help="Probability threshold used by calibrated mode.")
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
+    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json", help="Strategy registry JSON used by registry_portfolio.")
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
-        choices=["flat", "btc_trend", "sol_bbrsi", "portfolio"],
+        choices=["flat", "btc_trend", "sol_bbrsi", "portfolio", "registry_portfolio"],
         default="flat",
-        help="Signal engine to use: flat, btc_trend, sol_bbrsi, portfolio (default: flat placeholder).",
+        help="Signal engine to use: flat, btc_trend, sol_bbrsi, portfolio, registry_portfolio (default: flat placeholder).",
     )
 
     ap.add_argument("--sticky-flat", action="store_true", help="If set: keep previous weights when flat (no active trades)")
@@ -653,8 +683,8 @@ def main() -> None:
     ml_size_mode=str(args.ml_size_mode),
     ml_size_base=float(args.ml_size_base),
     ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
-
-    )
+        strategy_registry_path=str(args.strategy_registry),
+)
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
 if __name__ == "__main__":

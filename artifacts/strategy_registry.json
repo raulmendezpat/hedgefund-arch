@@ -1,0 +1,16 @@
+[
+  {
+    "strategy_id": "btc_trend",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "params": {}
+  },
+  {
+    "strategy_id": "sol_bbrsi",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_bbrsi_signal",
+    "enabled": true,
+    "params": {}
+  }
+]
