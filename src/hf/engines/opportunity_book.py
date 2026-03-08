@@ -158,14 +158,20 @@ def compute_competitive_score(opp: Opportunity) -> float:
     except (TypeError, ValueError):
         base_weight = 1.0
 
+    return active_flag * strength * base_weight
+
+
+def compute_post_ml_competitive_score(opp: Opportunity) -> float:
+    base_score = compute_competitive_score(opp)
+    meta = dict(getattr(opp, "meta", {}) or {})
+
     try:
         p_win = float(meta.get("p_win", 0.0) or 0.0)
     except (TypeError, ValueError):
         p_win = 0.0
 
     p_win_factor = p_win if p_win > 0.0 else 1.0
-
-    return active_flag * strength * base_weight * p_win_factor
+    return base_score * p_win_factor
 
 
 def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[Opportunity]:
@@ -176,12 +182,13 @@ def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[O
 
         _meta = dict(getattr(opp, "meta", {}) or {})
         _meta["competitive_score"] = float(compute_competitive_score(opp))
+        _meta["post_ml_competitive_score"] = float(compute_post_ml_competitive_score(opp))
         opp.meta = _meta
 
         prev = best_by_symbol.get(sym)
 
-        opp_score = float(_meta.get("competitive_score", 0.0) or 0.0)
-        prev_score = compute_competitive_score(prev) if prev is not None else float("-inf")
+        opp_score = float(_meta.get("post_ml_competitive_score", 0.0) or 0.0)
+        prev_score = compute_post_ml_competitive_score(prev) if prev is not None else float("-inf")
 
         if prev is None:
             best_by_symbol[sym] = opp

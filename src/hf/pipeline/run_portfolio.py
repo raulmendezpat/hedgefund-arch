@@ -280,6 +280,7 @@ def run(
     rows = []
     opportunity_rows = []
     selected_opportunity_rows = []
+    final_selected_rows = []
 
     # PortfolioEngine buffers (alineados 1:1 con common_ts)
     candles_by_symbol = {btc_sym: [], sol_sym: []}
@@ -496,6 +497,40 @@ def run(
         btc_meta = dict(getattr(signals.get(btc_sym), "meta", {}) or {})
         sol_meta = dict(getattr(signals.get(sol_sym), "meta", {}) or {})
 
+        final_selected_rows.append({
+            "ts": int(ts),
+            "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+            "symbol": str(btc_sym),
+            "strategy_id": btc_meta.get("strategy_id"),
+            "engine": btc_meta.get("engine"),
+            "registry_symbol": btc_meta.get("registry_symbol"),
+            "side": str(getattr(signals.get(btc_sym), "side", "flat")),
+            "strength": float(getattr(signals.get(btc_sym), "strength", 0.0) or 0.0),
+            "base_weight": float(btc_meta.get("base_weight", 1.0) or 1.0),
+            "p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
+            "ml_position_size_mult": float(btc_meta.get("ml_position_size_mult", 0.0) or 0.0),
+            "competitive_score": float(btc_meta.get("competitive_score", 0.0) or 0.0),
+            "post_ml_score": float((btc_meta.get("competitive_score", 0.0) or 0.0) * (btc_meta.get("p_win", 0.0) or 0.0)),
+            "is_active": bool(getattr(signals.get(btc_sym), "is_active")()) if hasattr(signals.get(btc_sym), "is_active") else False,
+        })
+
+        final_selected_rows.append({
+            "ts": int(ts),
+            "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+            "symbol": str(sol_sym),
+            "strategy_id": sol_meta.get("strategy_id"),
+            "engine": sol_meta.get("engine"),
+            "registry_symbol": sol_meta.get("registry_symbol"),
+            "side": str(getattr(signals.get(sol_sym), "side", "flat")),
+            "strength": float(getattr(signals.get(sol_sym), "strength", 0.0) or 0.0),
+            "base_weight": float(sol_meta.get("base_weight", 1.0) or 1.0),
+            "p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
+            "ml_position_size_mult": float(sol_meta.get("ml_position_size_mult", 0.0) or 0.0),
+            "competitive_score": float(sol_meta.get("competitive_score", 0.0) or 0.0),
+            "post_ml_score": float((sol_meta.get("competitive_score", 0.0) or 0.0) * (sol_meta.get("p_win", 0.0) or 0.0)),
+            "is_active": bool(getattr(signals.get(sol_sym), "is_active")()) if hasattr(signals.get(sol_sym), "is_active") else False,
+        })
+
         rows.append({
             "ts": int(ts),
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
@@ -530,6 +565,13 @@ def run(
         _sel_engine_name = "portfolio_registry" if str(signal_engine) == "registry_portfolio" else str(signal_engine)
         pd.DataFrame(selected_opportunity_rows).to_csv(
             f"results/opportunity_book_{_sel_engine_name}_sel_{opportunity_selection_mode}.csv",
+            index=False,
+        )
+
+    if final_selected_rows:
+        _sel_engine_name = "portfolio_registry" if str(signal_engine) == "registry_portfolio" else str(signal_engine)
+        pd.DataFrame(final_selected_rows).to_csv(
+            f"results/opportunity_book_{_sel_engine_name}_sel_{opportunity_selection_mode}_final.csv",
             index=False,
         )
 
