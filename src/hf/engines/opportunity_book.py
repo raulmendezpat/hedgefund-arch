@@ -19,6 +19,7 @@ def _default_registry() -> List[dict]:
             "symbol": "BTC/USDT:USDT",
             "engine": "btc_trend_signal",
             "enabled": True,
+            "base_weight": 1.0,
             "params": {},
         },
         {
@@ -26,6 +27,7 @@ def _default_registry() -> List[dict]:
             "symbol": "SOL/USDT:USDT",
             "engine": "sol_bbrsi_signal",
             "enabled": True,
+            "base_weight": 1.0,
             "params": {},
         },
     ]
@@ -70,6 +72,11 @@ class RegistryOpportunityBook:
 
     def _decorate_signal(self, *, cfg: dict, signal: Signal) -> Signal:
         meta = dict(getattr(signal, "meta", {}) or {})
+        try:
+            base_weight = float(cfg.get("base_weight", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            base_weight = 1.0
+
         return Signal(
             symbol=signal.symbol,
             side=signal.side,
@@ -79,6 +86,7 @@ class RegistryOpportunityBook:
                 "strategy_id": cfg.get("strategy_id"),
                 "registry_symbol": cfg.get("symbol"),
                 "engine": cfg.get("engine"),
+                "base_weight": base_weight,
             },
         )
 
@@ -143,7 +151,21 @@ def select_best_opportunities_per_symbol(opportunities: List[Opportunity]) -> Li
 def compute_competitive_score(opp: Opportunity) -> float:
     active_flag = 1.0 if opp.is_active() else 0.0
     strength = abs(float(getattr(opp, "strength", 0.0) or 0.0))
-    return active_flag * strength
+    meta = dict(getattr(opp, "meta", {}) or {})
+
+    try:
+        base_weight = float(meta.get("base_weight", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        base_weight = 1.0
+
+    try:
+        p_win = float(meta.get("p_win", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        p_win = 0.0
+
+    p_win_factor = p_win if p_win > 0.0 else 1.0
+
+    return active_flag * strength * base_weight * p_win_factor
 
 
 def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[Opportunity]:
@@ -151,13 +173,31 @@ def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[O
 
     for opp in opportunities or []:
         sym = str(opp.symbol)
+
+        _meta = dict(getattr(opp, "meta", {}) or {})
+        _meta["competitive_score"] = float(compute_competitive_score(opp))
+        opp.meta = _meta
+
         prev = best_by_symbol.get(sym)
 
-        opp_score = compute_competitive_score(opp)
+        opp_score = float(_meta.get("competitive_score", 0.0) or 0.0)
         prev_score = compute_competitive_score(prev) if prev is not None else float("-inf")
 
-        if prev is None or opp_score > prev_score:
+        if prev is None:
             best_by_symbol[sym] = opp
+            continue
+
+        if opp_score > prev_score:
+            best_by_symbol[sym] = opp
+            continue
+
+        if opp_score == prev_score:
+            opp_strength = abs(float(getattr(opp, "strength", 0.0) or 0.0))
+            prev_strength = abs(float(getattr(prev, "strength", 0.0) or 0.0))
+
+            if opp_strength > prev_strength:
+                best_by_symbol[sym] = opp
+                continue
 
     return list(best_by_symbol.values())
 

@@ -80,9 +80,8 @@ class MlPositionSizingEngine:
                 if candle is not None:
                     feats = build_feature_row(sym, candle, sig)
                     chosen_model = select_model_for_signal(model, registry, sym, side)
-                    if registry and chosen_model is None:
-                        out[sym] = sig
-                        continue
+                    # Si no existe modelo exacto en el registry, dejamos que
+                    # predict_proba() haga fallback al modelo base o al scorer heurístico.
                     p_win = predict_proba(chosen_model, feats)
                 else:
                     out[sym] = sig

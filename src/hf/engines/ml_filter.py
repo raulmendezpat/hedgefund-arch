@@ -200,9 +200,8 @@ def apply_ml_filter_to_signals(
         feats = build_feature_row(sym, candle, sig)
         chosen_model = select_model_for_signal(model, model_registry, sym, side)
 
-        if model_registry and chosen_model is None:
-            out[sym] = sig
-            continue
+        # Si no existe modelo exacto en el registry, dejamos que predict_proba()
+        # haga fallback al modelo base o al scorer heurístico.
 
         p_win = predict_proba(chosen_model, feats)
 

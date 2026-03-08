@@ -17,6 +17,7 @@ from hf.engines.execution_simulator import ExecutionCostModel, ExecutionSimulato
 from hf.engines.regime_regime3 import Regime3Engine
 
 from hf.engines.signals import PortfolioSignalEngine, RegistryPortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
+from hf.engines.opportunity_book import select_opportunities, compute_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
 from hf.engines.legacy_wrappers import (
@@ -278,6 +279,7 @@ def run(
     prev_alloc: Optional[Allocation] = None
     rows = []
     opportunity_rows = []
+    selected_opportunity_rows = []
 
     # PortfolioEngine buffers (alineados 1:1 con common_ts)
     candles_by_symbol = {btc_sym: [], sol_sym: []}
@@ -326,6 +328,8 @@ def run(
 
         if signal_engine == "registry_portfolio":
             _last_opps = list(getattr(sig_engine, "last_opportunities", []) or [])
+            _selected_opps = select_opportunities(_last_opps, mode=str(opportunity_selection_mode)) if _last_opps else []
+
             for _opp in _last_opps:
                 _meta = dict(getattr(_opp, "meta", {}) or {})
                 opportunity_rows.append({
@@ -337,8 +341,34 @@ def run(
                     "strength": float(getattr(_opp, "strength", 0.0) or 0.0),
                     "engine": _meta.get("engine"),
                     "registry_symbol": _meta.get("registry_symbol"),
+                    "base_weight": float(_meta.get("base_weight", 1.0) or 1.0),
+                    "p_win": float(_meta.get("p_win", 0.0) or 0.0),
+                    "ml_position_size_mult": float(_meta.get("ml_position_size_mult", 0.0) or 0.0),
                     "is_active": bool(_opp.is_active()) if hasattr(_opp, "is_active") else False,
-                    "competitive_score": float((1.0 if (bool(_opp.is_active()) if hasattr(_opp, "is_active") else False) else 0.0) * abs(float(getattr(_opp, "strength", 0.0) or 0.0))),
+                    "competitive_score": float(compute_competitive_score(_opp)),
+                    "post_ml_score": float((compute_competitive_score(_opp) or 0.0) * float(_meta.get("p_win", 0.0) or 0.0)),
+                })
+
+            for _opp in _selected_opps:
+                _meta = dict(getattr(_opp, "meta", {}) or {})
+                _p_win = float(_meta.get("p_win", 0.0) or 0.0)
+                _ml_mult = float(_meta.get("ml_position_size_mult", 0.0) or 0.0)
+
+                selected_opportunity_rows.append({
+                    "ts": int(ts),
+                    "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+                    "strategy_id": str(getattr(_opp, "strategy_id", "")),
+                    "symbol": str(getattr(_opp, "symbol", "")),
+                    "side": str(getattr(_opp, "side", "flat")),
+                    "strength": float(getattr(_opp, "strength", 0.0) or 0.0),
+                    "engine": _meta.get("engine"),
+                    "registry_symbol": _meta.get("registry_symbol"),
+                    "base_weight": float(_meta.get("base_weight", 1.0) or 1.0),
+                    "p_win": _p_win,
+                    "ml_position_size_mult": _ml_mult,
+                    "is_active": bool(_opp.is_active()) if hasattr(_opp, "is_active") else False,
+                    "competitive_score": float(compute_competitive_score(_opp)),
+                    "post_ml_score": float((compute_competitive_score(_opp) or 0.0) * _p_win),
                 })
         raw_signals = dict(signals or {})
 
@@ -473,15 +503,21 @@ def run(
             "w_sol": float(alloc.weights.get(sol_sym, 0.0)),
             "btc_p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
             "sol_p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
+            "btc_post_ml_score": float((btc_meta.get("competitive_score", 0.0) or 0.0) * (btc_meta.get("p_win", 0.0) or 0.0)),
+            "sol_post_ml_score": float((sol_meta.get("competitive_score", 0.0) or 0.0) * (sol_meta.get("p_win", 0.0) or 0.0)),
             "btc_ml_size_mult": float(btc_meta.get("ml_position_size_mult", 0.0) or 0.0),
             "sol_ml_size_mult": float(sol_meta.get("ml_position_size_mult", 0.0) or 0.0),
             "case": (alloc.meta or {}).get("case", ""),
             "btc_strategy_id": btc_meta.get("strategy_id"),
             "btc_engine": btc_meta.get("engine"),
             "btc_registry_symbol": btc_meta.get("registry_symbol"),
+            "btc_base_weight": float(btc_meta.get("base_weight", 1.0) or 1.0),
+            "btc_competitive_score": float(btc_meta.get("competitive_score", 0.0) or 0.0),
             "sol_strategy_id": sol_meta.get("strategy_id"),
             "sol_engine": sol_meta.get("engine"),
             "sol_registry_symbol": sol_meta.get("registry_symbol"),
+            "sol_base_weight": float(sol_meta.get("base_weight", 1.0) or 1.0),
+            "sol_competitive_score": float(sol_meta.get("competitive_score", 0.0) or 0.0),
         })
 
     df = pd.DataFrame(rows)
@@ -489,6 +525,13 @@ def run(
 
     if opportunity_rows:
         pd.DataFrame(opportunity_rows).to_csv(f"results/opportunity_book_{name}.csv", index=False)
+
+    if selected_opportunity_rows:
+        _sel_engine_name = "portfolio_registry" if str(signal_engine) == "registry_portfolio" else str(signal_engine)
+        pd.DataFrame(selected_opportunity_rows).to_csv(
+            f"results/opportunity_book_{_sel_engine_name}_sel_{opportunity_selection_mode}.csv",
+            index=False,
+        )
 
     if bool(ml_export_features):
         _ml_out = ml_features_out or f"results/ml_features_{name}.csv"
