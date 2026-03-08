@@ -145,6 +145,7 @@ def run(
     ml_size_base: float = 0.25,
     ml_size_pwin_threshold: float = 0.55,
     strategy_registry_path: str = "artifacts/strategy_registry.json",
+    opportunity_selection_mode: str = "best_per_symbol",
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -226,6 +227,7 @@ def run(
     elif signal_engine == "registry_portfolio":
         sig_engine = RegistryPortfolioSignalEngine(
             registry_path=str(strategy_registry_path),
+            selection_mode=str(opportunity_selection_mode),
             engine_factories={
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(
                     adx_min=float((cfg.get("params", {}) or {}).get("adx_min", btc_adx_min))
@@ -336,6 +338,7 @@ def run(
                     "engine": _meta.get("engine"),
                     "registry_symbol": _meta.get("registry_symbol"),
                     "is_active": bool(_opp.is_active()) if hasattr(_opp, "is_active") else False,
+                    "competitive_score": float((1.0 if (bool(_opp.is_active()) if hasattr(_opp, "is_active") else False) else 0.0) * abs(float(getattr(_opp, "strength", 0.0) or 0.0))),
                 })
         raw_signals = dict(signals or {})
 
@@ -657,6 +660,12 @@ def main() -> None:
     ap.add_argument("--ml-size-pwin-threshold", type=float, default=0.55, help="Probability threshold used by calibrated mode.")
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json", help="Strategy registry JSON used by registry_portfolio.")
+    ap.add_argument(
+        "--opportunity-selection-mode",
+        default="best_per_symbol",
+        choices=["best_per_symbol", "all", "competitive"],
+        help="Opportunity selection mode for registry_portfolio.",
+    )
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
@@ -704,6 +713,7 @@ def main() -> None:
     ml_size_base=float(args.ml_size_base),
     ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
         strategy_registry_path=str(args.strategy_registry),
+        opportunity_selection_mode=str(args.opportunity_selection_mode),
 )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 

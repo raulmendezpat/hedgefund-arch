@@ -140,8 +140,58 @@ def select_best_opportunities_per_symbol(opportunities: List[Opportunity]) -> Li
     return list(best_by_symbol.values())
 
 
-def to_signal_dict(opportunities: List[Opportunity], symbols: Optional[List[str]] = None) -> Dict[str, Signal]:
-    selected = select_best_opportunities_per_symbol(opportunities)
+def compute_competitive_score(opp: Opportunity) -> float:
+    active_flag = 1.0 if opp.is_active() else 0.0
+    strength = abs(float(getattr(opp, "strength", 0.0) or 0.0))
+    return active_flag * strength
+
+
+def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[Opportunity]:
+    best_by_symbol: Dict[str, Opportunity] = {}
+
+    for opp in opportunities or []:
+        sym = str(opp.symbol)
+        prev = best_by_symbol.get(sym)
+
+        opp_score = compute_competitive_score(opp)
+        prev_score = compute_competitive_score(prev) if prev is not None else float("-inf")
+
+        if prev is None or opp_score > prev_score:
+            best_by_symbol[sym] = opp
+
+    return list(best_by_symbol.values())
+
+
+def select_opportunities(opportunities: List[Opportunity], mode: str = "best_per_symbol") -> List[Opportunity]:
+    mode = str(mode or "best_per_symbol").strip()
+
+    if mode == "best_per_symbol":
+        return select_best_opportunities_per_symbol(opportunities)
+
+    if mode == "competitive":
+        return select_competitive_opportunities(opportunities)
+
+    if mode == "all":
+        return list(opportunities or [])
+
+    raise ValueError(f"Unknown opportunity selection mode: {mode}")
+
+
+def to_signal_dict(
+    opportunities: List[Opportunity],
+    symbols: Optional[List[str]] = None,
+    selection_mode: str = "best_per_symbol",
+) -> Dict[str, Signal]:
+    if str(selection_mode or "").strip() == "all":
+        raise ValueError(
+            "selection_mode='all' is not compatible with to_signal_dict(), "
+            "because multiple opportunities may share the same symbol and "
+            "dict[symbol] -> Signal cannot represent them without overwriting. "
+            "Use 'best_per_symbol' for legacy pipeline compatibility, or "
+            "implement a competitive selector/allocator for multi-opportunity execution."
+        )
+
+    selected = select_opportunities(opportunities, mode=selection_mode)
     out: Dict[str, Signal] = {}
 
     for opp in selected:

@@ -36,6 +36,7 @@ class RegistryPortfolioSignalEngine(SignalEngine):
     registry_path: str = "artifacts/strategy_registry.json"
     engine_factories: Dict[str, Callable[[dict], SignalEngine]] = field(default_factory=dict)
     strict_symbol_match: bool = False
+    selection_mode: str = "best_per_symbol"
 
     def __post_init__(self) -> None:
         if not self.engine_factories:
@@ -100,7 +101,7 @@ class RegistryPortfolioSignalEngine(SignalEngine):
         )
         opportunities = book.generate(candles, ts=None, print_debug=print_debug)
         self.last_opportunities = list(opportunities or [])
-        return to_signal_dict(opportunities, symbols=list(candles.keys()))
+        return to_signal_dict(opportunities, symbols=list(candles.keys()), selection_mode=self.selection_mode)
 
 
 @dataclass
