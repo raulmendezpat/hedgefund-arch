@@ -1,0 +1,35 @@
+{
+  "input_rows_total": 11111,
+  "train_rows": 8888,
+  "test_rows": 2223,
+  "target_col": "y_win",
+  "numeric_features": [
+    "strength",
+    "base_weight",
+    "competitive_score",
+    "adx",
+    "atr",
+    "atrp",
+    "rsi",
+    "ema_gap",
+    "ema_gap_pct",
+    "bb_width",
+    "bb_span",
+    "bb_pos",
+    "close",
+    "volume"
+  ],
+  "categorical_features": [
+    "strategy_id",
+    "symbol",
+    "side_raw"
+  ],
+  "train_positive_rate": 0.4710846084608461,
+  "test_positive_rate": 0.5159694107062528,
+  "train_accuracy": 0.5333033303330333,
+  "test_accuracy": 0.46513720197930725,
+  "train_auc": 0.5508264023829189,
+  "test_auc": 0.5100277757071138,
+  "train_logloss": 0.6888134180888669,
+  "test_logloss": 0.7098499200970888
+}

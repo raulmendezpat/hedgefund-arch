@@ -162,6 +162,7 @@ def run(
     ml_model_path: Optional[str] = None,
     ml_model_registry: Optional[str] = None,
     ml_threshold: float = 0.55,
+    ml_thresholds_path: Optional[str] = None,
     ml_export_features: bool = False,
     ml_features_out: Optional[str] = None,
     ml_position_sizing: bool = False,
@@ -340,9 +341,29 @@ def run(
         symbol_score_agg=str(strategy_symbol_score_agg),
     )
 
-    ml_enabled_for_scores = bool(ml_filter or ml_position_sizing)
+    ml_enabled_for_scores = bool(ml_filter or ml_position_sizing or ml_model_path or ml_model_registry)
     ml_model = load_model(ml_model_path) if ml_enabled_for_scores else None
     ml_model_registry_loaded = load_model_registry(ml_model_registry) if ml_enabled_for_scores else {}
+
+    ml_thresholds_map = {}
+    if ml_thresholds_path:
+        try:
+            _thr_payload = json.loads(Path(ml_thresholds_path).read_text(encoding="utf-8"))
+            if isinstance(_thr_payload, dict):
+                if isinstance(_thr_payload.get("thresholds"), dict):
+                    ml_thresholds_map = {
+                        str(k): float(v)
+                        for k, v in (_thr_payload.get("thresholds") or {}).items()
+                    }
+                else:
+                    ml_thresholds_map = {
+                        str(k): float(v)
+                        for k, v in _thr_payload.items()
+                        if k != "quantile"
+                    }
+        except Exception:
+            ml_thresholds_map = {}
+
     ml_rejected_counts_by_symbol = {}
     ml_position_sized_counts_by_symbol = {}
     ml_feature_rows = []
@@ -434,15 +455,27 @@ def run(
                     _meta = dict(getattr(_opp, "meta", {}) or {})
                     _side = str(getattr(_opp, "side", "flat"))
                     _sym = str(getattr(_opp, "symbol", ""))
+                    _strategy_id = str(getattr(_opp, "strategy_id", "") or "")
 
                     if _side == "flat":
+                        _meta["p_win"] = 0.0
+                        _meta["ml_threshold"] = 0.0
+                        _meta["ml_rejected"] = 0
+                        _meta["ml_position_size_mult"] = 0.0
                         _opp.meta = _meta
                         continue
 
                     _candle = candles.get(_sym)
                     if _candle is None:
+                        _meta["p_win"] = 0.0
+                        _meta["ml_threshold"] = 0.0
+                        _meta["ml_rejected"] = 0
+                        _meta["ml_position_size_mult"] = 0.0
                         _opp.meta = _meta
                         continue
+
+                    _meta["strategy_id"] = _strategy_id
+                    _meta["competitive_score"] = float(compute_competitive_score(_opp))
 
                     _tmp_sig = Signal(
                         symbol=_sym,
@@ -453,11 +486,29 @@ def run(
                     _feat_row = build_feature_row(_sym, _candle, _tmp_sig)
                     _chosen_model = select_model_for_signal(ml_model, ml_model_registry_loaded, _sym, _side)
                     _p_win = float(predict_proba(_chosen_model, _feat_row))
-                    _meta["p_win"] = _p_win
 
-                    if ml_score_position_sizer is not None:
-                        _meta["ml_position_size_mult"] = float(ml_score_position_sizer.size_from_pwin(_p_win))
-                        _meta["ml_position_size_scale"] = float(ml_score_position_sizer.scale)
+                    _thr = float(ml_threshold)
+                    if ml_thresholds_map and _strategy_id:
+                        try:
+                            _thr = float(ml_thresholds_map.get(_strategy_id, _thr))
+                        except Exception:
+                            _thr = float(ml_threshold)
+
+                    _meta["p_win"] = _p_win
+                    _meta["ml_threshold"] = _thr
+
+                    if bool(ml_filter) and _p_win < _thr:
+                        _meta["ml_rejected"] = 1
+                        _meta["ml_position_size_mult"] = 0.0
+                        _opp.side = "flat"
+                        _opp.strength = 0.0
+                    else:
+                        _meta["ml_rejected"] = 0
+                        if ml_score_position_sizer is not None:
+                            _meta["ml_position_size_mult"] = float(ml_score_position_sizer.size_from_pwin(_p_win))
+                            _meta["ml_position_size_scale"] = float(ml_score_position_sizer.scale)
+                        else:
+                            _meta["ml_position_size_mult"] = 1.0
 
                     _opp.meta = _meta
 
@@ -524,9 +575,84 @@ def run(
                     "competitive_score": float(compute_competitive_score(_opp)),
                     "post_ml_score": float(compute_post_ml_competitive_score(_opp)),
                 })
+
+            if bool(ml_export_features):
+                _selected_keys = {
+                    (
+                        str(getattr(_opp, "strategy_id", "")),
+                        str(getattr(_opp, "symbol", "")),
+                        str(getattr(_opp, "side", "flat")),
+                        round(float(getattr(_opp, "strength", 0.0) or 0.0), 10),
+                    )
+                    for _opp in (_selected_opps or [])
+                }
+
+                for _opp in _last_opps:
+                    _meta = dict(getattr(_opp, "meta", {}) or {})
+                    _sym = str(getattr(_opp, "symbol", ""))
+                    _side = str(getattr(_opp, "side", "flat"))
+                    _strategy_id = str(getattr(_opp, "strategy_id", ""))
+                    _strength = float(getattr(_opp, "strength", 0.0) or 0.0)
+
+                    if _side == "flat":
+                        continue
+
+                    _candle = candles.get(_sym)
+                    if _candle is None:
+                        continue
+
+                    _tmp_sig = Signal(
+                        symbol=_sym,
+                        side=_side,
+                        strength=_strength,
+                        meta=_meta,
+                    )
+                    _feat_row = build_feature_row(_sym, _candle, _tmp_sig)
+
+                    _chosen_preview_model = None
+                    if ml_enabled_for_scores:
+                        from hf.engines.ml_filter import select_model_for_signal
+                        _chosen_preview_model = select_model_for_signal(
+                            ml_model,
+                            ml_model_registry_loaded,
+                            _sym,
+                            _side,
+                        )
+
+                    _p_win_preview = float(_meta.get("p_win", 0.0) or 0.0)
+                    if _p_win_preview <= 0.0:
+                        _p_win_preview = float(predict_proba(_chosen_preview_model, _feat_row))
+
+                    _row_key = (
+                        _strategy_id,
+                        _sym,
+                        _side,
+                        round(_strength, 10),
+                    )
+                    _selected_flag = 1 if _row_key in _selected_keys else 0
+
+                    ml_feature_rows.append({
+                        "ts": int(ts),
+                        "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+                        "strategy_id": _strategy_id,
+                        "engine": _meta.get("engine"),
+                        "registry_symbol": _meta.get("registry_symbol"),
+                        "symbol": _sym,
+                        "side_raw": _side,
+                        "side_final": _side if _selected_flag else "flat",
+                        "selected_by_opportunity_selector": int(_selected_flag),
+                        "ml_rejected": 0,
+                        "p_win": float(_p_win_preview),
+                        "strength": _strength,
+                        "base_weight": float(_meta.get("base_weight", 1.0) or 1.0),
+                        "competitive_score": float(compute_competitive_score(_opp)),
+                        "post_ml_score": float(compute_post_ml_competitive_score(_opp)),
+                        **{col: float(_feat_row.get(col, 0.0)) for col in FEATURE_COLUMNS},
+                    })
+
         raw_signals = dict(signals or {})
 
-        if bool(ml_export_features):
+        if bool(ml_export_features) and str(signal_engine) != "registry_portfolio":
             for _sym, _sig in (raw_signals or {}).items():
                 if _sig is None:
                     continue
@@ -563,6 +689,7 @@ def run(
                 model=ml_model,
                 threshold=float(ml_threshold),
                 model_registry=ml_model_registry_loaded,
+                threshold_map=ml_thresholds_map,
             )
             for _sym, _n in (_ml_rejected or {}).items():
                 ml_rejected_counts_by_symbol[_sym] = int(ml_rejected_counts_by_symbol.get(_sym, 0)) + int(_n)
@@ -778,15 +905,25 @@ def run(
         _ml_df = pd.DataFrame(ml_feature_rows)
 
         if not _ml_df.empty:
+            _sort_cols = [c for c in ["symbol", "strategy_id", "ts"] if c in _ml_df.columns]
+            if _sort_cols:
+                _ml_df = _ml_df.sort_values(_sort_cols).reset_index(drop=True)
+
             _close_map = {
                 btc_sym: btc["close"].astype(float),
                 sol_sym: sol["close"].astype(float),
             }
 
             _parts = []
-            for _sym, _g in _ml_df.groupby("symbol", sort=False):
+            _group_cols = [c for c in ["symbol", "strategy_id"] if c in _ml_df.columns]
+            if not _group_cols:
+                _group_cols = ["symbol"]
+
+            for _, _g in _ml_df.groupby(_group_cols, sort=False):
                 _g = _g.sort_values("ts").copy()
+                _sym = str(_g["symbol"].iloc[0])
                 _close_series = _close_map.get(_sym)
+
                 if _close_series is None:
                     _parts.append(_g)
                     continue
@@ -797,19 +934,69 @@ def run(
                     _future_close = _g["ts"].map(_close_series.shift(-_h).to_dict()).astype(float)
                     _ret = (_future_close / _px_now) - 1.0
 
+                    _g[f"future_close_{_h}"] = _future_close
                     _g[f"future_ret_{_h}"] = _ret
 
                     _is_long = _g["side_raw"] == "long"
                     _is_short = _g["side_raw"] == "short"
+                    _valid = _future_close.notna()
 
-                    _y = pd.Series(0, index=_g.index, dtype="int64")
-                    _y.loc[_is_long & (_ret > 0)] = 1
-                    _y.loc[_is_short & (_ret < 0)] = 1
+                    _y = pd.Series(np.nan, index=_g.index, dtype="float64")
+                    _y.loc[_valid & _is_long & (_ret > 0)] = 1.0
+                    _y.loc[_valid & _is_long & ~(_ret > 0)] = 0.0
+                    _y.loc[_valid & _is_short & (_ret < 0)] = 1.0
+                    _y.loc[_valid & _is_short & ~(_ret < 0)] = 0.0
                     _g[f"y_win_{_h}"] = _y
 
                 _parts.append(_g)
 
             _ml_df = pd.concat(_parts, ignore_index=True)
+
+            if "selected_by_opportunity_selector" in _ml_df.columns:
+                for _h in (1, 3, 6, 12):
+                    _ml_df[f"y_win_selected_{_h}"] = np.where(
+                        _ml_df["selected_by_opportunity_selector"].eq(1),
+                        _ml_df[f"y_win_{_h}"],
+                        np.nan,
+                    )
+
+            if "post_ml_score" in _ml_df.columns and "competitive_score" in _ml_df.columns:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    _ml_df["ml_edge_ratio"] = np.where(
+                        _ml_df["competitive_score"].abs() > 1e-12,
+                        _ml_df["post_ml_score"] / _ml_df["competitive_score"],
+                        np.nan,
+                    )
+
+            _preferred_h = 6
+            if f"y_win_{_preferred_h}" in _ml_df.columns:
+                _ml_df["y_win"] = _ml_df[f"y_win_{_preferred_h}"]
+                _ml_df["label_horizon"] = _preferred_h
+
+            _head_cols = [
+                c for c in [
+                    "ts",
+                    "ts_utc",
+                    "strategy_id",
+                    "engine",
+                    "registry_symbol",
+                    "symbol",
+                    "side_raw",
+                    "side_final",
+                    "selected_by_opportunity_selector",
+                    "strength",
+                    "base_weight",
+                    "competitive_score",
+                    "post_ml_score",
+                    "p_win",
+                    "ml_edge_ratio",
+                    "label_horizon",
+                    "y_win",
+                ]
+                if c in _ml_df.columns
+            ]
+            _tail_cols = [c for c in _ml_df.columns if c not in _head_cols]
+            _ml_df = _ml_df[_head_cols + _tail_cols]
 
         _ml_df.to_csv(_ml_out, index=False)
 
@@ -965,6 +1152,7 @@ def main() -> None:
     ap.add_argument("--ml-model-path", default=None, help="Path to serialized ML model (pickle/joblib-compatible pickle load).")
     ap.add_argument("--ml-model-registry", default=None, help="Optional JSON registry mapping 'SYMBOL|side' to model path.")
     ap.add_argument("--ml-threshold", type=float, default=0.55, help="Reject signal if p_win < threshold.")
+    ap.add_argument("--ml-thresholds-path", default=None, help="Optional JSON with per-strategy ML thresholds.")
     ap.add_argument("--ml-export-features", action="store_true", help="Export ML feature rows for raw/final signals.")
     ap.add_argument("--ml-features-out", default=None, help="Optional CSV path for exported ML features.")
     ap.add_argument("--ml-position-sizing", action="store_true", help="Enable ML-based position sizing using p_win -> size multiplier.")
@@ -1059,6 +1247,7 @@ def main() -> None:
         ml_model_path=args.ml_model_path,
         ml_model_registry=args.ml_model_registry,
         ml_threshold=float(args.ml_threshold),
+        ml_thresholds_path=args.ml_thresholds_path,
         ml_export_features=bool(args.ml_export_features),
         ml_features_out=args.ml_features_out,
         ml_position_sizing=bool(args.ml_position_sizing),

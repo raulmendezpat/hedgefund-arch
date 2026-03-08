@@ -1,0 +1,91 @@
+{
+  "input_rows_total": 11111,
+  "target_col": "y_win",
+  "train_frac": 0.8,
+  "strategies": {
+    "btc_trend": {
+      "status": "trained",
+      "rows": 4850,
+      "train_rows": 3880,
+      "test_rows": 970,
+      "positive_count": 2309,
+      "negative_count": 2541,
+      "train_positive_rate": 0.46649484536082475,
+      "test_positive_rate": 0.5144329896907216,
+      "train_accuracy": 0.7675257731958763,
+      "test_accuracy": 0.47525773195876286,
+      "train_auc": 0.8487314169802761,
+      "test_auc": 0.4900288900518659,
+      "train_logloss": 0.6012530110079466,
+      "test_logloss": 0.7503264939997661
+    },
+    "btc_trend_loose": {
+      "status": "trained",
+      "rows": 5825,
+      "train_rows": 4660,
+      "test_rows": 1165,
+      "positive_count": 2819,
+      "negative_count": 3006,
+      "train_positive_rate": 0.4742489270386266,
+      "test_positive_rate": 0.5227467811158798,
+      "train_accuracy": 0.7605150214592274,
+      "test_accuracy": 0.47725321888412015,
+      "train_auc": 0.8432407424508265,
+      "test_auc": 0.4989781573755774,
+      "train_logloss": 0.6076122983395837,
+      "test_logloss": 0.7259064986420497
+    },
+    "sol_bbrsi": {
+      "status": "trained",
+      "rows": 129,
+      "train_rows": 103,
+      "test_rows": 26,
+      "positive_count": 72,
+      "negative_count": 57,
+      "train_positive_rate": 0.5436893203883495,
+      "test_positive_rate": 0.6153846153846154,
+      "train_accuracy": 0.9223300970873787,
+      "test_accuracy": 0.5384615384615384,
+      "train_auc": 0.9642857142857143,
+      "test_auc": 0.54375,
+      "train_logloss": 0.39473122718968023,
+      "test_logloss": 0.7303611308682215
+    },
+    "sol_trend_pullback": {
+      "status": "trained",
+      "rows": 307,
+      "train_rows": 245,
+      "test_rows": 62,
+      "positive_count": 134,
+      "negative_count": 173,
+      "train_positive_rate": 0.4530612244897959,
+      "test_positive_rate": 0.3709677419354839,
+      "train_accuracy": 0.9306122448979591,
+      "test_accuracy": 0.5645161290322581,
+      "train_auc": 0.9880328089283313,
+      "test_auc": 0.5741360089186176,
+      "train_logloss": 0.3944078863343122,
+      "test_logloss": 0.6948200625157553
+    }
+  },
+  "feature_cols_num": [
+    "strength",
+    "base_weight",
+    "competitive_score",
+    "adx",
+    "atr",
+    "atrp",
+    "rsi",
+    "ema_gap",
+    "ema_gap_pct",
+    "bb_width",
+    "bb_span",
+    "bb_pos",
+    "close",
+    "volume"
+  ],
+  "feature_cols_cat": [
+    "symbol",
+    "side_raw"
+  ]
+}
