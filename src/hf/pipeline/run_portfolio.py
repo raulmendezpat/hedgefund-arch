@@ -26,6 +26,8 @@ from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, bu
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
 from hf.engines.subposition_planner import SubPositionPlanner
 from hf.engines.position_cluster import PositionClusterBuilder
+from hf.engines.cluster_risk_engine import ClusterRiskEngine
+from hf.engines.execution_planner import ExecutionPlanner
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
@@ -124,6 +126,30 @@ def _parse_subpos_weights(raw: Optional[str]) -> Optional[list[float]]:
         if not part:
             continue
         vals.append(float(part))
+    return vals or None
+
+
+def _parse_float_list(raw: Optional[str]) -> Optional[list[float]]:
+    if raw is None:
+        return None
+    parts = [x.strip() for x in str(raw).split(",")]
+    vals = []
+    for part in parts:
+        if not part:
+            continue
+        vals.append(float(part))
+    return vals or None
+
+
+def _parse_int_list(raw: Optional[str]) -> Optional[list[int]]:
+    if raw is None:
+        return None
+    parts = [x.strip() for x in str(raw).split(",")]
+    vals = []
+    for part in parts:
+        if not part:
+            continue
+        vals.append(int(part))
     return vals or None
 
 
@@ -236,6 +262,9 @@ def run(
     sol_subpos_count: int = 1,
     btc_subpos_weights: Optional[str] = None,
     sol_subpos_weights: Optional[str] = None,
+    execution_mode: str = "market",
+    execution_ladder_offsets: Optional[str] = None,
+    execution_time_offsets: Optional[str] = None,
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -452,6 +481,14 @@ def run(
     btc_subpos_planner = SubPositionPlanner(slices=max(1, int(btc_subpos_count)))
     sol_subpos_planner = SubPositionPlanner(slices=max(1, int(sol_subpos_count)))
     cluster_builder = PositionClusterBuilder()
+    cluster_risk_engine = ClusterRiskEngine(
+        max_cluster_weight=1.0,
+        max_subpositions=max(int(btc_subpos_count), int(sol_subpos_count), 1),
+        allow_zero_weight_clusters=True,
+    )
+    execution_planner = ExecutionPlanner()
+    parsed_execution_ladder_offsets = _parse_float_list(execution_ladder_offsets)
+    parsed_execution_time_offsets = _parse_int_list(execution_time_offsets)
     rows = []
     opportunity_rows = []
     selected_opportunity_rows = []
@@ -912,6 +949,59 @@ def run(
             },
         )
 
+        btc_cluster_risk = cluster_risk_engine.evaluate(btc_cluster)
+        sol_cluster_risk = cluster_risk_engine.evaluate(sol_cluster)
+
+        btc_cluster_for_execution = btc_cluster.__class__(
+            cluster_id=str(btc_cluster.cluster_id),
+            symbol=str(btc_cluster.symbol),
+            strategy_id=str(btc_cluster.strategy_id),
+            side=str(btc_cluster.side),
+            target_weight=float(btc_cluster_risk.adjusted_target_weight),
+            subpositions=tuple(btc_cluster_risk.adjusted_subpositions),
+            entry_schedule=tuple(getattr(btc_cluster, "entry_schedule", ()) or ()),
+            exit_schedule=tuple(getattr(btc_cluster, "exit_schedule", ()) or ()),
+            risk_limits=dict(getattr(btc_cluster, "risk_limits", {}) or {}),
+            meta={
+                **dict(getattr(btc_cluster, "meta", {}) or {}),
+                "risk_adjusted": True,
+            },
+        )
+        sol_cluster_for_execution = sol_cluster.__class__(
+            cluster_id=str(sol_cluster.cluster_id),
+            symbol=str(sol_cluster.symbol),
+            strategy_id=str(sol_cluster.strategy_id),
+            side=str(sol_cluster.side),
+            target_weight=float(sol_cluster_risk.adjusted_target_weight),
+            subpositions=tuple(sol_cluster_risk.adjusted_subpositions),
+            entry_schedule=tuple(getattr(sol_cluster, "entry_schedule", ()) or ()),
+            exit_schedule=tuple(getattr(sol_cluster, "exit_schedule", ()) or ()),
+            risk_limits=dict(getattr(sol_cluster, "risk_limits", {}) or {}),
+            meta={
+                **dict(getattr(sol_cluster, "meta", {}) or {}),
+                "risk_adjusted": True,
+            },
+        )
+
+        btc_execution_plan = execution_planner.build_plan(
+            cluster=btc_cluster_for_execution,
+            execution_mode=str(execution_mode),
+            default_order_type="market",
+            time_in_force="GTC",
+            ladder_limit_offsets=parsed_execution_ladder_offsets,
+            time_sliced_offsets=parsed_execution_time_offsets,
+            meta={"ts": int(ts), "risk_approved": bool(btc_cluster_risk.approved)},
+        )
+        sol_execution_plan = execution_planner.build_plan(
+            cluster=sol_cluster_for_execution,
+            execution_mode=str(execution_mode),
+            default_order_type="market",
+            time_in_force="GTC",
+            ladder_limit_offsets=parsed_execution_ladder_offsets,
+            time_sliced_offsets=parsed_execution_time_offsets,
+            meta={"ts": int(ts), "risk_approved": bool(sol_cluster_risk.approved)},
+        )
+
         alloc = Allocation(
             weights=dict(alloc.weights),
             meta={
@@ -939,6 +1029,40 @@ def run(
                     "target_weight": float(sol_cluster.target_weight),
                     "planned_weight": float(sol_cluster.planned_weight),
                     "subposition_count": int(sol_cluster.subposition_count),
+                },
+                "btc_cluster_risk": {
+                    "approved": bool(btc_cluster_risk.approved),
+                    "adjusted_target_weight": float(btc_cluster_risk.adjusted_target_weight),
+                    "adjusted_subposition_count": int(len(btc_cluster_risk.adjusted_subpositions)),
+                    "reasons": list(btc_cluster_risk.reasons),
+                },
+                "sol_cluster_risk": {
+                    "approved": bool(sol_cluster_risk.approved),
+                    "adjusted_target_weight": float(sol_cluster_risk.adjusted_target_weight),
+                    "adjusted_subposition_count": int(len(sol_cluster_risk.adjusted_subpositions)),
+                    "reasons": list(sol_cluster_risk.reasons),
+                },
+                "btc_execution_plan": {
+                    "cluster_id": str(btc_execution_plan.cluster_id),
+                    "slice_count": int(btc_execution_plan.slice_count),
+                    "planned_weight": float(btc_execution_plan.planned_weight),
+                    "target_weight": float(btc_execution_plan.total_target_weight),
+                    "execution_mode": str((btc_execution_plan.meta or {}).get("execution_mode", str(execution_mode))),
+                    "order_type": str(btc_execution_plan.slices[0].order_type if btc_execution_plan.slices else ""),
+                    "time_in_force": str(btc_execution_plan.slices[0].time_in_force if btc_execution_plan.slices else "GTC"),
+                    "time_offsets": "|".join(str(int(x.time_offset_bars)) for x in btc_execution_plan.slices),
+                    "ladder_offsets": "|".join(str(float((x.meta or {}).get("limit_offset_pct", 0.0))) for x in btc_execution_plan.slices),
+                },
+                "sol_execution_plan": {
+                    "cluster_id": str(sol_execution_plan.cluster_id),
+                    "slice_count": int(sol_execution_plan.slice_count),
+                    "planned_weight": float(sol_execution_plan.planned_weight),
+                    "target_weight": float(sol_execution_plan.total_target_weight),
+                    "execution_mode": str((sol_execution_plan.meta or {}).get("execution_mode", str(execution_mode))),
+                    "order_type": str(sol_execution_plan.slices[0].order_type if sol_execution_plan.slices else ""),
+                    "time_in_force": str(sol_execution_plan.slices[0].time_in_force if sol_execution_plan.slices else "GTC"),
+                    "time_offsets": "|".join(str(int(x.time_offset_bars)) for x in sol_execution_plan.slices),
+                    "ladder_offsets": "|".join(str(float((x.meta or {}).get("limit_offset_pct", 0.0))) for x in sol_execution_plan.slices),
                 },
             },
         )
@@ -1011,6 +1135,28 @@ def run(
             "sol_cluster_planned_weight": float((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("planned_weight", 0.0) or 0.0)),
             "btc_cluster_subposition_count": int((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("subposition_count", 0) or 0)),
             "sol_cluster_subposition_count": int((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("subposition_count", 0) or 0)),
+            "btc_cluster_risk_approved": int(bool((((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("approved", False)))),
+            "sol_cluster_risk_approved": int(bool((((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("approved", False)))),
+            "btc_cluster_risk_target_weight": float((((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("adjusted_target_weight", 0.0) or 0.0)),
+            "sol_cluster_risk_target_weight": float((((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("adjusted_target_weight", 0.0) or 0.0)),
+            "btc_cluster_risk_subposition_count": int((((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("adjusted_subposition_count", 0) or 0)),
+            "sol_cluster_risk_subposition_count": int((((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("adjusted_subposition_count", 0) or 0)),
+            "btc_cluster_risk_reasons": "|".join(((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("reasons", []) or []),
+            "sol_cluster_risk_reasons": "|".join(((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("reasons", []) or []),
+            "btc_execution_slice_count": int((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("slice_count", 0) or 0)),
+            "sol_execution_slice_count": int((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("slice_count", 0) or 0)),
+            "btc_execution_planned_weight": float((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("planned_weight", 0.0) or 0.0)),
+            "sol_execution_planned_weight": float((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("planned_weight", 0.0) or 0.0)),
+            "btc_execution_target_weight": float((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("target_weight", 0.0) or 0.0)),
+            "sol_execution_target_weight": float((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("target_weight", 0.0) or 0.0)),
+            "btc_execution_mode": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("execution_mode", "") or "")),
+            "sol_execution_mode": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("execution_mode", "") or "")),
+            "btc_execution_order_type": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("order_type", "") or "")),
+            "sol_execution_order_type": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("order_type", "") or "")),
+            "btc_execution_time_offsets": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("time_offsets", "") or "")),
+            "sol_execution_time_offsets": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("time_offsets", "") or "")),
+            "btc_execution_ladder_offsets": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("ladder_offsets", "") or "")),
+            "sol_execution_ladder_offsets": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("ladder_offsets", "") or "")),
             "case": (alloc.meta or {}).get("case", ""),
             "btc_strategy_id": btc_meta.get("strategy_id"),
             "btc_engine": btc_meta.get("engine"),
@@ -1348,6 +1494,22 @@ def main() -> None:
     ap.add_argument("--sol-subpos-count", type=int, default=1, help="Number of planned SOL subpositions.")
     ap.add_argument("--btc-subpos-weights", default=None, help="Optional comma-separated BTC subposition weights.")
     ap.add_argument("--sol-subpos-weights", default=None, help="Optional comma-separated SOL subposition weights.")
+    ap.add_argument(
+        "--execution-mode",
+        default="market",
+        choices=["market", "ladder_limit", "time_sliced"],
+        help="Execution planning mode for cluster slices.",
+    )
+    ap.add_argument(
+        "--execution-ladder-offsets",
+        default=None,
+        help="Optional comma-separated offsets for ladder_limit mode, e.g. 0.0,0.002,0.004",
+    )
+    ap.add_argument(
+        "--execution-time-offsets",
+        default=None,
+        help="Optional comma-separated bar offsets for time_sliced mode, e.g. 0,2,4",
+    )
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
@@ -1427,6 +1589,9 @@ def main() -> None:
         sol_subpos_count=int(args.sol_subpos_count),
         btc_subpos_weights=args.btc_subpos_weights,
         sol_subpos_weights=args.sol_subpos_weights,
+        execution_mode=str(args.execution_mode),
+        execution_ladder_offsets=args.execution_ladder_offsets,
+        execution_time_offsets=args.execution_time_offsets,
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
