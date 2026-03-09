@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from hf.core.types import Allocation, Candle, Signal
 from hf.engines.ml_filter import (
@@ -17,15 +19,15 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 
 @dataclass
 class MlPositionSizingEngine:
-    """Convert p_win into a position multiplier in [min_mult, max_mult].
+    """Convert p_win into a position multiplier.
 
-    Default sizing rule:
-        multiplier = clip(scale * (2 * p_win - 1), min_mult, max_mult)
+    Supported modes:
+    - linear_edge:     multiplier = clip(scale * (2 * p_win - 1), min_mult, max_mult)
+    - calibrated:      multiplier = clip(base_size + scale * max(0, p_win - threshold), ...)
+    - artifact_map:    multiplier obtained from JSON bins artifact
 
     Notes:
-    - p_win=0.50 -> multiplier=0.0 (unless min_mult > 0)
-    - p_win=1.00 -> multiplier=scale (clipped by max_mult)
-    - If p_win is missing, the engine can infer it from the ML model/registry.
+    - If p_win is missing, the engine can infer it from ML model/registry.
     - Allocation weights are multiplied by this factor; remaining capital stays as cash.
     """
 
@@ -36,9 +38,67 @@ class MlPositionSizingEngine:
     mode: str = "linear_edge"
     base_size: float = 0.25
     pwin_threshold: float = 0.55
+    artifact_path: str = "artifacts/ml_position_size_map_v1.json"
+    artifact_bins: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if str(self.mode) == "artifact_map":
+            self._load_artifact_map()
+
+    def _load_artifact_map(self) -> None:
+        path = Path(self.artifact_path)
+        if not path.exists():
+            self.artifact_bins = []
+            return
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            self.artifact_bins = []
+            return
+
+        bins = payload.get("bins", []) if isinstance(payload, dict) else []
+        if not isinstance(bins, list):
+            self.artifact_bins = []
+            return
+
+        clean: List[Dict[str, Any]] = []
+        for row in bins:
+            if not isinstance(row, dict):
+                continue
+            try:
+                clean.append(
+                    {
+                        "min": float(row.get("min", 0.0)),
+                        "max": float(row.get("max", 1.0)),
+                        "size": float(row.get("size", 0.0)),
+                    }
+                )
+            except Exception:
+                continue
+
+        clean = sorted(clean, key=lambda x: (float(x["min"]), float(x["max"])))
+        self.artifact_bins = clean
+
+    def _size_from_artifact_map(self, p_win: float) -> float:
+        p = _clamp(float(p_win), 0.0, 1.0)
+
+        for row in self.artifact_bins:
+            lo = float(row["min"])
+            hi = float(row["max"])
+            size = float(row["size"])
+
+            is_last = abs(hi - 1.0) <= 1e-12
+            if (lo <= p < hi) or (is_last and lo <= p <= hi):
+                return _clamp(size, 0.0, float(self.max_mult))
+
+        return 0.0
 
     def size_from_pwin(self, p_win: float) -> float:
         p = _clamp(float(p_win), 0.0, 1.0)
+
+        if self.mode == "artifact_map" and self.artifact_bins:
+            return self._size_from_artifact_map(p)
 
         if self.mode == "calibrated":
             edge = max(0.0, p - float(self.pwin_threshold))
@@ -80,8 +140,6 @@ class MlPositionSizingEngine:
                 if candle is not None:
                     feats = build_feature_row(sym, candle, sig)
                     chosen_model = select_model_for_signal(model, registry, sym, side)
-                    # Si no existe modelo exacto en el registry, dejamos que
-                    # predict_proba() haga fallback al modelo base o al scorer heurístico.
                     p_win = predict_proba(chosen_model, feats)
                 else:
                     out[sym] = sig
@@ -99,6 +157,7 @@ class MlPositionSizingEngine:
                     "p_win": float(p_win),
                     "ml_position_size_mult": float(mult),
                     "ml_position_size_scale": float(self.scale),
+                    "ml_position_size_mode": str(self.mode),
                 },
             )
 

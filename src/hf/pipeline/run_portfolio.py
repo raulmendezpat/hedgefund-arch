@@ -172,6 +172,7 @@ def run(
     ml_size_mode: str = "linear_edge",
     ml_size_base: float = 0.25,
     ml_size_pwin_threshold: float = 0.55,
+    ml_size_artifact_path: str = "artifacts/ml_position_size_map_v1.json",
     strategy_registry_path: str = "artifacts/strategy_registry.json",
     opportunity_selection_mode: str = "best_per_symbol",
     allocation_engine_mode: str = "regime",
@@ -374,6 +375,7 @@ def run(
         mode=str(ml_size_mode),
         base_size=float(ml_size_base),
         pwin_threshold=float(ml_size_pwin_threshold),
+        artifact_path=str(ml_size_artifact_path),
     ) if bool(ml_position_sizing) else None
 
     ml_score_position_sizer = ml_position_sizer or (
@@ -384,6 +386,7 @@ def run(
             mode=str(ml_size_mode),
             base_size=float(ml_size_base),
             pwin_threshold=float(ml_size_pwin_threshold),
+            artifact_path=str(ml_size_artifact_path),
         ) if ml_enabled_for_scores else None
     )
 
@@ -1156,7 +1159,8 @@ def main() -> None:
     ap.add_argument("--ml-export-features", action="store_true", help="Export ML feature rows for raw/final signals.")
     ap.add_argument("--ml-features-out", default=None, help="Optional CSV path for exported ML features.")
     ap.add_argument("--ml-position-sizing", action="store_true", help="Enable ML-based position sizing using p_win -> size multiplier.")
-    ap.add_argument("--ml-size-mode", type=str, default="linear_edge", choices=["linear_edge", "calibrated"], help="Sizing transform mode.")
+    ap.add_argument("--ml-size-mode", type=str, default="linear_edge", choices=["linear_edge", "calibrated", "artifact_map"], help="Sizing transform mode.")
+    ap.add_argument("--ml-size-artifact-path", type=str, default="artifacts/ml_position_size_map_v1.json", help="Artifact JSON path for artifact_map sizing mode.")
     ap.add_argument("--ml-size-scale", type=float, default=1.0, help="Scale factor for the selected sizing mode.")
     ap.add_argument("--ml-size-min", type=float, default=0.0, help="Minimum size multiplier after transform.")
     ap.add_argument("--ml-size-max", type=float, default=1.0, help="Maximum size multiplier after transform.")
@@ -1257,6 +1261,7 @@ def main() -> None:
         ml_size_mode=str(args.ml_size_mode),
         ml_size_base=float(args.ml_size_base),
         ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
+        ml_size_artifact_path=str(args.ml_size_artifact_path),
         strategy_registry_path=str(args.strategy_registry),
         opportunity_selection_mode=str(args.opportunity_selection_mode),
         allocation_engine_mode=str(args.allocation_engine_mode),
