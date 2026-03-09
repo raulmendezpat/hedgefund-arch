@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 
 import argparse
+from pathlib import Path
 from dataclasses import asdict
 from typing import Dict, Optional
 
@@ -23,6 +24,8 @@ from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalE
 from hf.engines.opportunity_book import select_opportunities, compute_competitive_score, compute_post_ml_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
+from hf.engines.subposition_planner import SubPositionPlanner
+from hf.engines.position_cluster import PositionClusterBuilder
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
@@ -112,6 +115,57 @@ def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = 
     )
 
 
+def _parse_subpos_weights(raw: Optional[str]) -> Optional[list[float]]:
+    if raw is None:
+        return None
+    parts = [x.strip() for x in str(raw).split(",")]
+    vals = []
+    for part in parts:
+        if not part:
+            continue
+        vals.append(float(part))
+    return vals or None
+
+
+def _normalize_subpos_weights(weights: list[float], total_target_weight: float) -> list[float]:
+    total = float(sum(float(x) for x in weights))
+    if total <= 0.0:
+        return []
+    scale = float(total_target_weight) / total
+    return [float(x) * scale for x in weights]
+
+
+def _plan_subpositions_for_symbol(
+    *,
+    planner: SubPositionPlanner,
+    symbol: str,
+    strategy_id: str,
+    side: str,
+    total_target_weight: float,
+    raw_custom_weights: Optional[str],
+    meta: Optional[dict],
+) -> dict:
+    plan = planner.plan(
+        symbol=str(symbol),
+        strategy_id=str(strategy_id or ""),
+        side=str(side or "flat"),
+        total_target_weight=float(total_target_weight or 0.0),
+        opportunity_meta=dict(meta or {}),
+    )
+
+    custom_weights = _parse_subpos_weights(raw_custom_weights)
+    if custom_weights is not None:
+        custom_weights = [float(x) for x in custom_weights if float(x) > 0.0]
+        if float(total_target_weight or 0.0) > 0.0 and custom_weights:
+            plan.slices = _normalize_subpos_weights(custom_weights, float(total_target_weight or 0.0))
+
+    return {
+        "count": int(len(plan.slices)),
+        "weights": ",".join(f"{float(x):.8f}" for x in plan.slices),
+        "plan": plan,
+    }
+
+
 def run(
     name: str,
     start: str,
@@ -178,6 +232,10 @@ def run(
     allocation_engine_mode: str = "regime",
     strategy_score_power: float = 1.0,
     strategy_symbol_score_agg: str = "sum",
+    btc_subpos_count: int = 1,
+    sol_subpos_count: int = 1,
+    btc_subpos_weights: Optional[str] = None,
+    sol_subpos_weights: Optional[str] = None,
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -391,6 +449,9 @@ def run(
     )
 
     prev_alloc: Optional[Allocation] = None
+    btc_subpos_planner = SubPositionPlanner(slices=max(1, int(btc_subpos_count)))
+    sol_subpos_planner = SubPositionPlanner(slices=max(1, int(sol_subpos_count)))
+    cluster_builder = PositionClusterBuilder()
     rows = []
     opportunity_rows = []
     selected_opportunity_rows = []
@@ -804,11 +865,86 @@ def run(
                     },
                 )
         # --- end signal gating ---
-        prev_alloc = alloc
-        allocs.append(alloc)
-
         btc_meta = dict(getattr(signals.get(btc_sym), "meta", {}) or {})
         sol_meta = dict(getattr(signals.get(sol_sym), "meta", {}) or {})
+
+        btc_subpos_info = _plan_subpositions_for_symbol(
+            planner=btc_subpos_planner,
+            symbol=btc_sym,
+            strategy_id=str(btc_meta.get("strategy_id", "") or ""),
+            side=str(getattr(signals.get(btc_sym), "side", "flat")),
+            total_target_weight=float(alloc.weights.get(btc_sym, 0.0) or 0.0),
+            raw_custom_weights=btc_subpos_weights,
+            meta=btc_meta,
+        )
+        sol_subpos_info = _plan_subpositions_for_symbol(
+            planner=sol_subpos_planner,
+            symbol=sol_sym,
+            strategy_id=str(sol_meta.get("strategy_id", "") or ""),
+            side=str(getattr(signals.get(sol_sym), "side", "flat")),
+            total_target_weight=float(alloc.weights.get(sol_sym, 0.0) or 0.0),
+            raw_custom_weights=sol_subpos_weights,
+            meta=sol_meta,
+        )
+
+        btc_cluster = cluster_builder.build_from_weights(
+            cluster_id=f"{int(ts)}::{btc_sym}::{str(btc_meta.get('strategy_id', '') or '')}",
+            symbol=btc_sym,
+            strategy_id=str(btc_meta.get("strategy_id", "") or ""),
+            side=str(getattr(signals.get(btc_sym), "side", "flat")),
+            target_weight=float(alloc.weights.get(btc_sym, 0.0) or 0.0),
+            weights=[float(x) for x in getattr(btc_subpos_info["plan"], "slices", [])],
+            meta={
+                **btc_meta,
+                "ts": int(ts),
+            },
+        )
+        sol_cluster = cluster_builder.build_from_weights(
+            cluster_id=f"{int(ts)}::{sol_sym}::{str(sol_meta.get('strategy_id', '') or '')}",
+            symbol=sol_sym,
+            strategy_id=str(sol_meta.get("strategy_id", "") or ""),
+            side=str(getattr(signals.get(sol_sym), "side", "flat")),
+            target_weight=float(alloc.weights.get(sol_sym, 0.0) or 0.0),
+            weights=[float(x) for x in getattr(sol_subpos_info["plan"], "slices", [])],
+            meta={
+                **sol_meta,
+                "ts": int(ts),
+            },
+        )
+
+        alloc = Allocation(
+            weights=dict(alloc.weights),
+            meta={
+                **dict(getattr(alloc, "meta", {}) or {}),
+                "btc_subposition_plan": {
+                    "count": int(btc_subpos_info["count"]),
+                    "weights": [float(x) for x in getattr(btc_subpos_info["plan"], "slices", [])],
+                },
+                "sol_subposition_plan": {
+                    "count": int(sol_subpos_info["count"]),
+                    "weights": [float(x) for x in getattr(sol_subpos_info["plan"], "slices", [])],
+                },
+                "btc_position_cluster": {
+                    "cluster_id": str(btc_cluster.cluster_id),
+                    "strategy_id": str(btc_cluster.strategy_id),
+                    "side": str(btc_cluster.side),
+                    "target_weight": float(btc_cluster.target_weight),
+                    "planned_weight": float(btc_cluster.planned_weight),
+                    "subposition_count": int(btc_cluster.subposition_count),
+                },
+                "sol_position_cluster": {
+                    "cluster_id": str(sol_cluster.cluster_id),
+                    "strategy_id": str(sol_cluster.strategy_id),
+                    "side": str(sol_cluster.side),
+                    "target_weight": float(sol_cluster.target_weight),
+                    "planned_weight": float(sol_cluster.planned_weight),
+                    "subposition_count": int(sol_cluster.subposition_count),
+                },
+            },
+        )
+
+        prev_alloc = alloc
+        allocs.append(alloc)
 
         final_selected_rows.append({
             "ts": int(ts),
@@ -859,6 +995,22 @@ def run(
             "sol_post_ml_score": float((sol_meta.get("competitive_score", 0.0) or 0.0) * (sol_meta.get("p_win", 0.0) or 0.0)),
             "btc_ml_size_mult": float(btc_meta.get("ml_position_size_mult", 0.0) or 0.0),
             "sol_ml_size_mult": float(sol_meta.get("ml_position_size_mult", 0.0) or 0.0),
+            "btc_subpos_count": int(btc_subpos_info["count"]),
+            "sol_subpos_count": int(sol_subpos_info["count"]),
+            "btc_subpos_weights": str(btc_subpos_info["weights"]),
+            "sol_subpos_weights": str(sol_subpos_info["weights"]),
+            "btc_cluster_id": str(((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("cluster_id", "")),
+            "sol_cluster_id": str(((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("cluster_id", "")),
+            "btc_cluster_strategy_id": str(((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("strategy_id", "")),
+            "sol_cluster_strategy_id": str(((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("strategy_id", "")),
+            "btc_cluster_side": str(((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("side", "")),
+            "sol_cluster_side": str(((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("side", "")),
+            "btc_cluster_target_weight": float((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("target_weight", 0.0) or 0.0)),
+            "sol_cluster_target_weight": float((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("target_weight", 0.0) or 0.0)),
+            "btc_cluster_planned_weight": float((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("planned_weight", 0.0) or 0.0)),
+            "sol_cluster_planned_weight": float((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("planned_weight", 0.0) or 0.0)),
+            "btc_cluster_subposition_count": int((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("subposition_count", 0) or 0)),
+            "sol_cluster_subposition_count": int((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("subposition_count", 0) or 0)),
             "case": (alloc.meta or {}).get("case", ""),
             "btc_strategy_id": btc_meta.get("strategy_id"),
             "btc_engine": btc_meta.get("engine"),
@@ -1192,6 +1344,10 @@ def main() -> None:
         choices=["sum", "max"],
         help="How to aggregate strategy scores into a symbol budget.",
     )
+    ap.add_argument("--btc-subpos-count", type=int, default=1, help="Number of planned BTC subpositions.")
+    ap.add_argument("--sol-subpos-count", type=int, default=1, help="Number of planned SOL subpositions.")
+    ap.add_argument("--btc-subpos-weights", default=None, help="Optional comma-separated BTC subposition weights.")
+    ap.add_argument("--sol-subpos-weights", default=None, help="Optional comma-separated SOL subposition weights.")
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
@@ -1267,6 +1423,10 @@ def main() -> None:
         allocation_engine_mode=str(args.allocation_engine_mode),
         strategy_score_power=float(args.strategy_score_power),
         strategy_symbol_score_agg=str(args.strategy_symbol_score_agg),
+        btc_subpos_count=int(args.btc_subpos_count),
+        sol_subpos_count=int(args.sol_subpos_count),
+        btc_subpos_weights=args.btc_subpos_weights,
+        sol_subpos_weights=args.sol_subpos_weights,
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
