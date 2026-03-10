@@ -28,12 +28,14 @@ from hf.engines.subposition_planner import SubPositionPlanner
 from hf.engines.position_cluster import PositionClusterBuilder
 from hf.engines.cluster_risk_engine import ClusterRiskEngine
 from hf.engines.execution_planner import ExecutionPlanner
+from hf.execution.order_simulator import OrderSimulator
 from hf.engines.legacy_wrappers import (
     LEGACY_SYMBOLS,
     PlaceholderSignalEngine,
     StaticRegimeEngine,
     DynamicAllocator,
 )
+
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 
 
@@ -265,6 +267,8 @@ def run(
     execution_mode: str = "market",
     execution_ladder_offsets: Optional[str] = None,
     execution_time_offsets: Optional[str] = None,
+    execution_slippage_bps: float = 2.0,
+    execution_size_slippage_factor: float = 10.0,
 ) -> pd.DataFrame:
     start_ms = dt_to_ms_utc(start)
     end_ms = dt_to_ms_utc(end) if end else None
@@ -487,6 +491,11 @@ def run(
         allow_zero_weight_clusters=True,
     )
     execution_planner = ExecutionPlanner()
+    
+    order_sim = OrderSimulator()
+    order_sim.slippage.base_slippage_bps = float(execution_slippage_bps)
+    order_sim.slippage.size_slippage_factor = float(execution_size_slippage_factor)
+
     parsed_execution_ladder_offsets = _parse_float_list(execution_ladder_offsets)
     parsed_execution_time_offsets = _parse_int_list(execution_time_offsets)
     rows = []
@@ -494,6 +503,7 @@ def run(
     selected_opportunity_rows = []
     strategy_allocation_rows = []
     final_selected_rows = []
+    execution_rows = []
 
     # PortfolioEngine buffers (alineados 1:1 con common_ts)
     candles_by_symbol = {btc_sym: [], sol_sym: []}
@@ -1001,6 +1011,59 @@ def run(
             time_sliced_offsets=parsed_execution_time_offsets,
             meta={"ts": int(ts), "risk_approved": bool(sol_cluster_risk.approved)},
         )
+        btc_fills = order_sim.simulate_plan(
+            plan=btc_execution_plan,
+            bar_index=int(len(allocs)),
+            open_price=float(candles[btc_sym].open),
+            high_price=float(candles[btc_sym].high),
+            low_price=float(candles[btc_sym].low),
+            close_price=float(candles[btc_sym].close),
+        )
+        sol_fills = order_sim.simulate_plan(
+            plan=sol_execution_plan,
+            bar_index=int(len(allocs)),
+            open_price=float(candles[sol_sym].open),
+            high_price=float(candles[sol_sym].high),
+            low_price=float(candles[sol_sym].low),
+            close_price=float(candles[sol_sym].close),
+        )
+        execution_fills = list(btc_fills) + list(sol_fills)
+        execution_fill_count = int(len(execution_fills))
+
+        _exec_cost_bps_vals = [
+            float(getattr(f, "execution_cost_bps", 0.0) or 0.0)
+            for f in execution_fills
+            if getattr(f, "execution_cost_bps", None) is not None
+        ]
+        _exec_cost_pct_vals = [
+            float(getattr(f, "execution_cost_pct", 0.0) or 0.0)
+            for f in execution_fills
+            if getattr(f, "execution_cost_pct", None) is not None
+        ]
+
+        avg_execution_cost_bps_ts = (
+            float(sum(_exec_cost_bps_vals) / len(_exec_cost_bps_vals))
+            if _exec_cost_bps_vals else 0.0
+        )
+        avg_execution_cost_pct_ts = (
+            float(sum(_exec_cost_pct_vals) / len(_exec_cost_pct_vals))
+            if _exec_cost_pct_vals else 0.0
+        )
+
+        for _fill in execution_fills:
+            execution_rows.append({
+                "ts": int(ts),
+                "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+                "order_id": str(_fill.order_id),
+                "symbol": str(_fill.symbol),
+                "side": str(_fill.side),
+                "bar_index": int(_fill.bar_index),
+                "filled_weight": float(_fill.filled_weight),
+                "expected_price": float(getattr(_fill, "expected_price", 0.0) or 0.0),
+                "fill_price": float(_fill.fill_price),
+                "execution_cost_bps": float(getattr(_fill, "execution_cost_bps", 0.0) or 0.0),
+                "execution_cost_pct": float(getattr(_fill, "execution_cost_pct", 0.0) or 0.0),
+            })
 
         alloc = Allocation(
             weights=dict(alloc.weights),
@@ -1064,6 +1127,9 @@ def run(
                     "time_offsets": "|".join(str(int(x.time_offset_bars)) for x in sol_execution_plan.slices),
                     "ladder_offsets": "|".join(str(float((x.meta or {}).get("limit_offset_pct", 0.0))) for x in sol_execution_plan.slices),
                 },
+                "execution_fill_count": int(execution_fill_count),
+                "avg_execution_cost_bps": float(avg_execution_cost_bps_ts),
+                "avg_execution_cost_pct": float(avg_execution_cost_pct_ts),
             },
         )
 
@@ -1157,6 +1223,9 @@ def run(
             "sol_execution_time_offsets": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("time_offsets", "") or "")),
             "btc_execution_ladder_offsets": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("ladder_offsets", "") or "")),
             "sol_execution_ladder_offsets": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("ladder_offsets", "") or "")),
+            "execution_fill_count": int(((alloc.meta or {}).get("execution_fill_count", 0) or 0)),
+            "execution_slippage_bps": float(((alloc.meta or {}).get("execution_slippage_bps", execution_slippage_bps) or execution_slippage_bps)),
+            "execution_size_slippage_factor": float(((alloc.meta or {}).get("execution_size_slippage_factor", execution_size_slippage_factor) or execution_size_slippage_factor)),
             "case": (alloc.meta or {}).get("case", ""),
             "btc_strategy_id": btc_meta.get("strategy_id"),
             "btc_engine": btc_meta.get("engine"),
@@ -1198,6 +1267,12 @@ def run(
     if strategy_allocation_rows:
         pd.DataFrame(strategy_allocation_rows).to_csv(
             f"results/strategy_allocations_{name}.csv",
+            index=False,
+        )
+
+    if execution_rows:
+        pd.DataFrame(execution_rows).to_csv(
+            f"results/execution_fills_{name}.csv",
             index=False,
         )
 
@@ -1308,6 +1383,24 @@ def run(
 
     # Portfolio metrics (hedge-fund style summary)
     metrics = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(perf_df=perf.reset_index(), alloc_df=df)
+
+    if execution_rows:
+        _exec_df = pd.DataFrame(execution_rows)
+        _cost_bps = pd.to_numeric(_exec_df["execution_cost_bps"], errors="coerce").fillna(0.0)
+        _cost_pct = pd.to_numeric(_exec_df["execution_cost_pct"], errors="coerce").fillna(0.0)
+
+        metrics["execution_fill_count_total"] = int(len(_exec_df))
+        metrics["avg_execution_cost_bps"] = float(_cost_bps.mean()) if len(_exec_df) else 0.0
+        metrics["avg_execution_cost_pct"] = float(_cost_pct.mean()) if len(_exec_df) else 0.0
+        metrics["max_execution_cost_bps"] = float(_cost_bps.max()) if len(_exec_df) else 0.0
+        metrics["min_execution_cost_bps"] = float(_cost_bps.min()) if len(_exec_df) else 0.0
+    else:
+        metrics["execution_fill_count_total"] = 0
+        metrics["avg_execution_cost_bps"] = 0.0
+        metrics["avg_execution_cost_pct"] = 0.0
+        metrics["max_execution_cost_bps"] = 0.0
+        metrics["min_execution_cost_bps"] = 0.0
+
     with open(f"results/pipeline_metrics_{name}.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, sort_keys=True)
 
@@ -1510,6 +1603,18 @@ def main() -> None:
         default=None,
         help="Optional comma-separated bar offsets for time_sliced mode, e.g. 0,2,4",
     )
+    ap.add_argument(
+        "--execution-slippage-bps",
+        type=float,
+        default=2.0,
+        help="Execution slippage base in bps for OrderSimulator fills.",
+    )
+    ap.add_argument(
+        "--execution-size-slippage-factor",
+        type=float,
+        default=10.0,
+        help="Additional execution slippage proportional to order size.",
+    )
     ap.add_argument("--btc-slope-min", type=float, default=1.5)
     ap.add_argument(
         "--signal-engine",
@@ -1592,6 +1697,8 @@ def main() -> None:
         execution_mode=str(args.execution_mode),
         execution_ladder_offsets=args.execution_ladder_offsets,
         execution_time_offsets=args.execution_time_offsets,
+        execution_slippage_bps=float(args.execution_slippage_bps),
+        execution_size_slippage_factor=float(args.execution_size_slippage_factor),
     )
     print(f"Saved -> results/pipeline_allocations_{args.name}.csv (rows={len(df)})")
 
