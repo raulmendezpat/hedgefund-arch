@@ -192,14 +192,30 @@ class OrderSimulator:
 
             if o.order_type == "market":
 
+                price = self.slippage.apply_market_slippage(
+                    price=float(open_price),
+                    side=o.side,
+                    target_weight=o.target_weight,
+                )
+
+                expected_price = float(open_price)
+                if expected_price > 0:
+                    cost_pct = (price - expected_price) / expected_price
+                else:
+                    cost_pct = 0.0
+                cost_bps = cost_pct * 10000.0
+
                 fills.append(
                     Fill(
                         order_id=o.order_id,
                         symbol=o.symbol,
                         side=o.side,
-                        fill_price=float(open_price),
+                        fill_price=float(price),
                         filled_weight=float(o.target_weight),
                         bar_index=int(bar_index),
+                        expected_price=float(expected_price),
+                        execution_cost_bps=float(cost_bps),
+                        execution_cost_pct=float(cost_pct),
                     )
                 )
 
@@ -215,6 +231,13 @@ class OrderSimulator:
                 else:
                     continue
 
+                expected_price = float(open_price)
+                if expected_price > 0:
+                    cost_pct = (price - expected_price) / expected_price
+                else:
+                    cost_pct = 0.0
+                cost_bps = cost_pct * 10000.0
+
                 fills.append(
                     Fill(
                         order_id=o.order_id,
@@ -223,6 +246,9 @@ class OrderSimulator:
                         fill_price=float(price),
                         filled_weight=float(o.target_weight),
                         bar_index=int(bar_index),
+                        expected_price=float(expected_price),
+                        execution_cost_bps=float(cost_bps),
+                        execution_cost_pct=float(cost_pct),
                     )
                 )
 

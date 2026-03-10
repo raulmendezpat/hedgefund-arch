@@ -1027,7 +1027,31 @@ def run(
             low_price=float(candles[sol_sym].low),
             close_price=float(candles[sol_sym].close),
         )
-        execution_fills = list(btc_fills) + list(sol_fills)
+        raw_execution_fills = list(btc_fills) + list(sol_fills)
+
+        raw_execution_rows = []
+        for _fill in raw_execution_fills:
+            raw_execution_rows.append({
+                "ts": int(ts),
+                "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+                "order_id": str(_fill.order_id),
+                "symbol": str(_fill.symbol),
+                "side": str(getattr(_fill, "side", "")),
+                "bar_index": int(getattr(_fill, "bar_index", len(allocs))),
+                "filled_weight": float(getattr(_fill, "filled_weight", 0.0) or 0.0),
+                "expected_price": float(getattr(_fill, "expected_price", 0.0) or 0.0),
+                "fill_price": float(getattr(_fill, "fill_price", 0.0) or 0.0),
+                "execution_cost_bps": float(getattr(_fill, "execution_cost_bps", 0.0) or 0.0),
+                "execution_cost_pct": float(getattr(_fill, "execution_cost_pct", 0.0) or 0.0),
+            })
+        execution_rows.extend(raw_execution_rows)
+
+        execution_fills = [
+            f for f in raw_execution_fills
+            if str(getattr(f, "side", "")).lower() not in {"", "flat", "none", "neutral"}
+            and float(getattr(f, "filled_weight", 0.0) or 0.0) > 0.0
+            and float(getattr(f, "expected_price", 0.0) or 0.0) > 0.0
+        ]
         execution_fill_count = int(len(execution_fills))
 
         _exec_cost_bps_vals = [

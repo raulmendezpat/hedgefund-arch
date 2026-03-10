@@ -55,6 +55,20 @@ class ExecutionPlanner:
     ) -> ExecutionPlan:
         mode = str(execution_mode or "market")
 
+        cluster_side = str(getattr(cluster, "side", "") or "").lower().strip()
+        cluster_target_weight = float(getattr(cluster, "target_weight", 0.0) or 0.0)
+
+        if cluster_side in {"", "flat", "none", "neutral"} or cluster_target_weight <= 0.0:
+            return ExecutionPlan(
+                cluster_id=str(cluster.cluster_id),
+                symbol=str(cluster.symbol),
+                strategy_id=str(cluster.strategy_id),
+                side=str(getattr(cluster, "side", "")),
+                total_target_weight=float(cluster_target_weight),
+                slices=tuple(),
+                meta={**dict(meta or {}), "execution_mode": "noop", "skipped_reason": "non_operable_cluster"},
+            )
+
         if mode == "ladder_limit":
             offsets = list(ladder_limit_offsets or [])
             slices = []
