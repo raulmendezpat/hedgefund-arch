@@ -260,6 +260,9 @@ def run(
     allocation_engine_mode: str = "regime",
     strategy_score_power: float = 1.0,
     strategy_symbol_score_agg: str = "sum",
+    allocator_blend_alpha: float = 0.40,
+    allocator_smoothing_alpha: float = 0.50,
+    allocator_smoothing_snap_eps: float = 0.02,
     btc_subpos_count: int = 1,
     sol_subpos_count: int = 1,
     btc_subpos_weights: Optional[str] = None,
@@ -431,6 +434,7 @@ def run(
     multi_allocator = MultiStrategyAllocator(
         score_power=float(strategy_score_power),
         symbol_score_agg=str(strategy_symbol_score_agg),
+        weight_blend_alpha=float(allocator_blend_alpha),
     )
 
     ml_enabled_for_scores = bool(ml_filter or ml_position_sizing or ml_model_path or ml_model_registry)
@@ -861,6 +865,11 @@ def run(
         _strategy_weights = dict(_alloc_meta.get("strategy_weights", {}) or {})
         _symbol_budget = dict(_alloc_meta.get("symbol_budget", {}) or {})
 
+        alloc_raw_weights = dict(getattr(alloc, "weights", {}) or {})
+        alloc_after_ml_weights = dict(alloc_raw_weights)
+        alloc_after_smoothing_weights = dict(alloc_raw_weights)
+        alloc_after_signal_gating_weights = dict(alloc_raw_weights)
+
         for _k, _w in _strategy_weights.items():
             if "::" in _k:
                 _symbol, _strategy_id = _k.split("::", 1)
@@ -882,11 +891,13 @@ def run(
                 signals=signals,
             )
 
+        alloc_after_ml_weights = dict(getattr(alloc, "weights", {}) or {})
+
         # Suavizado conservador de transiciones en multi_strategy.
         _alloc_case_now = str((getattr(alloc, "meta", {}) or {}).get("case", ""))
-        if prev_alloc is not None and _alloc_case_now == "multi_strategy":
-            _alpha = 0.5
-            _snap_eps = 0.02
+        if prev_alloc is not None and _alloc_case_now == "multi_strategy" and float(allocator_smoothing_alpha) > 0.0:
+            _alpha = float(allocator_smoothing_alpha)
+            _snap_eps = float(allocator_smoothing_snap_eps)
             _keys = set(dict(prev_alloc.weights).keys()) | set(dict(alloc.weights).keys())
             _smoothed_weights = {}
             for _k in _keys:
@@ -901,6 +912,8 @@ def run(
                 weights=_smoothed_weights,
                 meta=dict(getattr(alloc, "meta", {}) or {}),
             )
+
+        alloc_after_smoothing_weights = dict(getattr(alloc, "weights", {}) or {})
 
         # --- Signal gating (solo para engines reales, NO para 'flat') ---
         # Si el SignalEngine aplica al símbolo (meta no contiene 'skip') y la señal es flat,
@@ -932,6 +945,7 @@ def run(
                     },
                 )
         # --- end signal gating ---
+        alloc_after_signal_gating_weights = dict(getattr(alloc, "weights", {}) or {})
         btc_meta = dict(getattr(signals.get(btc_sym), "meta", {}) or {})
         sol_meta = dict(getattr(signals.get(sol_sym), "meta", {}) or {})
 
@@ -1229,6 +1243,20 @@ def run(
             "prev_w_sol": _prev_w_sol,
             "dw_btc": abs(_curr_w_btc - _prev_w_btc),
             "dw_sol": abs(_curr_w_sol - _prev_w_sol),
+
+            "btc_w_raw_allocator": float(alloc_raw_weights.get(btc_sym, 0.0) or 0.0),
+            "sol_w_raw_allocator": float(alloc_raw_weights.get(sol_sym, 0.0) or 0.0),
+
+            "btc_w_after_ml_position_sizing": float(alloc_after_ml_weights.get(btc_sym, 0.0) or 0.0),
+            "sol_w_after_ml_position_sizing": float(alloc_after_ml_weights.get(sol_sym, 0.0) or 0.0),
+
+            "btc_w_after_smoothing": float(alloc_after_smoothing_weights.get(btc_sym, 0.0) or 0.0),
+            "sol_w_after_smoothing": float(alloc_after_smoothing_weights.get(sol_sym, 0.0) or 0.0),
+
+            "btc_w_after_signal_gating": float(alloc_after_signal_gating_weights.get(btc_sym, 0.0) or 0.0),
+            "sol_w_after_signal_gating": float(alloc_after_signal_gating_weights.get(sol_sym, 0.0) or 0.0),
+
+            "pipeline_weight_order": "raw->ml->smoothing->signal_gating",
             "allocation_case": str((alloc.meta or {}).get("case", "")),
             "btc_side": str(getattr(signals.get(btc_sym), "side", "flat")),
             "sol_side": str(getattr(signals.get(sol_sym), "side", "flat")),
@@ -1745,6 +1773,24 @@ def main() -> None:
         choices=["sum", "max"],
         help="How to aggregate strategy scores into a symbol budget.",
     )
+    ap.add_argument(
+        "--allocator-blend-alpha",
+        type=float,
+        default=0.40,
+        help="Blend alpha for MultiStrategyAllocator portfolio inertia.",
+    )
+    ap.add_argument(
+        "--allocator-smoothing-alpha",
+        type=float,
+        default=0.50,
+        help="Post-allocation smoothing alpha in pipeline; set 0.0 to disable.",
+    )
+    ap.add_argument(
+        "--allocator-smoothing-snap-eps",
+        type=float,
+        default=0.02,
+        help="Snap-to-zero epsilon after post-allocation smoothing.",
+    )
     ap.add_argument("--btc-subpos-count", type=int, default=1, help="Number of planned BTC subpositions.")
     ap.add_argument("--sol-subpos-count", type=int, default=1, help="Number of planned SOL subpositions.")
     ap.add_argument("--btc-subpos-weights", default=None, help="Optional comma-separated BTC subposition weights.")
@@ -1852,6 +1898,9 @@ def main() -> None:
         allocation_engine_mode=str(args.allocation_engine_mode),
         strategy_score_power=float(args.strategy_score_power),
         strategy_symbol_score_agg=str(args.strategy_symbol_score_agg),
+        allocator_blend_alpha=float(args.allocator_blend_alpha),
+        allocator_smoothing_alpha=float(args.allocator_smoothing_alpha),
+        allocator_smoothing_snap_eps=float(args.allocator_smoothing_snap_eps),
         btc_subpos_count=int(args.btc_subpos_count),
         sol_subpos_count=int(args.sol_subpos_count),
         btc_subpos_weights=args.btc_subpos_weights,
