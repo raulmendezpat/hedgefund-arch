@@ -268,6 +268,11 @@ def run(
     portfolio_riskoff_btc_adx_min: float = 18.0,
     portfolio_riskoff_btc_slope_min: float = 1.5,
     portfolio_riskoff_sol_atrp_max: float = 0.035,
+    portfolio_risk_scale_enable: bool = False,
+    portfolio_risk_scale_atrp_low: float = 0.010,
+    portfolio_risk_scale_atrp_high: float = 0.025,
+    portfolio_risk_scale_floor: float = 0.35,
+    strategy_regime_gating: bool = False,
     allocator_smoothing_alpha: float = 0.50,
     allocator_smoothing_snap_eps: float = 0.02,
     btc_subpos_count: int = 1,
@@ -857,6 +862,26 @@ def run(
                 signal_skip_counts[_sym] = int(signal_skip_counts.get(_sym, 0)) + 1
         # --- end counts ---
         regimes = reg_engine.evaluate(candles, signals)
+
+        if bool(strategy_regime_gating) and selected_opps_for_alloc:
+            _btc_regime_on = bool(getattr(regimes.get(btc_sym), "on", False))
+            _sol_regime_on = bool(getattr(regimes.get(sol_sym), "on", False))
+
+            _gated_opps = []
+            for _opp in list(selected_opps_for_alloc):
+                _sid = str(getattr(_opp, "strategy_id", "") or "")
+                _allow = True
+
+                if _sid == "sol_bbrsi":
+                    _allow = _sol_regime_on
+                elif _sid in {"btc_trend", "btc_trend_loose", "sol_trend_pullback"}:
+                    _allow = _btc_regime_on
+
+                if _allow:
+                    _gated_opps.append(_opp)
+
+            selected_opps_for_alloc = list(_gated_opps)
+
         if (
             str(signal_engine) == "registry_portfolio"
             and str(allocation_engine_mode) == "multi_strategy"
@@ -983,6 +1008,53 @@ def run(
                     },
                 )
                 alloc_after_smoothing_weights = dict(getattr(alloc, "weights", {}) or {})
+
+        # Continuous portfolio risk scaling based on SOL ATRP.
+        if bool(portfolio_risk_scale_enable):
+            _sol_candle = candles.get(sol_sym)
+            _sol_sig = signals.get(sol_sym)
+
+            _sol_atrp_now = 0.0
+            try:
+                if isinstance(_sol_candle, dict) and ("atrp" in _sol_candle):
+                    _sol_atrp_now = float(_sol_candle.get("atrp", 0.0) or 0.0)
+                elif _sol_candle is not None and hasattr(_sol_candle, "atrp"):
+                    _sol_atrp_now = float(getattr(_sol_candle, "atrp", 0.0) or 0.0)
+                else:
+                    _sol_meta = dict(getattr(_sol_sig, "meta", {}) or {}) if _sol_sig is not None else {}
+                    _sol_atrp_now = float(_sol_meta.get("atrp", 0.0) or 0.0)
+            except Exception:
+                _sol_atrp_now = 0.0
+
+            _low = float(portfolio_risk_scale_atrp_low)
+            _high = float(portfolio_risk_scale_atrp_high)
+            _floor = max(0.0, min(1.0, float(portfolio_risk_scale_floor)))
+
+            if _high <= _low:
+                _risk_mult = 1.0 if _sol_atrp_now <= _low else _floor
+            elif _sol_atrp_now <= _low:
+                _risk_mult = 1.0
+            elif _sol_atrp_now >= _high:
+                _risk_mult = _floor
+            else:
+                _span = _high - _low
+                _x = (_sol_atrp_now - _low) / _span
+                _risk_mult = 1.0 - _x * (1.0 - _floor)
+
+            _scaled_weights = {
+                _k: float(_w) * float(_risk_mult)
+                for _k, _w in dict(getattr(alloc, "weights", {}) or {}).items()
+            }
+            alloc = Allocation(
+                weights=_scaled_weights,
+                meta={
+                    **dict(getattr(alloc, "meta", {}) or {}),
+                    "portfolio_risk_scale_applied": True,
+                    "portfolio_risk_scale_mult": float(_risk_mult),
+                    "portfolio_risk_scale_sol_atrp": float(_sol_atrp_now),
+                },
+            )
+            alloc_after_smoothing_weights = dict(_scaled_weights)
 
         # --- Signal gating (solo para engines reales, NO para 'flat') ---
         # Si el SignalEngine aplica al símbolo (meta no contiene 'skip') y la señal es flat,
@@ -1896,6 +1968,34 @@ def main() -> None:
         help="Maximum SOL ATRP allowed to keep exposure enabled.",
     )
     ap.add_argument(
+        "--portfolio-risk-scale-enable",
+        action="store_true",
+        help="Enable continuous portfolio exposure scaling based on SOL ATRP.",
+    )
+    ap.add_argument(
+        "--portfolio-risk-scale-atrp-low",
+        type=float,
+        default=0.010,
+        help="SOL ATRP level below which exposure stays at 100 percent.",
+    )
+    ap.add_argument(
+        "--portfolio-risk-scale-atrp-high",
+        type=float,
+        default=0.025,
+        help="SOL ATRP level above which exposure is clamped to the floor multiplier.",
+    )
+    ap.add_argument(
+        "--portfolio-risk-scale-floor",
+        type=float,
+        default=0.35,
+        help="Minimum exposure multiplier when SOL ATRP is very high.",
+    )
+    ap.add_argument(
+        "--strategy-regime-gating",
+        action="store_true",
+        help="Gate registry strategies by regime before MultiStrategyAllocator.",
+    )
+    ap.add_argument(
         "--allocator-smoothing-alpha",
         type=float,
         default=0.50,
@@ -2022,6 +2122,11 @@ def main() -> None:
         portfolio_riskoff_btc_adx_min=float(args.portfolio_riskoff_btc_adx_min),
         portfolio_riskoff_btc_slope_min=float(args.portfolio_riskoff_btc_slope_min),
         portfolio_riskoff_sol_atrp_max=float(args.portfolio_riskoff_sol_atrp_max),
+        portfolio_risk_scale_enable=bool(args.portfolio_risk_scale_enable),
+        portfolio_risk_scale_atrp_low=float(args.portfolio_risk_scale_atrp_low),
+        portfolio_risk_scale_atrp_high=float(args.portfolio_risk_scale_atrp_high),
+        portfolio_risk_scale_floor=float(args.portfolio_risk_scale_floor),
+        strategy_regime_gating=bool(args.strategy_regime_gating),
         allocator_smoothing_alpha=float(args.allocator_smoothing_alpha),
         allocator_smoothing_snap_eps=float(args.allocator_smoothing_snap_eps),
         btc_subpos_count=int(args.btc_subpos_count),
