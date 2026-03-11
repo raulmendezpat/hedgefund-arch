@@ -17,6 +17,10 @@ class MultiStrategyAllocator:
     min_score: float = 1e-12
     symbol_score_agg: str = "sum"
     normalize_total: bool = True
+    switch_hysteresis: float = 0.10
+    min_switch_bars: int = 6
+    rebalance_deadband: float = 0.10
+    weight_blend_alpha: float = 0.40
 
     def _safe_score(self, opp: Opportunity) -> float:
         meta = dict(getattr(opp, "meta", {}) or {})
@@ -104,6 +108,101 @@ class MultiStrategyAllocator:
             else:
                 symbol_scores[symbol] = symbol_scores.get(symbol, 0.0) + score
 
+        hysteresis_meta = {
+            "applied": False,
+            "prev_symbol": None,
+            "best_symbol": None,
+            "best_score": 0.0,
+            "prev_score": 0.0,
+            "switch_threshold": 0.0,
+            "kept_symbol": None,
+            "prev_dominant_symbol": None,
+            "dominant_symbol": None,
+            "dominant_age_bars": 0,
+            "min_switch_bars": int(self.min_switch_bars),
+            "hold_applied": False,
+            "deadband_applied": False,
+            "deadband_symbols": [],
+            "blend_applied": False,
+            "weight_blend_alpha": float(self.weight_blend_alpha),
+        }
+
+        if self.switch_hysteresis > 0 and prev_allocation is not None and symbol_scores:
+            prev_weights = {
+                str(k): float(v or 0.0)
+                for k, v in dict(getattr(prev_allocation, "weights", {}) or {}).items()
+            }
+            prev_active = {k: v for k, v in prev_weights.items() if v > 0.0}
+
+            if prev_active:
+                prev_symbol = max(prev_active.items(), key=lambda kv: kv[1])[0]
+                best_symbol, best_score = max(symbol_scores.items(), key=lambda kv: kv[1])
+                prev_score = float(symbol_scores.get(prev_symbol, 0.0) or 0.0)
+
+                hysteresis_meta.update({
+                    "prev_symbol": prev_symbol,
+                    "best_symbol": best_symbol,
+                    "best_score": float(best_score),
+                    "prev_score": float(prev_score),
+                })
+
+                if (
+                    prev_symbol in symbol_scores
+                    and best_symbol != prev_symbol
+                    and prev_score > 0.0
+                ):
+                    switch_threshold = prev_score * (1.0 + float(self.switch_hysteresis))
+                    hysteresis_meta["switch_threshold"] = float(switch_threshold)
+
+                    if float(best_score) < float(switch_threshold):
+                        symbol_scores[prev_symbol] = max(
+                            float(symbol_scores.get(prev_symbol, 0.0) or 0.0),
+                            float(switch_threshold),
+                        )
+                        hysteresis_meta["applied"] = True
+                        hysteresis_meta["kept_symbol"] = prev_symbol
+
+        if prev_allocation is not None and symbol_scores:
+            prev_meta = dict(getattr(prev_allocation, "meta", {}) or {})
+            prev_hmeta = dict(prev_meta.get("allocator_hysteresis", {}) or {})
+
+            prev_dom_symbol = prev_hmeta.get("dominant_symbol", None)
+            prev_dom_age = int(prev_hmeta.get("dominant_age_bars", 0) or 0)
+
+            current_best_symbol = None
+            current_best_score = 0.0
+            if symbol_scores:
+                current_best_symbol, current_best_score = max(symbol_scores.items(), key=lambda kv: kv[1])
+
+            if current_best_symbol is not None:
+                if prev_dom_symbol == current_best_symbol:
+                    dominant_symbol = current_best_symbol
+                    dominant_age_bars = prev_dom_age + 1
+                else:
+                    dominant_symbol = current_best_symbol
+                    dominant_age_bars = 1
+
+                hysteresis_meta["prev_dominant_symbol"] = prev_dom_symbol
+                hysteresis_meta["dominant_symbol"] = dominant_symbol
+                hysteresis_meta["dominant_age_bars"] = int(dominant_age_bars)
+
+                if (
+                    self.min_switch_bars > 0
+                    and prev_dom_symbol
+                    and current_best_symbol != prev_dom_symbol
+                    and prev_dom_age < int(self.min_switch_bars)
+                    and prev_dom_symbol in symbol_scores
+                ):
+                    keep_score = max(
+                        float(symbol_scores.get(prev_dom_symbol, 0.0) or 0.0),
+                        float(current_best_score or 0.0) + self.min_score,
+                    )
+                    symbol_scores[prev_dom_symbol] = keep_score
+                    hysteresis_meta["hold_applied"] = True
+                    hysteresis_meta["kept_symbol"] = prev_dom_symbol
+                    hysteresis_meta["dominant_symbol"] = prev_dom_symbol
+                    hysteresis_meta["dominant_age_bars"] = int(prev_dom_age + 1)
+
         symbol_budget = self._symbol_budget(symbol_scores)
 
         if not symbol_budget:
@@ -148,6 +247,40 @@ class MultiStrategyAllocator:
                 strategy_weights[key] = final_w
                 weights_by_symbol[symbol] = weights_by_symbol.get(symbol, 0.0) + final_w
 
+        if prev_allocation is not None and self.weight_blend_alpha > 0:
+            prev_weights = {
+                str(k): float(v or 0.0)
+                for k, v in dict(getattr(prev_allocation, "weights", {}) or {}).items()
+            }
+
+            alpha = float(self.weight_blend_alpha)
+            for symbol in list(weights_by_symbol.keys()):
+                target_w = float(weights_by_symbol.get(symbol, 0.0) or 0.0)
+                prev_w = float(prev_weights.get(symbol, 0.0) or 0.0)
+                weights_by_symbol[symbol] = alpha * target_w + (1.0 - alpha) * prev_w
+
+            hysteresis_meta["blend_applied"] = True
+
+        if prev_allocation is not None and self.rebalance_deadband > 0:
+            prev_weights = {
+                str(k): float(v or 0.0)
+                for k, v in dict(getattr(prev_allocation, "weights", {}) or {}).items()
+            }
+
+            deadband_symbols = []
+
+            for symbol in list(weights_by_symbol.keys()):
+                new_w = float(weights_by_symbol.get(symbol, 0.0) or 0.0)
+                prev_w = float(prev_weights.get(symbol, 0.0) or 0.0)
+
+                if abs(new_w - prev_w) < float(self.rebalance_deadband):
+                    weights_by_symbol[symbol] = prev_w
+                    deadband_symbols.append(symbol)
+
+            if deadband_symbols:
+                hysteresis_meta["deadband_applied"] = True
+                hysteresis_meta["deadband_symbols"] = deadband_symbols
+
         total = sum(weights_by_symbol.values())
 
         if self.normalize_total and total > 1:
@@ -160,5 +293,6 @@ class MultiStrategyAllocator:
                 "case": "multi_strategy",
                 "strategy_weights": strategy_weights,
                 "symbol_budget": symbol_budget,
+                "allocator_hysteresis": hysteresis_meta,
             },
         )
