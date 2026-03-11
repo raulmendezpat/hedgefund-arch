@@ -1564,6 +1564,9 @@ def run(
     metrics["max_execution_cost_bps"] = float(metrics_max_execution_cost_bps)
     metrics["min_execution_cost_bps"] = float(metrics_min_execution_cost_bps)
     metrics["total_execution_cost_drag_pct"] = float(perf_out["execution_cost_drag_pct"].sum())
+    metrics["execution_turnover_sum"] = float(pd.to_numeric(perf_out.get("execution_turnover", 0.0), errors="coerce").fillna(0.0).sum())
+    metrics["equity_final"] = float(pd.to_numeric(perf_out["equity"], errors="coerce").iloc[-1])
+    metrics["gross_equity_final"] = float(pd.to_numeric(perf_out["equity"], errors="coerce").iloc[-1])
 
     with open(f"results/pipeline_metrics_{name}.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, sort_keys=True)
@@ -1603,6 +1606,9 @@ def run(
         metrics_net["avg_execution_cost_pct"] = metrics.get("avg_execution_cost_pct", 0.0)
         metrics_net["max_execution_cost_bps"] = metrics.get("max_execution_cost_bps", 0.0)
         metrics_net["min_execution_cost_bps"] = metrics.get("min_execution_cost_bps", 0.0)
+        metrics_net["execution_turnover_sum"] = float(pd.to_numeric(net.get("turnover", 0.0), errors="coerce").fillna(0.0).sum())
+        metrics_net["gross_equity_final"] = float(pd.to_numeric(net["gross_equity"], errors="coerce").iloc[-1]) if "gross_equity" in net.columns else float(metrics.get("gross_equity_final", metrics.get("end_equity", 0.0)))
+        metrics_net["equity_final"] = float(pd.to_numeric(net["net_equity"], errors="coerce").iloc[-1]) if "net_equity" in net.columns else float(metrics_net.get("end_equity", 0.0))
         metrics_net["fee_bps"] = float(_fee_bps)
         metrics_net["slippage_bps"] = float(_slip_bps)
         metrics_net["turnover_cost_drag_pct"] = float(
