@@ -263,6 +263,11 @@ def run(
     allocator_blend_alpha: float = 0.40,
     allocator_rebalance_deadband: float = 0.0,
     allocator_symbol_cap: float = 1.0,
+    allocator_max_step_per_bar: float = 1.0,
+    portfolio_riskoff_filter: bool = False,
+    portfolio_riskoff_btc_adx_min: float = 18.0,
+    portfolio_riskoff_btc_slope_min: float = 1.5,
+    portfolio_riskoff_sol_atrp_max: float = 0.035,
     allocator_smoothing_alpha: float = 0.50,
     allocator_smoothing_snap_eps: float = 0.02,
     btc_subpos_count: int = 1,
@@ -918,6 +923,66 @@ def run(
             )
 
         alloc_after_smoothing_weights = dict(getattr(alloc, "weights", {}) or {})
+
+        # Guardrail operativo: limitar cambio máximo por símbolo por barra.
+        if prev_alloc is not None and float(allocator_max_step_per_bar) < 1.0:
+            _step_cap = max(0.0, float(allocator_max_step_per_bar))
+            _prev_w = dict(getattr(prev_alloc, "weights", {}) or {})
+            _curr_w = dict(getattr(alloc, "weights", {}) or {})
+            _keys = set(_prev_w.keys()) | set(_curr_w.keys())
+            _clamped = {}
+            for _k in _keys:
+                _pw = float(_prev_w.get(_k, 0.0) or 0.0)
+                _cw = float(_curr_w.get(_k, 0.0) or 0.0)
+                _delta = _cw - _pw
+                if _delta > _step_cap:
+                    _cw = _pw + _step_cap
+                elif _delta < -_step_cap:
+                    _cw = _pw - _step_cap
+                _clamped[_k] = _cw
+
+            alloc = Allocation(
+                weights=_clamped,
+                meta={
+                    **dict(getattr(alloc, "meta", {}) or {}),
+                    "max_step_guardrail_applied": True,
+                    "max_step_per_bar": float(_step_cap),
+                },
+            )
+            alloc_after_smoothing_weights = dict(_clamped)
+
+        # Portfolio-level risk-off filter:
+        # usar fuente real de ATRP: candle dict -> atributo -> signal.meta.
+        if bool(portfolio_riskoff_filter):
+            _sol_candle = candles.get(sol_sym)
+            _sol_sig = signals.get(sol_sym)
+
+            _sol_atrp_now = 0.0
+            try:
+                if isinstance(_sol_candle, dict) and ("atrp" in _sol_candle):
+                    _sol_atrp_now = float(_sol_candle.get("atrp", 0.0) or 0.0)
+                elif _sol_candle is not None and hasattr(_sol_candle, "atrp"):
+                    _sol_atrp_now = float(getattr(_sol_candle, "atrp", 0.0) or 0.0)
+                else:
+                    _sol_meta = dict(getattr(_sol_sig, "meta", {}) or {}) if _sol_sig is not None else {}
+                    _sol_atrp_now = float(_sol_meta.get("atrp", 0.0) or 0.0)
+            except Exception:
+                _sol_atrp_now = 0.0
+
+            _riskoff = _sol_atrp_now > float(portfolio_riskoff_sol_atrp_max)
+
+            if _riskoff:
+                alloc = Allocation(
+                    weights={k: 0.0 for k in dict(getattr(alloc, "weights", {}) or {}).keys()},
+                    meta={
+                        **dict(getattr(alloc, "meta", {}) or {}),
+                        "portfolio_riskoff_applied": True,
+                        "portfolio_riskoff_reason": {
+                            "sol_atrp": float(_sol_atrp_now),
+                        },
+                    },
+                )
+                alloc_after_smoothing_weights = dict(getattr(alloc, "weights", {}) or {})
 
         # --- Signal gating (solo para engines reales, NO para 'flat') ---
         # Si el SignalEngine aplica al símbolo (meta no contiene 'skip') y la señal es flat,
@@ -1802,6 +1867,35 @@ def main() -> None:
         help="Maximum total budget assigned to a single symbol in MultiStrategyAllocator.",
     )
     ap.add_argument(
+        "--allocator-max-step-per-bar",
+        type=float,
+        default=1.0,
+        help="Maximum absolute weight change allowed per symbol in a single bar after smoothing.",
+    )
+    ap.add_argument(
+        "--portfolio-riskoff-filter",
+        action="store_true",
+        help="Disable all portfolio exposure when broad regime conditions are hostile.",
+    )
+    ap.add_argument(
+        "--portfolio-riskoff-btc-adx-min",
+        type=float,
+        default=18.0,
+        help="Minimum BTC ADX required to allow exposure.",
+    )
+    ap.add_argument(
+        "--portfolio-riskoff-btc-slope-min",
+        type=float,
+        default=1.5,
+        help="Minimum BTC slope required to allow exposure.",
+    )
+    ap.add_argument(
+        "--portfolio-riskoff-sol-atrp-max",
+        type=float,
+        default=0.035,
+        help="Maximum SOL ATRP allowed to keep exposure enabled.",
+    )
+    ap.add_argument(
         "--allocator-smoothing-alpha",
         type=float,
         default=0.50,
@@ -1923,6 +2017,11 @@ def main() -> None:
         allocator_blend_alpha=float(args.allocator_blend_alpha),
         allocator_rebalance_deadband=float(args.allocator_rebalance_deadband),
         allocator_symbol_cap=float(args.allocator_symbol_cap),
+        allocator_max_step_per_bar=float(args.allocator_max_step_per_bar),
+        portfolio_riskoff_filter=bool(args.portfolio_riskoff_filter),
+        portfolio_riskoff_btc_adx_min=float(args.portfolio_riskoff_btc_adx_min),
+        portfolio_riskoff_btc_slope_min=float(args.portfolio_riskoff_btc_slope_min),
+        portfolio_riskoff_sol_atrp_max=float(args.portfolio_riskoff_sol_atrp_max),
         allocator_smoothing_alpha=float(args.allocator_smoothing_alpha),
         allocator_smoothing_snap_eps=float(args.allocator_smoothing_snap_eps),
         btc_subpos_count=int(args.btc_subpos_count),
