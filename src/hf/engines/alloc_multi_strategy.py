@@ -21,6 +21,7 @@ class MultiStrategyAllocator:
     min_switch_bars: int = 6
     rebalance_deadband: float = 0.10
     weight_blend_alpha: float = 0.40
+    symbol_cap: float = 1.0
 
     def _safe_score(self, opp: Opportunity) -> float:
         meta = dict(getattr(opp, "meta", {}) or {})
@@ -234,7 +235,7 @@ class MultiStrategyAllocator:
             if denom <= 0:
                 continue
 
-            symbol_cap = float(symbol_budget.get(symbol, 0.0))
+            symbol_cap = min(float(symbol_budget.get(symbol, 0.0)), float(self.symbol_cap))
 
             for opp, adj in powered:
 

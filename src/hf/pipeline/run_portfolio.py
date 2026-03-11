@@ -262,6 +262,7 @@ def run(
     strategy_symbol_score_agg: str = "sum",
     allocator_blend_alpha: float = 0.40,
     allocator_rebalance_deadband: float = 0.0,
+    allocator_symbol_cap: float = 1.0,
     allocator_smoothing_alpha: float = 0.50,
     allocator_smoothing_snap_eps: float = 0.02,
     btc_subpos_count: int = 1,
@@ -437,6 +438,7 @@ def run(
         symbol_score_agg=str(strategy_symbol_score_agg),
         weight_blend_alpha=float(allocator_blend_alpha),
         rebalance_deadband=float(allocator_rebalance_deadband),
+        symbol_cap=float(allocator_symbol_cap),
     )
 
     ml_enabled_for_scores = bool(ml_filter or ml_position_sizing or ml_model_path or ml_model_registry)
@@ -1794,6 +1796,12 @@ def main() -> None:
         help="Minimum absolute weight change required before allocator rebalance is applied.",
     )
     ap.add_argument(
+        "--allocator-symbol-cap",
+        type=float,
+        default=1.0,
+        help="Maximum total budget assigned to a single symbol in MultiStrategyAllocator.",
+    )
+    ap.add_argument(
         "--allocator-smoothing-alpha",
         type=float,
         default=0.50,
@@ -1914,6 +1922,7 @@ def main() -> None:
         strategy_symbol_score_agg=str(args.strategy_symbol_score_agg),
         allocator_blend_alpha=float(args.allocator_blend_alpha),
         allocator_rebalance_deadband=float(args.allocator_rebalance_deadband),
+        allocator_symbol_cap=float(args.allocator_symbol_cap),
         allocator_smoothing_alpha=float(args.allocator_smoothing_alpha),
         allocator_smoothing_snap_eps=float(args.allocator_smoothing_snap_eps),
         btc_subpos_count=int(args.btc_subpos_count),
