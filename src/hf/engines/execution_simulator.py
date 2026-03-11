@@ -88,13 +88,21 @@ class ExecutionSimulator:
         dW.iloc[0] = W.iloc[0].abs()  # desde cash=0 en t=0
         turnover = dW.sum(axis=1)
 
-        cost = self.cost_model.cost_per_period(turnover)
+        turnover_threshold = 0.05
+        effective_turnover = turnover.where(turnover >= turnover_threshold, 0.0)
+
+        cost = self.cost_model.cost_per_period(effective_turnover)
         net_ret = gross_ret - cost
 
         out["gross_ret"] = gross_ret.values
         out["turnover"] = turnover.values
+        out["effective_turnover"] = effective_turnover.values
         out["cost"] = cost.values
         out["net_ret"] = net_ret.values
+
+        for _c in wcols:
+            out[str(_c)] = W[_c].values
+            out[f"d{_c}"] = dW[_c].values
 
         # net equity
         eq = pd.Series(float(self.initial_equity), index=out.index, dtype="float64")

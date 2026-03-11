@@ -882,6 +882,26 @@ def run(
                 signals=signals,
             )
 
+        # Suavizado conservador de transiciones en multi_strategy.
+        _alloc_case_now = str((getattr(alloc, "meta", {}) or {}).get("case", ""))
+        if prev_alloc is not None and _alloc_case_now == "multi_strategy":
+            _alpha = 0.5
+            _snap_eps = 0.02
+            _keys = set(dict(prev_alloc.weights).keys()) | set(dict(alloc.weights).keys())
+            _smoothed_weights = {}
+            for _k in _keys:
+                _prev_w = float(dict(prev_alloc.weights).get(_k, 0.0) or 0.0)
+                _curr_w = float(dict(alloc.weights).get(_k, 0.0) or 0.0)
+                _w = _prev_w + _alpha * (_curr_w - _prev_w)
+                if abs(_w) < _snap_eps:
+                    _w = 0.0
+                _smoothed_weights[_k] = _w
+
+            alloc = Allocation(
+                weights=_smoothed_weights,
+                meta=dict(getattr(alloc, "meta", {}) or {}),
+            )
+
         # --- Signal gating (solo para engines reales, NO para 'flat') ---
         # Si el SignalEngine aplica al símbolo (meta no contiene 'skip') y la señal es flat,
         # forzamos el weight a 0.0. Esto permite que SignalEngine afecte allocations/equity
@@ -1157,6 +1177,7 @@ def run(
             },
         )
 
+        _prev_alloc_for_rows = prev_alloc
         prev_alloc = alloc
         allocs.append(alloc)
 
@@ -1194,11 +1215,21 @@ def run(
             "is_active": bool(getattr(signals.get(sol_sym), "is_active")()) if hasattr(signals.get(sol_sym), "is_active") else False,
         })
 
+        _prev_w_btc = float(_prev_alloc_for_rows.weights.get(btc_sym, 0.0)) if _prev_alloc_for_rows is not None else 0.0
+        _prev_w_sol = float(_prev_alloc_for_rows.weights.get(sol_sym, 0.0)) if _prev_alloc_for_rows is not None else 0.0
+        _curr_w_btc = float(alloc.weights.get(btc_sym, 0.0))
+        _curr_w_sol = float(alloc.weights.get(sol_sym, 0.0))
+
         rows.append({
             "ts": int(ts),
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
-            "w_btc": float(alloc.weights.get(btc_sym, 0.0)),
-            "w_sol": float(alloc.weights.get(sol_sym, 0.0)),
+            "w_btc": _curr_w_btc,
+            "w_sol": _curr_w_sol,
+            "prev_w_btc": _prev_w_btc,
+            "prev_w_sol": _prev_w_sol,
+            "dw_btc": abs(_curr_w_btc - _prev_w_btc),
+            "dw_sol": abs(_curr_w_sol - _prev_w_sol),
+            "allocation_case": str((alloc.meta or {}).get("case", "")),
             "btc_side": str(getattr(signals.get(btc_sym), "side", "flat")),
             "sol_side": str(getattr(signals.get(sol_sym), "side", "flat")),
             "btc_strength": float(getattr(signals.get(btc_sym), "strength", 0.0) or 0.0),
@@ -1400,30 +1431,111 @@ def run(
 
         _ml_df.to_csv(_ml_out, index=False)
 
-    # Portfolio performance (equity/drawdown) - research-grade, no fees/slippage
+    # Portfolio performance (equity/drawdown)
     pe = SimplePortfolioEngine(initial_equity=1000.0)
     perf = pe.run(candles_by_symbol=candles_by_symbol, allocations=allocs, symbols=(btc_sym, sol_sym))
-    perf.reset_index().to_csv(f"results/pipeline_equity_{name}.csv", index=False)
-
-    # Portfolio metrics (hedge-fund style summary)
-    metrics = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(perf_df=perf.reset_index(), alloc_df=df)
+    perf_out = perf.reset_index().copy()
+    perf_out["gross_port_ret"] = pd.to_numeric(perf_out["port_ret"], errors="coerce").fillna(0.0)
+    perf_out["gross_equity"] = pd.to_numeric(perf_out["equity"], errors="coerce").fillna(0.0)
+    perf_out["gross_drawdown_pct"] = pd.to_numeric(perf_out["drawdown_pct"], errors="coerce").fillna(0.0)
+    perf_out["execution_turnover"] = 0.0
+    perf_out["execution_cost_rate"] = 0.0
+    perf_out["execution_cost_drag_pct"] = 0.0
 
     if execution_rows:
         _exec_df = pd.DataFrame(execution_rows)
         _cost_bps = pd.to_numeric(_exec_df["execution_cost_bps"], errors="coerce").fillna(0.0)
         _cost_pct = pd.to_numeric(_exec_df["execution_cost_pct"], errors="coerce").fillna(0.0)
 
-        metrics["execution_fill_count_total"] = int(len(_exec_df))
-        metrics["avg_execution_cost_bps"] = float(_cost_bps.mean()) if len(_exec_df) else 0.0
-        metrics["avg_execution_cost_pct"] = float(_cost_pct.mean()) if len(_exec_df) else 0.0
-        metrics["max_execution_cost_bps"] = float(_cost_bps.max()) if len(_exec_df) else 0.0
-        metrics["min_execution_cost_bps"] = float(_cost_bps.min()) if len(_exec_df) else 0.0
+        metrics_execution_fill_count_total = int(len(_exec_df))
+        metrics_avg_execution_cost_bps = float(_cost_bps.mean()) if len(_exec_df) else 0.0
+        metrics_avg_execution_cost_pct = float(_cost_pct.mean()) if len(_exec_df) else 0.0
+        metrics_max_execution_cost_bps = float(_cost_bps.max()) if len(_exec_df) else 0.0
+        metrics_min_execution_cost_bps = float(_cost_bps.min()) if len(_exec_df) else 0.0
+
+        _cost_source = _exec_df.drop_duplicates(subset=["ts", "order_id", "symbol", "side", "bar_index"]).copy()
+        _cost_source = _cost_source[
+            pd.to_numeric(_cost_source["filled_weight"], errors="coerce").fillna(0.0).abs() > 0.0
+        ].copy()
+        _cost_source["_ts_key"] = pd.to_datetime(
+            pd.to_numeric(_cost_source["ts"], errors="coerce"),
+            unit="ms",
+            utc=True,
+            errors="coerce",
+        )
+        _cost_source["_unit_cost_pct"] = pd.to_numeric(
+            _cost_source["execution_cost_pct"], errors="coerce"
+        ).fillna(0.0).abs()
+        _cost_ts = (
+            _cost_source.groupby("_ts_key", as_index=False)["_unit_cost_pct"]
+            .mean()
+            .rename(columns={"_unit_cost_pct": "execution_cost_rate"})
+        )
+
+        _weight_cols = [c for c in df.columns if str(c).startswith("w_")]
+        _weights = df[_weight_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+        _turnover = _weights.diff().abs()
+        if len(_turnover):
+            _turnover.iloc[0] = _weights.iloc[0].abs()
+        _turnover = _turnover.sum(axis=1)
+        _turnover_df = pd.DataFrame(
+            {
+                "_ts_key": pd.to_datetime(
+                    pd.to_numeric(df["ts"], errors="coerce"),
+                    unit="ms",
+                    utc=True,
+                    errors="coerce",
+                ),
+                "execution_turnover": _turnover,
+            }
+        )
+
+        perf_out["_ts_key"] = pd.to_datetime(perf_out["ts"], utc=True, errors="coerce")
+        perf_out = perf_out.merge(_turnover_df, on="_ts_key", how="left", suffixes=("", "_new"))
+        perf_out = perf_out.merge(_cost_ts, on="_ts_key", how="left", suffixes=("", "_new"))
+
+        if "execution_turnover_new" in perf_out.columns:
+            perf_out["execution_turnover"] = perf_out["execution_turnover_new"]
+            perf_out = perf_out.drop(columns=["execution_turnover_new"])
+        if "execution_cost_rate_new" in perf_out.columns:
+            perf_out["execution_cost_rate"] = perf_out["execution_cost_rate_new"]
+            perf_out = perf_out.drop(columns=["execution_cost_rate_new"])
+
+        perf_out["execution_turnover"] = pd.to_numeric(perf_out["execution_turnover"], errors="coerce").fillna(0.0)
+        perf_out["execution_cost_rate"] = pd.to_numeric(perf_out["execution_cost_rate"], errors="coerce").fillna(0.0)
+        perf_out["execution_cost_drag_pct"] = perf_out["execution_turnover"] * perf_out["execution_cost_rate"]
+        perf_out["port_ret"] = perf_out["gross_port_ret"] - perf_out["execution_cost_drag_pct"]
+
+        _equity = pd.Series(1000.0, index=perf_out.index, dtype="float64")
+        for i in range(1, len(perf_out)):
+            _equity.iloc[i] = _equity.iloc[i - 1] * (1.0 + float(perf_out.loc[i, "port_ret"]))
+        perf_out["equity"] = _equity.values
+
+        _peak = _equity.cummax()
+        _dd = (_equity / _peak) - 1.0
+        perf_out["drawdown"] = _dd.values
+        perf_out["drawdown_pct"] = (_dd * 100.0).values
+        perf_out = perf_out.drop(columns=["_ts_key"])
     else:
-        metrics["execution_fill_count_total"] = 0
-        metrics["avg_execution_cost_bps"] = 0.0
-        metrics["avg_execution_cost_pct"] = 0.0
-        metrics["max_execution_cost_bps"] = 0.0
-        metrics["min_execution_cost_bps"] = 0.0
+        metrics_execution_fill_count_total = 0
+        metrics_avg_execution_cost_bps = 0.0
+        metrics_avg_execution_cost_pct = 0.0
+        metrics_max_execution_cost_bps = 0.0
+        metrics_min_execution_cost_bps = 0.0
+
+    perf_out.to_csv(f"results/pipeline_equity_{name}.csv", index=False)
+
+    # Portfolio metrics (hedge-fund style summary)
+    metrics = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(
+        perf_df=perf_out[["ts", "equity", "port_ret", "drawdown_pct"]],
+        alloc_df=df,
+    )
+    metrics["execution_fill_count_total"] = int(metrics_execution_fill_count_total)
+    metrics["avg_execution_cost_bps"] = float(metrics_avg_execution_cost_bps)
+    metrics["avg_execution_cost_pct"] = float(metrics_avg_execution_cost_pct)
+    metrics["max_execution_cost_bps"] = float(metrics_max_execution_cost_bps)
+    metrics["min_execution_cost_bps"] = float(metrics_min_execution_cost_bps)
+    metrics["total_execution_cost_drag_pct"] = float(perf_out["execution_cost_drag_pct"].sum())
 
     with open(f"results/pipeline_metrics_{name}.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, sort_keys=True)
@@ -1434,10 +1546,22 @@ def run(
     if _fee_bps > 0.0 or _slip_bps > 0.0:
         sim = ExecutionSimulator(
             cost_model=ExecutionCostModel(fee_bps=_fee_bps, slippage_bps=_slip_bps),
-            initial_equity=float(perf['equity'].iloc[0]) if 'equity' in perf.columns else 1000.0,
+            initial_equity=float(perf_out['equity'].iloc[0]) if 'equity' in perf_out.columns else 1000.0,
         )
-        net = sim.apply_costs(perf_df=perf.reset_index(), alloc_df=df)
+        net = sim.apply_costs(perf_df=perf_out, alloc_df=df)
         net.to_csv(f"results/pipeline_equity_net_{name}.csv", index=False)
+
+        turnover_diag = net.copy()
+        for _c in ["turnover", "effective_turnover", "cost", "gross_ret", "net_ret"]:
+            if _c in turnover_diag.columns:
+                turnover_diag[_c] = pd.to_numeric(turnover_diag[_c], errors="coerce").fillna(0.0)
+
+        turnover_diag["cost_bps_on_turnover"] = 0.0
+        _mask_turn = pd.to_numeric(turnover_diag["turnover"], errors="coerce").fillna(0.0) > 0.0
+        turnover_diag.loc[_mask_turn, "cost_bps_on_turnover"] = (
+            turnover_diag.loc[_mask_turn, "cost"] / turnover_diag.loc[_mask_turn, "turnover"]
+        ) * 10000.0
+        turnover_diag.to_csv(f"results/turnover_diagnostics_{name}.csv", index=False)
 
         perf_net = pd.DataFrame({
             'ts': net['ts'],
@@ -1446,7 +1570,21 @@ def run(
             'drawdown_pct': net['net_drawdown_pct'],
         })
         metrics_net = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(perf_df=perf_net, alloc_df=df)
+        metrics_net["execution_fill_count_total"] = metrics.get("execution_fill_count_total", 0)
+        metrics_net["avg_execution_cost_bps"] = metrics.get("avg_execution_cost_bps", 0.0)
+        metrics_net["avg_execution_cost_pct"] = metrics.get("avg_execution_cost_pct", 0.0)
+        metrics_net["max_execution_cost_bps"] = metrics.get("max_execution_cost_bps", 0.0)
+        metrics_net["min_execution_cost_bps"] = metrics.get("min_execution_cost_bps", 0.0)
+        metrics_net["fee_bps"] = float(_fee_bps)
+        metrics_net["slippage_bps"] = float(_slip_bps)
+        metrics_net["turnover_cost_drag_pct"] = float(
+            pd.to_numeric(net["cost"], errors="coerce").fillna(0.0).sum() * 100.0
+        )
+
         with open(f"results/pipeline_metrics_net_{name}.json", "w", encoding="utf-8") as f:
+            json.dump(metrics_net, f, indent=2, sort_keys=True)
+
+        with open(f"results/pipeline_metrics_{name}.json", "w", encoding="utf-8") as f:
             json.dump(metrics_net, f, indent=2, sort_keys=True)
 
     
