@@ -19,7 +19,9 @@ SYMBOLS = {
         "ohlcv_limit": 120,
         "atr_period": 14,
         "sl_atr_mult": 1.8,
-        "tp_atr_mult": 2.6,
+        "tp_atr_mult_min": 1.8,
+        "tp_atr_mult_max": 3.8,
+        "tp_atr_pct_pivot": 0.012,
         "min_delta_notional": 5.0,
         "max_delta_notional": 80.0,
         "stop_refresh_rel_tol": 0.0025,
@@ -31,7 +33,9 @@ SYMBOLS = {
         "ohlcv_limit": 120,
         "atr_period": 14,
         "sl_atr_mult": 2.2,
-        "tp_atr_mult": 3.0,
+        "tp_atr_mult_min": 2.0,
+        "tp_atr_mult_max": 4.2,
+        "tp_atr_pct_pivot": 0.018,
         "min_delta_notional": 5.0,
         "max_delta_notional": 50.0,
         "stop_refresh_rel_tol": 0.0040,
@@ -116,11 +120,26 @@ def desired_stop_price(side: str, ref_price: float, atr: float, sl_atr_mult: flo
     return 0.0
 
 
-def desired_take_profit_price(side: str, ref_price: float, atr: float, tp_atr_mult: float) -> float:
+def desired_take_profit_price(
+    side: str,
+    ref_price: float,
+    atr: float,
+    tp_atr_mult_min: float,
+    tp_atr_mult_max: float,
+    tp_atr_pct_pivot: float,
+) -> float:
+    atr_pct = atr / ref_price if ref_price > 0 else 0.0
+    pivot = max(float(tp_atr_pct_pivot), 1e-9)
+
+    raw_mult = float(tp_atr_mult_min) + (atr_pct / pivot) * (
+        float(tp_atr_mult_max) - float(tp_atr_mult_min)
+    )
+    tp_mult = max(float(tp_atr_mult_min), min(float(tp_atr_mult_max), raw_mult))
+
     if side == "long":
-        return ref_price + tp_atr_mult * atr
+        return ref_price + tp_mult * atr
     if side == "short":
-        return ref_price - tp_atr_mult * atr
+        return ref_price - tp_mult * atr
     return 0.0
 
 
@@ -256,7 +275,14 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         return
 
     sl_price = desired_stop_price(pos_side, ref_price, atr, cfg["sl_atr_mult"])
-    tp_price = desired_take_profit_price(pos_side, ref_price, atr, cfg["tp_atr_mult"])
+    tp_price = desired_take_profit_price(
+        pos_side,
+        ref_price,
+        atr,
+        cfg["tp_atr_mult_min"],
+        cfg["tp_atr_mult_max"],
+        cfg["tp_atr_pct_pivot"],
+    )
     sl_price = float(bitget.price_to_precision(symbol, sl_price))
     tp_price = float(bitget.price_to_precision(symbol, tp_price))
 

@@ -1,0 +1,27 @@
+Saved -> results/pipeline_allocations_prod_candidate_live.csv (rows=718)
+=== LIVE RECONCILIATION ===
+live_trading: True
+usdt_total: 274.96358376
+
+=== BTC/USDT:USDT ===
+side: flat
+target_weight: 0.0
+last: 69750.0
+current_qty: 0.0
+target_qty: 0.0
+delta_qty: 0.0
+delta_notional: 0.0
+action: skip rebalance (below min_delta_notional)
+protective_action: no position -> stale SL/TP cancelled if any
+
+=== SOL/USDT:USDT ===
+side: flat
+target_weight: 0.0
+last: 85.562
+current_qty: 0.0
+target_qty: 0.0
+delta_qty: 0.0
+delta_notional: 0.0
+action: skip rebalance (below min_delta_notional)
+protective_action: no position -> stale SL/TP cancelled if any
+
