@@ -12,6 +12,7 @@ from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
+from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
 
 
 def _default_registry() -> List[dict]:
@@ -55,6 +56,7 @@ class RegistryOpportunityBook:
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_extreme_mr_signal": lambda cfg: SolExtremeMrSignalEngine(**dict(cfg.get("params", {}) or {})),
         "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(
             rsi_long_min=float((cfg.get("params", {}) or {}).get("rsi_long_min", 40.0)),
             rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", 55.0)),

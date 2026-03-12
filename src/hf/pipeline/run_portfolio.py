@@ -21,6 +21,7 @@ from hf.engines.regime_regime3 import Regime3Engine
 from hf.engines.signals import PortfolioSignalEngine, RegistryPortfolioSignalEngine, FlatSignalEngine, BtcTrendSignalEngine, SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
+from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
 from hf.engines.opportunity_book import select_opportunities, compute_competitive_score, compute_post_ml_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
@@ -424,6 +425,13 @@ def run(
                     atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", sol_trend_pullback_atrp_max)),
                     require_adx=bool((cfg.get("params", {}) or {}).get("require_adx", sol_trend_pullback_require_adx)),
                     adx_min=float((cfg.get("params", {}) or {}).get("adx_min", sol_trend_pullback_adx_min)),
+                ),
+                "sol_extreme_mr_signal": lambda cfg: SolExtremeMrSignalEngine(
+                    rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", 25.0)),
+                    rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", 75.0)),
+                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", 0.012)),
+                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", 0.080)),
+                    adx_max=float((cfg.get("params", {}) or {}).get("adx_max", 18.0)),
                 ),
             },
         )

@@ -10,6 +10,7 @@ from hf.core.types import Candle, Signal
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
+from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
 from hf.engines.opportunity_book import RegistryOpportunityBook, to_signal_dict
 
 
@@ -52,6 +53,7 @@ class RegistryPortfolioSignalEngine(SignalEngine):
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_extreme_mr_signal": lambda cfg: SolExtremeMrSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:
@@ -127,16 +129,19 @@ class PortfolioSignalEngine(RegistryPortfolioSignalEngine):
     btc_engine: Optional[BtcTrendSignalEngine] = None
     sol_engine: Optional[SolBbrsiSignalEngine] = None
     sol_vol_breakout_engine: Optional[SolVolBreakoutSignalEngine] = None
+    sol_extreme_mr_engine: Optional[SolExtremeMrSignalEngine] = None
 
     def __post_init__(self) -> None:
         btc_engine = self.btc_engine or BtcTrendSignalEngine()
         sol_engine = self.sol_engine or SolBbrsiSignalEngine()
         sol_vol_breakout_engine = self.sol_vol_breakout_engine or SolVolBreakoutSignalEngine()
+        sol_extreme_mr_engine = self.sol_extreme_mr_engine or SolExtremeMrSignalEngine()
 
         self.engine_factories = {
             "btc_trend_signal": lambda cfg: btc_engine,
             "sol_bbrsi_signal": lambda cfg: sol_engine,
             "sol_vol_breakout_signal": lambda cfg: sol_vol_breakout_engine,
+            "sol_extreme_mr_signal": lambda cfg: sol_extreme_mr_engine,
         }
 
         if not getattr(self, "registry_path", None):

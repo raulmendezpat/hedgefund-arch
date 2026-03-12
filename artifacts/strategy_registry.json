@@ -26,6 +26,20 @@
     "params": {}
   },
   {
+    "strategy_id": "sol_extreme_mr",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_extreme_mr_signal",
+    "enabled": true,
+    "base_weight": 0.15,
+    "params": {
+      "rsi_long_max": 25.0,
+      "rsi_short_min": 75.0,
+      "atrp_min": 0.012,
+      "atrp_max": 0.08,
+      "adx_max": 18.0
+    }
+  },
+  {
     "strategy_id": "sol_trend_pullback",
     "symbol": "SOL/USDT:USDT",
     "engine": "sol_trend_pullback_signal",
