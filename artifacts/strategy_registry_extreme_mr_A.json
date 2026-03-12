@@ -1,0 +1,62 @@
+[
+  {
+    "strategy_id": "btc_trend",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {}
+  },
+  {
+    "strategy_id": "btc_trend_loose",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.9,
+    "params": {
+      "adx_min": 12.0
+    }
+  },
+  {
+    "strategy_id": "sol_bbrsi",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_bbrsi_signal",
+    "enabled": true,
+    "base_weight": 0.6,
+    "params": {}
+  },
+  {
+    "strategy_id": "sol_extreme_mr",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_extreme_mr_signal",
+    "enabled": true,
+    "base_weight": 0.15,
+    "params": {
+      "rsi_long_max": 34.0,
+      "rsi_short_min": 66.0,
+      "atrp_min": 0.008,
+      "atrp_max": 0.08,
+      "adx_max": 24.0,
+      "bb_long_mult": 1.002,
+      "bb_short_mult": 0.998
+    }
+  },
+  {
+    "strategy_id": "sol_trend_pullback",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_trend_pullback_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {
+      "rsi_long_min": 45,
+      "rsi_long_max": 52,
+      "rsi_short_min": 48,
+      "rsi_short_max": 55,
+      "ema_pullback_max": 0.008,
+      "atrp_min": 0.006,
+      "atrp_max": 0.05,
+      "require_adx": true,
+      "adx_min": 20
+    }
+  }
+]

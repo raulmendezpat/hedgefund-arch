@@ -22,6 +22,7 @@ class MultiStrategyAllocator:
     rebalance_deadband: float = 0.10
     weight_blend_alpha: float = 0.40
     symbol_cap: float = 1.0
+    target_exposure: float = 0.0
 
     def _safe_score(self, opp: Opportunity) -> float:
         meta = dict(getattr(opp, "meta", {}) or {})
@@ -281,6 +282,19 @@ class MultiStrategyAllocator:
             if deadband_symbols:
                 hysteresis_meta["deadband_applied"] = True
                 hysteresis_meta["deadband_symbols"] = deadband_symbols
+
+        target_exposure = float(getattr(self, "target_exposure", 0.0) or 0.0)
+        if target_exposure > 0.0:
+            gross_exposure = float(sum(abs(float(v or 0.0)) for v in weights_by_symbol.values()))
+            if gross_exposure > 0.0 and gross_exposure < target_exposure:
+                scale = float(target_exposure) / gross_exposure
+                weights_by_symbol = {
+                    k: float(max(-self.symbol_cap, min(self.symbol_cap, float(v or 0.0) * scale)))
+                    for k, v in weights_by_symbol.items()
+                }
+                scaled_total = sum(weights_by_symbol.values())
+                if self.normalize_total and scaled_total > 1:
+                    weights_by_symbol = {k: v / scaled_total for k, v in weights_by_symbol.items()}
 
         total = sum(weights_by_symbol.values())
 

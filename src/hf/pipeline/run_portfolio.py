@@ -266,6 +266,7 @@ def run(
     allocator_blend_alpha: float = 0.40,
     allocator_rebalance_deadband: float = 0.0,
     allocator_symbol_cap: float = 1.0,
+    allocator_target_exposure: float = 0.0,
     allocator_max_step_per_bar: float = 1.0,
     portfolio_riskoff_filter: bool = False,
     portfolio_riskoff_btc_adx_min: float = 18.0,
@@ -461,6 +462,7 @@ def run(
         weight_blend_alpha=float(allocator_blend_alpha),
         rebalance_deadband=float(allocator_rebalance_deadband),
         symbol_cap=float(allocator_symbol_cap),
+        target_exposure=float(allocator_target_exposure),
     )
 
     ml_enabled_for_scores = bool(ml_filter or ml_position_sizing or ml_model_path or ml_model_registry)
@@ -1951,6 +1953,12 @@ def main() -> None:
         help="Maximum total budget assigned to a single symbol in MultiStrategyAllocator.",
     )
     ap.add_argument(
+        "--allocator-target-exposure",
+        type=float,
+        default=0.0,
+        help="Minimum gross exposure target for MultiStrategyAllocator after deadband and smoothing.",
+    )
+    ap.add_argument(
         "--allocator-max-step-per-bar",
         type=float,
         default=1.0,
@@ -2129,6 +2137,7 @@ def main() -> None:
         allocator_blend_alpha=float(args.allocator_blend_alpha),
         allocator_rebalance_deadband=float(args.allocator_rebalance_deadband),
         allocator_symbol_cap=float(args.allocator_symbol_cap),
+        allocator_target_exposure=float(args.allocator_target_exposure),
         allocator_max_step_per_bar=float(args.allocator_max_step_per_bar),
         portfolio_riskoff_filter=bool(args.portfolio_riskoff_filter),
         portfolio_riskoff_btc_adx_min=float(args.portfolio_riskoff_btc_adx_min),
