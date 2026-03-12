@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 import json
 
 from hf.core.interfaces import SignalEngine
@@ -10,7 +10,10 @@ from hf.core.types import Candle, Signal
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
+from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
 from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
+from hf.engines.signals.sol_vol_compression_signal import SolVolCompressionSignalEngine
+from hf.engines.signals.sol_vol_expansion_signal import SolVolExpansionSignalEngine
 from hf.engines.opportunity_book import RegistryOpportunityBook, to_signal_dict
 
 
@@ -53,7 +56,10 @@ class RegistryPortfolioSignalEngine(SignalEngine):
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_extreme_mr_signal": lambda cfg: SolExtremeMrSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_vol_compression_signal": lambda cfg: SolVolCompressionSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_vol_expansion_signal": lambda cfg: SolVolExpansionSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:
@@ -94,16 +100,6 @@ class RegistryPortfolioSignalEngine(SignalEngine):
             },
         )
 
-    def _candidate_rank(self, sig: Optional[Signal]) -> tuple:
-        if sig is None:
-            return (0, 0, 0.0)
-
-        meta = dict(getattr(sig, "meta", {}) or {})
-        has_skip = 1 if "skip" not in meta else 0
-        not_flat = 1 if getattr(sig, "side", "flat") != "flat" else 0
-        strength = abs(float(getattr(sig, "strength", 0.0) or 0.0))
-        return (has_skip, not_flat, strength)
-
     def generate(self, candles: Dict[str, Candle], print_debug: bool = False) -> Dict[str, Signal]:
         book = RegistryOpportunityBook(
             registry_path=self.registry_path,
@@ -129,19 +125,28 @@ class PortfolioSignalEngine(RegistryPortfolioSignalEngine):
     btc_engine: Optional[BtcTrendSignalEngine] = None
     sol_engine: Optional[SolBbrsiSignalEngine] = None
     sol_vol_breakout_engine: Optional[SolVolBreakoutSignalEngine] = None
+    sol_trend_pullback_engine: Optional[SolTrendPullbackSignalEngine] = None
     sol_extreme_mr_engine: Optional[SolExtremeMrSignalEngine] = None
+    sol_vol_compression_engine: Optional[SolVolCompressionSignalEngine] = None
+    sol_vol_expansion_engine: Optional[SolVolExpansionSignalEngine] = None
 
     def __post_init__(self) -> None:
         btc_engine = self.btc_engine or BtcTrendSignalEngine()
         sol_engine = self.sol_engine or SolBbrsiSignalEngine()
         sol_vol_breakout_engine = self.sol_vol_breakout_engine or SolVolBreakoutSignalEngine()
+        sol_trend_pullback_engine = self.sol_trend_pullback_engine or SolTrendPullbackSignalEngine()
         sol_extreme_mr_engine = self.sol_extreme_mr_engine or SolExtremeMrSignalEngine()
+        sol_vol_compression_engine = self.sol_vol_compression_engine or SolVolCompressionSignalEngine()
+        sol_vol_expansion_engine = self.sol_vol_expansion_engine or SolVolExpansionSignalEngine()
 
         self.engine_factories = {
             "btc_trend_signal": lambda cfg: btc_engine,
             "sol_bbrsi_signal": lambda cfg: sol_engine,
             "sol_vol_breakout_signal": lambda cfg: sol_vol_breakout_engine,
+            "sol_trend_pullback_signal": lambda cfg: sol_trend_pullback_engine,
             "sol_extreme_mr_signal": lambda cfg: sol_extreme_mr_engine,
+            "sol_vol_compression_signal": lambda cfg: sol_vol_compression_engine,
+            "sol_vol_expansion_signal": lambda cfg: sol_vol_expansion_engine,
         }
 
         if not getattr(self, "registry_path", None):

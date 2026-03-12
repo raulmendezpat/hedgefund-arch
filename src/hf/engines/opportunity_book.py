@@ -13,6 +13,8 @@ from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
 from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
+from hf.engines.signals.sol_vol_compression_signal import SolVolCompressionSignalEngine
+from hf.engines.signals.sol_vol_expansion_signal import SolVolExpansionSignalEngine
 
 
 def _default_registry() -> List[dict]:
@@ -56,18 +58,20 @@ class RegistryOpportunityBook:
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(
+                    rsi_long_min=float((cfg.get("params", {}) or {}).get("rsi_long_min", 40.0)),
+                    rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", 55.0)),
+                    rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", 45.0)),
+                    rsi_short_max=float((cfg.get("params", {}) or {}).get("rsi_short_max", 60.0)),
+                    ema_pullback_max=float((cfg.get("params", {}) or {}).get("ema_pullback_max", 0.015)),
+                    atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", 0.004)),
+                    atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", 0.050)),
+                    require_adx=bool((cfg.get("params", {}) or {}).get("require_adx", False)),
+                    adx_min=float((cfg.get("params", {}) or {}).get("adx_min", 18.0)),
+                ),
                 "sol_extreme_mr_signal": lambda cfg: SolExtremeMrSignalEngine(**dict(cfg.get("params", {}) or {})),
-        "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(
-            rsi_long_min=float((cfg.get("params", {}) or {}).get("rsi_long_min", 40.0)),
-            rsi_long_max=float((cfg.get("params", {}) or {}).get("rsi_long_max", 55.0)),
-            rsi_short_min=float((cfg.get("params", {}) or {}).get("rsi_short_min", 45.0)),
-            rsi_short_max=float((cfg.get("params", {}) or {}).get("rsi_short_max", 60.0)),
-            ema_pullback_max=float((cfg.get("params", {}) or {}).get("ema_pullback_max", 0.015)),
-            atrp_min=float((cfg.get("params", {}) or {}).get("atrp_min", 0.004)),
-            atrp_max=float((cfg.get("params", {}) or {}).get("atrp_max", 0.050)),
-            require_adx=bool((cfg.get("params", {}) or {}).get("require_adx", False)),
-            adx_min=float((cfg.get("params", {}) or {}).get("adx_min", 18.0)),
-        ),
+                "sol_vol_compression_signal": lambda cfg: SolVolCompressionSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "sol_vol_expansion_signal": lambda cfg: SolVolExpansionSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:
@@ -137,7 +141,7 @@ class RegistryOpportunityBook:
 
             engine = self.engine_factories[engine_name](cfg)
             try:
-                generated = engine.generate(sub_candles, print_debug=print_debug)  # type: ignore[arg-type]
+                generated = engine.generate(sub_candles, print_debug=print_debug)
             except TypeError:
                 generated = engine.generate(sub_candles)
 
@@ -186,17 +190,6 @@ def compute_competitive_score(opp: Opportunity) -> float:
 
 
 def compute_post_ml_competitive_score(opp: Opportunity) -> float:
-    """
-    Competitive score after ML enrichment.
-
-    Formula:
-        base_score * p_win_factor * size_factor
-
-    Notes:
-    - p_win_factor falls back to 1.0 when missing/invalid
-    - size_factor is derived from ml_position_size_mult and clipped to
-      a safe range to avoid destabilizing ranking
-    """
     base_score = float(compute_competitive_score(opp))
     meta = dict(getattr(opp, "meta", {}) or {})
 
@@ -217,6 +210,7 @@ def compute_post_ml_competitive_score(opp: Opportunity) -> float:
     size_factor = max(0.50, min(1.50, size_factor))
 
     return float(base_score * p_win_factor * size_factor)
+
 
 def select_competitive_opportunities(opportunities: List[Opportunity]) -> List[Opportunity]:
     best_by_symbol: Dict[str, Opportunity] = {}

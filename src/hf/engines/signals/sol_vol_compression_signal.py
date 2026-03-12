@@ -21,33 +21,23 @@ def _feat(c: Candle, key: str) -> Optional[float]:
     except Exception:
         return None
 
-    if v != v:  # NaN
+    if v != v:
         return None
     return v
 
 
 @dataclass
-class SolExtremeMrSignalEngine(SignalEngine):
-    rsi_long_max: float = 32.0
-    rsi_short_min: float = 68.0
-
-    atrp_min: float = 0.008
-    atrp_max: float = 0.080
-
+class SolVolCompressionSignalEngine(SignalEngine):
+    bb_width_max: float = 0.035
     adx_max: float = 22.0
 
-    rsi_key: str = "rsi"
-    atrp_key: str = "atrp"
-    adx_key: str = "adx"
-    bb_low_key: str = "bb_low"
-    bb_up_key: str = "bb_up"
-    bb_width_key: str = "bb_width"
-    range_expansion_key: str = "range_expansion"
+    breakout_confirm_mult: float = 1.000
+    breakdown_confirm_mult: float = 1.000
 
-    bb_long_mult: float = 1.002
-    bb_short_mult: float = 0.998
-    bb_width_min: float = 0.035
-    range_expansion_min: float = 1.25
+    bb_width_key: str = "bb_width"
+    adx_key: str = "adx"
+    bb_up_key: str = "bb_up"
+    bb_low_key: str = "bb_low"
 
     only_if_symbol_contains: str = "SOL"
 
@@ -56,7 +46,7 @@ class SolExtremeMrSignalEngine(SignalEngine):
             symbol=sym,
             side="flat",
             strength=0.0,
-            meta={"engine": "sol_extreme_mr", "reason": reason, **meta},
+            meta={"engine": "sol_vol_compression", "reason": reason, **meta},
         )
 
     def generate(self, candles, print_debug: bool = False) -> Dict[str, Signal]:
@@ -70,31 +60,28 @@ class SolExtremeMrSignalEngine(SignalEngine):
                     symbol=sym,
                     side="flat",
                     strength=0.0,
-                    meta={"engine": "sol_extreme_mr", "skip": "not_sol"},
+                    meta={"engine": "sol_vol_compression", "skip": "not_sol"},
                 )
                 continue
 
-            rsi = _feat(c, self.rsi_key)
-            atrp = _feat(c, self.atrp_key)
-            adx = _feat(c, self.adx_key)
-            bb_low = _feat(c, self.bb_low_key)
-            bb_up = _feat(c, self.bb_up_key)
             bb_width = _feat(c, self.bb_width_key)
-            range_expansion = _feat(c, self.range_expansion_key)
+            adx = _feat(c, self.adx_key)
+            bb_up = _feat(c, self.bb_up_key)
+            bb_low = _feat(c, self.bb_low_key)
             close_v = float(getattr(c, "close", 0.0))
 
-            if None in (rsi, atrp, adx, bb_low, bb_up, bb_width, range_expansion):
+            if None in (bb_width, adx, bb_up, bb_low):
                 reason = "missing_features"
                 reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
                 side_counts["flat"] += 1
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            if atrp < float(self.atrp_min) or atrp > float(self.atrp_max):
-                reason = "atrp_out_of_range"
+            if bb_width > float(self.bb_width_max):
+                reason = "bb_width_too_high"
                 reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
                 side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, atrp=atrp)
+                out[sym] = self._flat(sym, reason, bb_width=bb_width)
                 continue
 
             if adx > float(self.adx_max):
@@ -104,17 +91,15 @@ class SolExtremeMrSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason, adx=adx)
                 continue
 
-
-
-            if close_v <= float(bb_low) * float(self.bb_long_mult) and float(rsi) <= float(self.rsi_long_max):
+            if close_v >= float(bb_up) * float(self.breakout_confirm_mult):
                 side = "long"
-                reason = "long_extreme_reversion"
-            elif close_v >= float(bb_up) * float(self.bb_short_mult) and float(rsi) >= float(self.rsi_short_min):
+                reason = "compression_breakout_long"
+            elif close_v <= float(bb_low) * float(self.breakdown_confirm_mult):
                 side = "short"
-                reason = "short_extreme_reversion"
+                reason = "compression_breakout_short"
             else:
                 side = "flat"
-                reason = "no_setup"
+                reason = "no_breakout"
 
             side_counts[side] = int(side_counts.get(side, 0)) + 1
             strength = 1.0 if side != "flat" else 0.0
@@ -124,30 +109,22 @@ class SolExtremeMrSignalEngine(SignalEngine):
                 side=side,
                 strength=strength,
                 meta={
-                    "engine": "sol_extreme_mr",
+                    "engine": "sol_vol_compression",
                     "reason": reason,
-                    "rsi": rsi,
-                    "atrp": atrp,
-                    "adx": adx,
-                    "bb_low": bb_low,
-                    "bb_up": bb_up,
                     "bb_width": bb_width,
-                    "range_expansion": range_expansion,
+                    "adx": adx,
+                    "bb_up": bb_up,
+                    "bb_low": bb_low,
                     "close": close_v,
-                    "rsi_long_max": float(self.rsi_long_max),
-                    "rsi_short_min": float(self.rsi_short_min),
-                    "atrp_min": float(self.atrp_min),
-                    "atrp_max": float(self.atrp_max),
+                    "bb_width_max": float(self.bb_width_max),
                     "adx_max": float(self.adx_max),
-                    "bb_long_mult": float(self.bb_long_mult),
-                    "bb_short_mult": float(self.bb_short_mult),
-                    "bb_width_min": float(self.bb_width_min),
-                    "range_expansion_min": float(self.range_expansion_min),
+                    "breakout_confirm_mult": float(self.breakout_confirm_mult),
+                    "breakdown_confirm_mult": float(self.breakdown_confirm_mult),
                 },
             )
 
         if print_debug:
-            print("[sol_extreme_mr] side_counts=", side_counts)
-            print("[sol_extreme_mr] reason_counts=", reason_counts)
+            print("[sol_vol_compression] side_counts=", side_counts)
+            print("[sol_vol_compression] reason_counts=", reason_counts)
 
         return out
