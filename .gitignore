@@ -1,26 +1,19 @@
 # Python
 __pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-dist/
-build/
+*.pyc
 
-# venv
+# Virtual env
 .venv/
-venv/
 
-# OS / IDE
-.DS_Store
-.vscode/
+# Runtime / ops
+runtime/
+*.log
 
-# outputs
-results/*
-reports_out/*
-!results/.gitkeep
-!reports_out/.gitkeep
-
-# Local data / caches (do not commit)
+# Caches / results
 .cache/
-*.csv.gz
+results/
+
+# Secrets
+secret.json
+*.pem
+*.key
