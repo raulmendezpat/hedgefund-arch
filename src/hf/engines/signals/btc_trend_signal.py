@@ -56,18 +56,19 @@ class BtcTrendSignalEngine(SignalEngine):
     adx_key: str = "adx"
     ema_fast_key: str = "ema_fast"
     ema_slow_key: str = "ema_slow"
-    only_if_symbol_contains: str = "BTC"
+    only_if_symbol_contains: str = ""
 
     def generate(self, candles: Dict[str, Candle]) -> Dict[str, Signal]:
         out: Dict[str, Signal] = {}
 
         for sym, c in candles.items():
-            if "BTC" not in sym:
-                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend", "skip": "not_btc"})
-                continue
-
             if self.only_if_symbol_contains and (self.only_if_symbol_contains not in sym):
-                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend_min", "reason": "not_btc"})
+                out[sym] = Signal(
+                    symbol=sym,
+                    side="flat",
+                    strength=0.0,
+                    meta={"engine": "btc_trend_min", "reason": "symbol_filtered"},
+                )
                 continue
 
             adx = _feat(c, self.adx_key)

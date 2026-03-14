@@ -60,32 +60,8 @@
     }
   },
   {
-    "strategy_id": "eth_trend",
-    "symbol": "ETH/USDT:USDT",
-    "engine": "btc_trend_signal",
-    "enabled": true,
-    "base_weight": 1.0,
-    "params": {}
-  },
-  {
-    "strategy_id": "bnb_trend",
-    "symbol": "BNB/USDT:USDT",
-    "engine": "btc_trend_signal",
-    "enabled": true,
-    "base_weight": 1.0,
-    "params": {}
-  },
-  {
     "strategy_id": "link_trend",
     "symbol": "LINK/USDT:USDT",
-    "engine": "btc_trend_signal",
-    "enabled": true,
-    "base_weight": 1.0,
-    "params": {}
-  },
-  {
-    "strategy_id": "avax_trend",
-    "symbol": "AVAX/USDT:USDT",
     "engine": "btc_trend_signal",
     "enabled": true,
     "base_weight": 1.0,

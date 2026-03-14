@@ -396,6 +396,18 @@ def run(
 
     # SOL
     sol_close = close_by_symbol[secondary_feature_symbol]
+
+    trend_feature_series_by_symbol = {}
+    for sym in universe_symbols:
+        _df = data_by_symbol[sym]
+        _close = close_by_symbol[sym]
+        _atr_series = _atr(_df, 14)
+        trend_feature_series_by_symbol[sym] = {
+            "adx": _adx(_df, 14),
+            "atr": _atr_series,
+            "ema_fast": _ema(_close, 20),
+            "ema_slow": _ema(_close, 200),
+        }
     sol_atr = _atr(sol, 14)
     sol_adx = _adx(sol, 14)
     sol_atrp = sol_atr / sol_close.replace(0.0, np.nan)
@@ -635,13 +647,11 @@ def run(
     for ts in common_ts:
         selected_opps_for_alloc = []
         feature_map_by_symbol: Dict[str, dict[str, pd.Series]] = {
-            btc_sym: {
-                "adx": btc_adx,
-                "atr": btc_atr,
-                "ema_fast": btc_ema_fast,
-                "ema_slow": btc_ema_slow,
-            },
-            sol_sym: {
+            sym: dict(trend_feature_series_by_symbol.get(sym, {}))
+            for sym in universe_symbols
+        }
+        if sol_sym in universe_symbols:
+            feature_map_by_symbol[sol_sym].update({
                 "adx": sol_adx,
                 "atr": sol_atr,
                 "atrp": sol_atrp,
@@ -655,8 +665,7 @@ def run(
                 "donchian_high": sol_vol_dc_high,
                 "donchian_low": sol_vol_dc_low,
                 "range_expansion": sol_range_expansion,
-            },
-        }
+            })
 
         candles: Dict[str, Candle] = {}
         for sym in universe_symbols:
