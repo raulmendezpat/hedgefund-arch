@@ -1,0 +1,114 @@
+[
+  {
+    "strategy_id": "btc_trend",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "cluster_id": "majors",
+    "cluster_cap": 0.3,
+    "params": {}
+  },
+  {
+    "strategy_id": "btc_trend_loose",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.9,
+    "cluster_id": "majors",
+    "cluster_cap": 0.3,
+    "params": {
+      "adx_min": 12.0
+    }
+  },
+  {
+    "strategy_id": "eth_trend",
+    "symbol": "ETH/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.9,
+    "cluster_id": "majors",
+    "cluster_cap": 0.3,
+    "params": {}
+  },
+  {
+    "strategy_id": "bnb_trend",
+    "symbol": "BNB/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.8,
+    "cluster_id": "infra",
+    "cluster_cap": 0.2,
+    "params": {}
+  },
+  {
+    "strategy_id": "sol_bbrsi",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_bbrsi_signal",
+    "enabled": true,
+    "base_weight": 0.6,
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.3,
+    "params": {}
+  },
+  {
+    "strategy_id": "sol_trend_pullback",
+    "symbol": "SOL/USDT:USDT",
+    "engine": "sol_trend_pullback_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.3,
+    "params": {
+      "rsi_long_min": 45,
+      "rsi_long_max": 52,
+      "rsi_short_min": 48,
+      "rsi_short_max": 55,
+      "ema_pullback_max": 0.008,
+      "atrp_min": 0.006,
+      "atrp_max": 0.05,
+      "require_adx": true,
+      "adx_min": 20
+    }
+  },
+  {
+    "strategy_id": "link_trend",
+    "symbol": "LINK/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.3,
+    "params": {}
+  },
+  {
+    "strategy_id": "avax_trend",
+    "symbol": "AVAX/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.75,
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.3,
+    "params": {}
+  },
+  {
+    "strategy_id": "xrp_trend",
+    "symbol": "XRP/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "liquid_alt",
+    "cluster_cap": 0.22,
+    "params": {}
+  },
+  {
+    "strategy_id": "ada_trend",
+    "symbol": "ADA/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "liquid_alt",
+    "cluster_cap": 0.22,
+    "params": {}
+  }
+]
