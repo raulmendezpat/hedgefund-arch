@@ -122,6 +122,71 @@ def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = 
     )
 
 
+def _load_universe_symbols(strategy_registry_path: str) -> list[str]:
+    p = Path(strategy_registry_path)
+    if not p.exists():
+        return [LEGACY_SYMBOLS["BTC"], LEGACY_SYMBOLS["SOL"]]
+
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("Strategy registry must be a list")
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in payload:
+        row = row or {}
+        if not bool(row.get("enabled", True)):
+            continue
+        sym = str(row.get("symbol", "") or "").strip()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+
+    return out or [LEGACY_SYMBOLS["BTC"], LEGACY_SYMBOLS["SOL"]]
+
+
+def _fetch_symbol_ohlcv_map(
+    *,
+    symbols: list[str],
+    start_ms: int,
+    end_ms: int | None,
+    exchange: str,
+    cache_dir: str,
+    refresh_cache: bool,
+) -> dict[str, pd.DataFrame]:
+    out: dict[str, pd.DataFrame] = {}
+    for sym in symbols:
+        df = fetch_ohlcv_ccxt(
+            sym,
+            "1h",
+            start_ms,
+            end_ms,
+            exchange_id=exchange,
+            cache_dir=cache_dir,
+            use_cache=True,
+            refresh_if_no_end=refresh_cache,
+        )
+        if df is None or df.empty:
+            raise SystemExit(f"OHLCV empty for {sym}. Check cache_dir/exchange/symbol/timeframe.")
+        out[sym] = df.set_index("timestamp").sort_index()
+    return out
+
+
+def _compute_common_ts(data_by_symbol: dict[str, pd.DataFrame]) -> pd.Index:
+    symbols = list(data_by_symbol.keys())
+    if not symbols:
+        raise SystemExit("No symbols loaded.")
+
+    common_ts = data_by_symbol[symbols[0]].index
+    for sym in symbols[1:]:
+        common_ts = common_ts.intersection(data_by_symbol[sym].index)
+
+    if len(common_ts) < 10:
+        raise SystemExit(f"Not enough overlapping candles across universe: {len(common_ts)}")
+    return common_ts
+
+
 def _parse_subpos_weights(raw: Optional[str]) -> Optional[list[float]]:
     if raw is None:
         return None
@@ -269,9 +334,9 @@ def run(
     allocator_target_exposure: float = 0.0,
     allocator_max_step_per_bar: float = 1.0,
     portfolio_riskoff_filter: bool = False,
-    portfolio_riskoff_btc_adx_min: float = 18.0,
-    portfolio_riskoff_btc_slope_min: float = 1.5,
-    portfolio_riskoff_sol_atrp_max: float = 0.035,
+    portfolio_riskoff_primary_adx_min: float = 18.0,
+    portfolio_riskoff_primary_slope_min: float = 1.5,
+    portfolio_riskoff_secondary_atrp_max: float = 0.035,
     portfolio_risk_scale_enable: bool = False,
     portfolio_risk_scale_atrp_low: float = 0.010,
     portfolio_risk_scale_atrp_high: float = 0.025,
@@ -295,31 +360,42 @@ def run(
     btc_sym = LEGACY_SYMBOLS["BTC"]
     sol_sym = LEGACY_SYMBOLS["SOL"]
 
-    btc = fetch_ohlcv_ccxt(btc_sym, "1h", start_ms, end_ms, exchange_id=exchange, cache_dir=cache_dir, use_cache=True, refresh_if_no_end=refresh_cache)
-    sol = fetch_ohlcv_ccxt(sol_sym, "1h", start_ms, end_ms, exchange_id=exchange, cache_dir=cache_dir, use_cache=True, refresh_if_no_end=refresh_cache)
+    universe_symbols = _load_universe_symbols(str(strategy_registry_path))
+    data_by_symbol = _fetch_symbol_ohlcv_map(
+        symbols=universe_symbols,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        exchange=exchange,
+        cache_dir=cache_dir,
+        refresh_cache=refresh_cache,
+    )
+    common_ts = _compute_common_ts(data_by_symbol)
 
-    if btc.empty or sol.empty:
-        raise SystemExit("OHLCV empty for BTC or SOL. Check cache_dir/exchange/symbol/timeframe.")
+    primary_feature_symbol = btc_sym if btc_sym in data_by_symbol else universe_symbols[0]
+    secondary_feature_symbol = sol_sym if sol_sym in data_by_symbol else (
+        universe_symbols[1] if len(universe_symbols) > 1 else universe_symbols[0]
+    )
 
-    btc = btc.set_index("timestamp").sort_index()
-    sol = sol.set_index("timestamp").sort_index()
-
-    # common timestamps only (safe)
-    common_ts = btc.index.intersection(sol.index)
-    if len(common_ts) < 10:
-        raise SystemExit(f"Not enough overlapping candles: {len(common_ts)}")
+    btc = data_by_symbol[primary_feature_symbol]
+    sol = data_by_symbol[secondary_feature_symbol]
 
 
     # --- feature calc (for Regime3Engine) ---
+    close_by_symbol = {
+        sym: data_by_symbol[sym]["close"].astype(float)
+        for sym in universe_symbols
+        if sym in data_by_symbol
+    }
+
     # BTC
-    btc_close = btc["close"].astype(float)
+    btc_close = close_by_symbol[primary_feature_symbol]
     btc_atr = _atr(btc, 14)
     btc_adx = _adx(btc, 14)
     btc_ema_fast = _ema(btc_close, 20)
     btc_ema_slow = _ema(btc_close, 200)
 
     # SOL
-    sol_close = sol["close"].astype(float)
+    sol_close = close_by_symbol[secondary_feature_symbol]
     sol_atr = _atr(sol, 14)
     sol_adx = _adx(sol, 14)
     sol_atrp = sol_atr / sol_close.replace(0.0, np.nan)
@@ -538,7 +614,7 @@ def run(
     execution_rows = []
 
     # PortfolioEngine buffers (alineados 1:1 con common_ts)
-    candles_by_symbol = {btc_sym: [], sol_sym: []}
+    candles_by_symbol = {sym: [] for sym in universe_symbols}
     allocs = []
     # signal gating counters (for report)
     # no reset: preserve counters collected during loop (safe)
@@ -558,33 +634,44 @@ def run(
 
     for ts in common_ts:
         selected_opps_for_alloc = []
-        candles: Dict[str, Candle] = {
-            btc_sym: _row_to_candle(ts, btc.loc[ts], features={
-                'adx': float(btc_adx.loc[ts]) if ts in btc_adx.index else float('nan'),
-                'atr': float(btc_atr.loc[ts]) if ts in btc_atr.index else float('nan'),
-                'ema_fast': float(btc_ema_fast.loc[ts]) if ts in btc_ema_fast.index else float('nan'),
-                'ema_slow': float(btc_ema_slow.loc[ts]) if ts in btc_ema_slow.index else float('nan'),
-            }),
-            sol_sym: _row_to_candle(ts, sol.loc[ts], features={
-                'adx': float(sol_adx.loc[ts]) if ts in sol_adx.index else float('nan'),
-                'atr': float(sol_atr.loc[ts]) if ts in sol_atr.index else float('nan'),
-                'atrp': float(sol_atrp.loc[ts]) if ts in sol_atrp.index else float('nan'),
-                'rsi': float(sol_rsi.loc[ts]) if ts in sol_rsi.index else float('nan'),
-                'bb_mid': float(sol_bb_mid.loc[ts]) if ts in sol_bb_mid.index else float('nan'),
-                'bb_up': float(sol_bb_up.loc[ts]) if ts in sol_bb_up.index else float('nan'),
-                'bb_low': float(sol_bb_low.loc[ts]) if ts in sol_bb_low.index else float('nan'),
-                'bb_width': float(sol_bb_width.loc[ts]) if ts in sol_bb_width.index else float('nan'),
-                'ema_fast': float(sol_ema_fast.loc[ts]) if ts in sol_ema_fast.index else float('nan'),
-                'ema_slow': float(sol_ema_slow.loc[ts]) if ts in sol_ema_slow.index else float('nan'),
-                'donchian_high': float(sol_vol_dc_high.loc[ts]) if ts in sol_vol_dc_high.index else float('nan'),
-                'donchian_low': float(sol_vol_dc_low.loc[ts]) if ts in sol_vol_dc_low.index else float('nan'),
-                'range_expansion': float(sol_range_expansion.loc[ts]) if ts in sol_range_expansion.index else float('nan'),
-            }),
+        feature_map_by_symbol: Dict[str, dict[str, pd.Series]] = {
+            btc_sym: {
+                "adx": btc_adx,
+                "atr": btc_atr,
+                "ema_fast": btc_ema_fast,
+                "ema_slow": btc_ema_slow,
+            },
+            sol_sym: {
+                "adx": sol_adx,
+                "atr": sol_atr,
+                "atrp": sol_atrp,
+                "rsi": sol_rsi,
+                "bb_mid": sol_bb_mid,
+                "bb_up": sol_bb_up,
+                "bb_low": sol_bb_low,
+                "bb_width": sol_bb_width,
+                "ema_fast": sol_ema_fast,
+                "ema_slow": sol_ema_slow,
+                "donchian_high": sol_vol_dc_high,
+                "donchian_low": sol_vol_dc_low,
+                "range_expansion": sol_range_expansion,
+            },
         }
 
-        # collect candles for PortfolioEngine
-        candles_by_symbol[btc_sym].append(candles[btc_sym])
-        candles_by_symbol[sol_sym].append(candles[sol_sym])
+        candles: Dict[str, Candle] = {}
+        for sym in universe_symbols:
+            row_df = data_by_symbol[sym]
+            if ts not in row_df.index:
+                continue
+
+            sym_features = {}
+            for feat_name, feat_series in feature_map_by_symbol.get(sym, {}).items():
+                sym_features[feat_name] = float(feat_series.loc[ts]) if ts in feat_series.index else float("nan")
+
+            candles[sym] = _row_to_candle(ts, row_df.loc[ts], features=sym_features)
+
+        for sym, candle in candles.items():
+            candles_by_symbol[sym].append(candle)
 
         signals = sig_engine.generate(candles)
 
@@ -878,8 +965,12 @@ def run(
         regimes = reg_engine.evaluate(candles, signals)
 
         if bool(strategy_regime_gating) and selected_opps_for_alloc:
-            _btc_regime_on = bool(getattr(regimes.get(btc_sym), "on", False))
-            _sol_regime_on = bool(getattr(regimes.get(sol_sym), "on", False))
+            regime_on_by_symbol = {
+                sym: bool(getattr(regimes.get(sym), "on", False))
+                for sym in universe_symbols
+            }
+            _btc_regime_on = bool(regime_on_by_symbol.get(primary_feature_symbol, False))
+            _sol_regime_on = bool(regime_on_by_symbol.get(secondary_feature_symbol, False))
 
             _gated_opps = []
             for _opp in list(selected_opps_for_alloc):
@@ -993,22 +1084,34 @@ def run(
         # Portfolio-level risk-off filter:
         # usar fuente real de ATRP: candle dict -> atributo -> signal.meta.
         if bool(portfolio_riskoff_filter):
-            _sol_candle = candles.get(sol_sym)
-            _sol_sig = signals.get(sol_sym)
+            signal_meta_by_symbol = {
+                sym: dict(getattr(signals.get(sym), "meta", {}) or {})
+                for sym in universe_symbols
+            }
 
-            _sol_atrp_now = 0.0
-            try:
-                if isinstance(_sol_candle, dict) and ("atrp" in _sol_candle):
-                    _sol_atrp_now = float(_sol_candle.get("atrp", 0.0) or 0.0)
-                elif _sol_candle is not None and hasattr(_sol_candle, "atrp"):
-                    _sol_atrp_now = float(getattr(_sol_candle, "atrp", 0.0) or 0.0)
-                else:
-                    _sol_meta = dict(getattr(_sol_sig, "meta", {}) or {}) if _sol_sig is not None else {}
-                    _sol_atrp_now = float(_sol_meta.get("atrp", 0.0) or 0.0)
-            except Exception:
-                _sol_atrp_now = 0.0
+            _sol_candle = candles.get(secondary_feature_symbol)
+            _sol_sig = signals.get(secondary_feature_symbol)
 
-            _riskoff = _sol_atrp_now > float(portfolio_riskoff_sol_atrp_max)
+            atrp_now_by_symbol = {}
+            for sym in universe_symbols:
+                _sym_candle = candles.get(sym)
+                _sym_sig = signals.get(sym)
+                _sym_atrp = 0.0
+                try:
+                    if isinstance(_sym_candle, dict) and ("atrp" in _sym_candle):
+                        _sym_atrp = float(_sym_candle.get("atrp", 0.0) or 0.0)
+                    elif _sym_candle is not None and hasattr(_sym_candle, "atrp"):
+                        _sym_atrp = float(getattr(_sym_candle, "atrp", 0.0) or 0.0)
+                    else:
+                        _sym_meta = dict(getattr(_sym_sig, "meta", {}) or {}) if _sym_sig is not None else {}
+                        _sym_atrp = float(_sym_meta.get("atrp", 0.0) or 0.0)
+                except Exception:
+                    _sym_atrp = 0.0
+                atrp_now_by_symbol[sym] = float(_sym_atrp)
+
+            _sol_atrp_now = float(atrp_now_by_symbol.get(secondary_feature_symbol, 0.0) or 0.0)
+
+            _riskoff = _sol_atrp_now > float(portfolio_riskoff_secondary_atrp_max)
 
             if _riskoff:
                 alloc = Allocation(
@@ -1025,8 +1128,8 @@ def run(
 
         # Continuous portfolio risk scaling based on SOL ATRP.
         if bool(portfolio_risk_scale_enable):
-            _sol_candle = candles.get(sol_sym)
-            _sol_sig = signals.get(sol_sym)
+            _sol_candle = candles.get(secondary_feature_symbol)
+            _sol_sig = signals.get(secondary_feature_symbol)
 
             _sol_atrp_now = 0.0
             try:
@@ -1065,7 +1168,15 @@ def run(
                     **dict(getattr(alloc, "meta", {}) or {}),
                     "portfolio_risk_scale_applied": True,
                     "portfolio_risk_scale_mult": float(_risk_mult),
-                    "portfolio_risk_scale_sol_atrp": float(_sol_atrp_now),
+                    "portfolio_risk_scale_secondary_atrp": float(_sol_atrp_now),
+                    "portfolio_risk_scale_by_symbol": {
+                        sym: {
+                            "atrp": float(atrp_now_by_symbol.get(sym, 0.0) or 0.0),
+                            "adx": float((signal_meta_by_symbol.get(sym, {}) or {}).get("adx", 0.0) or 0.0),
+                            "bb_width": float((signal_meta_by_symbol.get(sym, {}) or {}).get("bb_width", 0.0) or 0.0),
+                        }
+                        for sym in universe_symbols
+                    },
                 },
             )
             alloc_after_smoothing_weights = dict(_scaled_weights)
@@ -1101,122 +1212,100 @@ def run(
                 )
         # --- end signal gating ---
         alloc_after_signal_gating_weights = dict(getattr(alloc, "weights", {}) or {})
-        btc_meta = dict(getattr(signals.get(btc_sym), "meta", {}) or {})
-        sol_meta = dict(getattr(signals.get(sol_sym), "meta", {}) or {})
+        symbol_meta = {
+            sym: dict(getattr(signals.get(sym), "meta", {}) or {})
+            for sym in universe_symbols
+        }
+        planner_by_symbol = {
+            primary_feature_symbol: btc_subpos_planner,
+            secondary_feature_symbol: sol_subpos_planner,
+        }
+        custom_subpos_weights_by_symbol = {
+            primary_feature_symbol: btc_subpos_weights,
+            secondary_feature_symbol: sol_subpos_weights,
+        }
 
-        btc_subpos_info = _plan_subpositions_for_symbol(
-            planner=btc_subpos_planner,
-            symbol=btc_sym,
-            strategy_id=str(btc_meta.get("strategy_id", "") or ""),
-            side=str(getattr(signals.get(btc_sym), "side", "flat")),
-            total_target_weight=float(alloc.weights.get(btc_sym, 0.0) or 0.0),
-            raw_custom_weights=btc_subpos_weights,
-            meta=btc_meta,
-        )
-        sol_subpos_info = _plan_subpositions_for_symbol(
-            planner=sol_subpos_planner,
-            symbol=sol_sym,
-            strategy_id=str(sol_meta.get("strategy_id", "") or ""),
-            side=str(getattr(signals.get(sol_sym), "side", "flat")),
-            total_target_weight=float(alloc.weights.get(sol_sym, 0.0) or 0.0),
-            raw_custom_weights=sol_subpos_weights,
-            meta=sol_meta,
-        )
+        symbol_subpos_info = {}
+        symbol_clusters = {}
+        symbol_cluster_risks = {}
+        symbol_clusters_for_execution = {}
+        symbol_execution_plans = {}
+        raw_execution_fills = []
 
-        btc_cluster = cluster_builder.build_from_weights(
-            cluster_id=f"{int(ts)}::{btc_sym}::{str(btc_meta.get('strategy_id', '') or '')}",
-            symbol=btc_sym,
-            strategy_id=str(btc_meta.get("strategy_id", "") or ""),
-            side=str(getattr(signals.get(btc_sym), "side", "flat")),
-            target_weight=float(alloc.weights.get(btc_sym, 0.0) or 0.0),
-            weights=[float(x) for x in getattr(btc_subpos_info["plan"], "slices", [])],
-            meta={
-                **btc_meta,
-                "ts": int(ts),
-            },
-        )
-        sol_cluster = cluster_builder.build_from_weights(
-            cluster_id=f"{int(ts)}::{sol_sym}::{str(sol_meta.get('strategy_id', '') or '')}",
-            symbol=sol_sym,
-            strategy_id=str(sol_meta.get("strategy_id", "") or ""),
-            side=str(getattr(signals.get(sol_sym), "side", "flat")),
-            target_weight=float(alloc.weights.get(sol_sym, 0.0) or 0.0),
-            weights=[float(x) for x in getattr(sol_subpos_info["plan"], "slices", [])],
-            meta={
-                **sol_meta,
-                "ts": int(ts),
-            },
-        )
+        for sym in universe_symbols:
+            sym_meta = dict(symbol_meta.get(sym, {}) or {})
+            sym_signal = signals.get(sym)
+            sym_side = str(getattr(sym_signal, "side", "flat"))
+            sym_planner = planner_by_symbol.get(sym, btc_subpos_planner)
 
-        btc_cluster_risk = cluster_risk_engine.evaluate(btc_cluster)
-        sol_cluster_risk = cluster_risk_engine.evaluate(sol_cluster)
+            sym_subpos_info = _plan_subpositions_for_symbol(
+                planner=sym_planner,
+                symbol=sym,
+                strategy_id=str(sym_meta.get("strategy_id", "") or ""),
+                side=sym_side,
+                total_target_weight=float(alloc.weights.get(sym, 0.0) or 0.0),
+                raw_custom_weights=custom_subpos_weights_by_symbol.get(sym),
+                meta=sym_meta,
+            )
+            symbol_subpos_info[sym] = sym_subpos_info
 
-        btc_cluster_for_execution = btc_cluster.__class__(
-            cluster_id=str(btc_cluster.cluster_id),
-            symbol=str(btc_cluster.symbol),
-            strategy_id=str(btc_cluster.strategy_id),
-            side=str(btc_cluster.side),
-            target_weight=float(btc_cluster_risk.adjusted_target_weight),
-            subpositions=tuple(btc_cluster_risk.adjusted_subpositions),
-            entry_schedule=tuple(getattr(btc_cluster, "entry_schedule", ()) or ()),
-            exit_schedule=tuple(getattr(btc_cluster, "exit_schedule", ()) or ()),
-            risk_limits=dict(getattr(btc_cluster, "risk_limits", {}) or {}),
-            meta={
-                **dict(getattr(btc_cluster, "meta", {}) or {}),
-                "risk_adjusted": True,
-            },
-        )
-        sol_cluster_for_execution = sol_cluster.__class__(
-            cluster_id=str(sol_cluster.cluster_id),
-            symbol=str(sol_cluster.symbol),
-            strategy_id=str(sol_cluster.strategy_id),
-            side=str(sol_cluster.side),
-            target_weight=float(sol_cluster_risk.adjusted_target_weight),
-            subpositions=tuple(sol_cluster_risk.adjusted_subpositions),
-            entry_schedule=tuple(getattr(sol_cluster, "entry_schedule", ()) or ()),
-            exit_schedule=tuple(getattr(sol_cluster, "exit_schedule", ()) or ()),
-            risk_limits=dict(getattr(sol_cluster, "risk_limits", {}) or {}),
-            meta={
-                **dict(getattr(sol_cluster, "meta", {}) or {}),
-                "risk_adjusted": True,
-            },
-        )
+            sym_cluster = cluster_builder.build_from_weights(
+                cluster_id=f"{int(ts)}::{sym}::{str(sym_meta.get('strategy_id', '') or '')}",
+                symbol=sym,
+                strategy_id=str(sym_meta.get("strategy_id", "") or ""),
+                side=sym_side,
+                target_weight=float(alloc.weights.get(sym, 0.0) or 0.0),
+                weights=[float(x) for x in getattr(sym_subpos_info["plan"], "slices", [])],
+                meta={
+                    **sym_meta,
+                    "ts": int(ts),
+                },
+            )
+            symbol_clusters[sym] = sym_cluster
 
-        btc_execution_plan = execution_planner.build_plan(
-            cluster=btc_cluster_for_execution,
-            execution_mode=str(execution_mode),
-            default_order_type="market",
-            time_in_force="GTC",
-            ladder_limit_offsets=parsed_execution_ladder_offsets,
-            time_sliced_offsets=parsed_execution_time_offsets,
-            meta={"ts": int(ts), "risk_approved": bool(btc_cluster_risk.approved)},
-        )
-        sol_execution_plan = execution_planner.build_plan(
-            cluster=sol_cluster_for_execution,
-            execution_mode=str(execution_mode),
-            default_order_type="market",
-            time_in_force="GTC",
-            ladder_limit_offsets=parsed_execution_ladder_offsets,
-            time_sliced_offsets=parsed_execution_time_offsets,
-            meta={"ts": int(ts), "risk_approved": bool(sol_cluster_risk.approved)},
-        )
-        btc_fills = order_sim.simulate_plan(
-            plan=btc_execution_plan,
-            bar_index=int(len(allocs)),
-            open_price=float(candles[btc_sym].open),
-            high_price=float(candles[btc_sym].high),
-            low_price=float(candles[btc_sym].low),
-            close_price=float(candles[btc_sym].close),
-        )
-        sol_fills = order_sim.simulate_plan(
-            plan=sol_execution_plan,
-            bar_index=int(len(allocs)),
-            open_price=float(candles[sol_sym].open),
-            high_price=float(candles[sol_sym].high),
-            low_price=float(candles[sol_sym].low),
-            close_price=float(candles[sol_sym].close),
-        )
-        raw_execution_fills = list(btc_fills) + list(sol_fills)
+            sym_cluster_risk = cluster_risk_engine.evaluate(sym_cluster)
+            symbol_cluster_risks[sym] = sym_cluster_risk
+
+            sym_cluster_for_execution = sym_cluster.__class__(
+                cluster_id=str(sym_cluster.cluster_id),
+                symbol=str(sym_cluster.symbol),
+                strategy_id=str(sym_cluster.strategy_id),
+                side=str(sym_cluster.side),
+                target_weight=float(sym_cluster_risk.adjusted_target_weight),
+                subpositions=tuple(sym_cluster_risk.adjusted_subpositions),
+                entry_schedule=tuple(getattr(sym_cluster, "entry_schedule", ()) or ()),
+                exit_schedule=tuple(getattr(sym_cluster, "exit_schedule", ()) or ()),
+                risk_limits=dict(getattr(sym_cluster, "risk_limits", {}) or {}),
+                meta={
+                    **dict(getattr(sym_cluster, "meta", {}) or {}),
+                    "risk_adjusted": True,
+                },
+            )
+            symbol_clusters_for_execution[sym] = sym_cluster_for_execution
+
+            sym_execution_plan = execution_planner.build_plan(
+                cluster=sym_cluster_for_execution,
+                execution_mode=str(execution_mode),
+                default_order_type="market",
+                time_in_force="GTC",
+                ladder_limit_offsets=parsed_execution_ladder_offsets,
+                time_sliced_offsets=parsed_execution_time_offsets,
+                meta={"ts": int(ts), "risk_approved": bool(sym_cluster_risk.approved)},
+            )
+            symbol_execution_plans[sym] = sym_execution_plan
+
+            if sym not in candles:
+                continue
+
+            sym_fills = order_sim.simulate_plan(
+                plan=sym_execution_plan,
+                bar_index=int(len(allocs)),
+                open_price=float(candles[sym].open),
+                high_price=float(candles[sym].high),
+                low_price=float(candles[sym].low),
+                close_price=float(candles[sym].close),
+            )
+            raw_execution_fills.extend(list(sym_fills))
 
         raw_execution_rows = []
         for _fill in raw_execution_fills:
@@ -1282,63 +1371,46 @@ def run(
             weights=dict(alloc.weights),
             meta={
                 **dict(getattr(alloc, "meta", {}) or {}),
-                "btc_subposition_plan": {
-                    "count": int(btc_subpos_info["count"]),
-                    "weights": [float(x) for x in getattr(btc_subpos_info["plan"], "slices", [])],
+                "subposition_plan_by_symbol": {
+                    sym: {
+                        "count": int(symbol_subpos_info[sym]["count"]),
+                        "weights": [float(x) for x in getattr(symbol_subpos_info[sym]["plan"], "slices", [])],
+                    }
+                    for sym in universe_symbols
                 },
-                "sol_subposition_plan": {
-                    "count": int(sol_subpos_info["count"]),
-                    "weights": [float(x) for x in getattr(sol_subpos_info["plan"], "slices", [])],
+                "position_cluster_by_symbol": {
+                    sym: {
+                        "cluster_id": str(symbol_clusters[sym].cluster_id),
+                        "strategy_id": str(symbol_clusters[sym].strategy_id),
+                        "side": str(symbol_clusters[sym].side),
+                        "target_weight": float(symbol_clusters[sym].target_weight),
+                        "planned_weight": float(symbol_clusters[sym].planned_weight),
+                        "subposition_count": int(symbol_clusters[sym].subposition_count),
+                    }
+                    for sym in universe_symbols
                 },
-                "btc_position_cluster": {
-                    "cluster_id": str(btc_cluster.cluster_id),
-                    "strategy_id": str(btc_cluster.strategy_id),
-                    "side": str(btc_cluster.side),
-                    "target_weight": float(btc_cluster.target_weight),
-                    "planned_weight": float(btc_cluster.planned_weight),
-                    "subposition_count": int(btc_cluster.subposition_count),
+                "cluster_risk_by_symbol": {
+                    sym: {
+                        "approved": bool(symbol_cluster_risks[sym].approved),
+                        "adjusted_target_weight": float(symbol_cluster_risks[sym].adjusted_target_weight),
+                        "adjusted_subposition_count": int(len(symbol_cluster_risks[sym].adjusted_subpositions)),
+                        "reasons": list(symbol_cluster_risks[sym].reasons),
+                    }
+                    for sym in universe_symbols
                 },
-                "sol_position_cluster": {
-                    "cluster_id": str(sol_cluster.cluster_id),
-                    "strategy_id": str(sol_cluster.strategy_id),
-                    "side": str(sol_cluster.side),
-                    "target_weight": float(sol_cluster.target_weight),
-                    "planned_weight": float(sol_cluster.planned_weight),
-                    "subposition_count": int(sol_cluster.subposition_count),
-                },
-                "btc_cluster_risk": {
-                    "approved": bool(btc_cluster_risk.approved),
-                    "adjusted_target_weight": float(btc_cluster_risk.adjusted_target_weight),
-                    "adjusted_subposition_count": int(len(btc_cluster_risk.adjusted_subpositions)),
-                    "reasons": list(btc_cluster_risk.reasons),
-                },
-                "sol_cluster_risk": {
-                    "approved": bool(sol_cluster_risk.approved),
-                    "adjusted_target_weight": float(sol_cluster_risk.adjusted_target_weight),
-                    "adjusted_subposition_count": int(len(sol_cluster_risk.adjusted_subpositions)),
-                    "reasons": list(sol_cluster_risk.reasons),
-                },
-                "btc_execution_plan": {
-                    "cluster_id": str(btc_execution_plan.cluster_id),
-                    "slice_count": int(btc_execution_plan.slice_count),
-                    "planned_weight": float(btc_execution_plan.planned_weight),
-                    "target_weight": float(btc_execution_plan.total_target_weight),
-                    "execution_mode": str((btc_execution_plan.meta or {}).get("execution_mode", str(execution_mode))),
-                    "order_type": str(btc_execution_plan.slices[0].order_type if btc_execution_plan.slices else ""),
-                    "time_in_force": str(btc_execution_plan.slices[0].time_in_force if btc_execution_plan.slices else "GTC"),
-                    "time_offsets": "|".join(str(int(x.time_offset_bars)) for x in btc_execution_plan.slices),
-                    "ladder_offsets": "|".join(str(float((x.meta or {}).get("limit_offset_pct", 0.0))) for x in btc_execution_plan.slices),
-                },
-                "sol_execution_plan": {
-                    "cluster_id": str(sol_execution_plan.cluster_id),
-                    "slice_count": int(sol_execution_plan.slice_count),
-                    "planned_weight": float(sol_execution_plan.planned_weight),
-                    "target_weight": float(sol_execution_plan.total_target_weight),
-                    "execution_mode": str((sol_execution_plan.meta or {}).get("execution_mode", str(execution_mode))),
-                    "order_type": str(sol_execution_plan.slices[0].order_type if sol_execution_plan.slices else ""),
-                    "time_in_force": str(sol_execution_plan.slices[0].time_in_force if sol_execution_plan.slices else "GTC"),
-                    "time_offsets": "|".join(str(int(x.time_offset_bars)) for x in sol_execution_plan.slices),
-                    "ladder_offsets": "|".join(str(float((x.meta or {}).get("limit_offset_pct", 0.0))) for x in sol_execution_plan.slices),
+                "execution_plan_by_symbol": {
+                    sym: {
+                        "cluster_id": str(symbol_execution_plans[sym].cluster_id),
+                        "slice_count": int(symbol_execution_plans[sym].slice_count),
+                        "planned_weight": float(symbol_execution_plans[sym].planned_weight),
+                        "target_weight": float(symbol_execution_plans[sym].total_target_weight),
+                        "execution_mode": str((symbol_execution_plans[sym].meta or {}).get("execution_mode", str(execution_mode))),
+                        "order_type": str(symbol_execution_plans[sym].slices[0].order_type if symbol_execution_plans[sym].slices else ""),
+                        "time_in_force": str(symbol_execution_plans[sym].slices[0].time_in_force if symbol_execution_plans[sym].slices else "GTC"),
+                        "time_offsets": "|".join(str(int(x.time_offset_bars)) for x in symbol_execution_plans[sym].slices),
+                        "ladder_offsets": "|".join(str(float((x.meta or {}).get("limit_offset_pct", 0.0))) for x in symbol_execution_plans[sym].slices),
+                    }
+                    for sym in universe_symbols
                 },
                 "execution_fill_count": int(execution_fill_count),
                 "avg_execution_cost_bps": float(avg_execution_cost_bps_ts),
@@ -1350,137 +1422,108 @@ def run(
         prev_alloc = alloc
         allocs.append(alloc)
 
-        final_selected_rows.append({
+        def _sym_field_key(sym: str) -> str:
+            return str(sym).lower().replace("/", "_").replace(":", "_").replace("-", "_")
+
+        for sym in universe_symbols:
+            sym_meta = dict(symbol_meta.get(sym, {}) or {})
+            sym_signal = signals.get(sym)
+            final_selected_rows.append({
+                "ts": int(ts),
+                "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
+                "symbol": str(sym),
+                "strategy_id": sym_meta.get("strategy_id"),
+                "engine": sym_meta.get("engine"),
+                "registry_symbol": sym_meta.get("registry_symbol"),
+                "side": str(getattr(sym_signal, "side", "flat")),
+                "strength": float(getattr(sym_signal, "strength", 0.0) or 0.0),
+                "base_weight": float(sym_meta.get("base_weight", 1.0) or 1.0),
+                "p_win": float(sym_meta.get("p_win", 0.0) or 0.0),
+                "ml_position_size_mult": float(sym_meta.get("ml_position_size_mult", 0.0) or 0.0),
+                "competitive_score": float(sym_meta.get("competitive_score", 0.0) or 0.0),
+                "post_ml_score": float((sym_meta.get("competitive_score", 0.0) or 0.0) * (sym_meta.get("p_win", 0.0) or 0.0)),
+                "is_active": bool(getattr(sym_signal, "is_active")()) if hasattr(sym_signal, "is_active") else False,
+            })
+
+        row = {
             "ts": int(ts),
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
-            "symbol": str(btc_sym),
-            "strategy_id": btc_meta.get("strategy_id"),
-            "engine": btc_meta.get("engine"),
-            "registry_symbol": btc_meta.get("registry_symbol"),
-            "side": str(getattr(signals.get(btc_sym), "side", "flat")),
-            "strength": float(getattr(signals.get(btc_sym), "strength", 0.0) or 0.0),
-            "base_weight": float(btc_meta.get("base_weight", 1.0) or 1.0),
-            "p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
-            "ml_position_size_mult": float(btc_meta.get("ml_position_size_mult", 0.0) or 0.0),
-            "competitive_score": float(btc_meta.get("competitive_score", 0.0) or 0.0),
-            "post_ml_score": float((btc_meta.get("competitive_score", 0.0) or 0.0) * (btc_meta.get("p_win", 0.0) or 0.0)),
-            "is_active": bool(getattr(signals.get(btc_sym), "is_active")()) if hasattr(signals.get(btc_sym), "is_active") else False,
-        })
-
-        final_selected_rows.append({
-            "ts": int(ts),
-            "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
-            "symbol": str(sol_sym),
-            "strategy_id": sol_meta.get("strategy_id"),
-            "engine": sol_meta.get("engine"),
-            "registry_symbol": sol_meta.get("registry_symbol"),
-            "side": str(getattr(signals.get(sol_sym), "side", "flat")),
-            "strength": float(getattr(signals.get(sol_sym), "strength", 0.0) or 0.0),
-            "base_weight": float(sol_meta.get("base_weight", 1.0) or 1.0),
-            "p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
-            "ml_position_size_mult": float(sol_meta.get("ml_position_size_mult", 0.0) or 0.0),
-            "competitive_score": float(sol_meta.get("competitive_score", 0.0) or 0.0),
-            "post_ml_score": float((sol_meta.get("competitive_score", 0.0) or 0.0) * (sol_meta.get("p_win", 0.0) or 0.0)),
-            "is_active": bool(getattr(signals.get(sol_sym), "is_active")()) if hasattr(signals.get(sol_sym), "is_active") else False,
-        })
-
-        _prev_w_btc = float(_prev_alloc_for_rows.weights.get(btc_sym, 0.0)) if _prev_alloc_for_rows is not None else 0.0
-        _prev_w_sol = float(_prev_alloc_for_rows.weights.get(sol_sym, 0.0)) if _prev_alloc_for_rows is not None else 0.0
-        _curr_w_btc = float(alloc.weights.get(btc_sym, 0.0))
-        _curr_w_sol = float(alloc.weights.get(sol_sym, 0.0))
-
-        rows.append({
-            "ts": int(ts),
-            "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
-            "w_btc": _curr_w_btc,
-            "w_sol": _curr_w_sol,
-            "prev_w_btc": _prev_w_btc,
-            "prev_w_sol": _prev_w_sol,
-            "dw_btc": abs(_curr_w_btc - _prev_w_btc),
-            "dw_sol": abs(_curr_w_sol - _prev_w_sol),
-
-            "btc_w_raw_allocator": float(alloc_raw_weights.get(btc_sym, 0.0) or 0.0),
-            "sol_w_raw_allocator": float(alloc_raw_weights.get(sol_sym, 0.0) or 0.0),
-
-            "btc_w_after_ml_position_sizing": float(alloc_after_ml_weights.get(btc_sym, 0.0) or 0.0),
-            "sol_w_after_ml_position_sizing": float(alloc_after_ml_weights.get(sol_sym, 0.0) or 0.0),
-
-            "btc_w_after_smoothing": float(alloc_after_smoothing_weights.get(btc_sym, 0.0) or 0.0),
-            "sol_w_after_smoothing": float(alloc_after_smoothing_weights.get(sol_sym, 0.0) or 0.0),
-
-            "btc_w_after_signal_gating": float(alloc_after_signal_gating_weights.get(btc_sym, 0.0) or 0.0),
-            "sol_w_after_signal_gating": float(alloc_after_signal_gating_weights.get(sol_sym, 0.0) or 0.0),
-
             "pipeline_weight_order": "raw->ml->smoothing->signal_gating",
             "allocation_case": str((alloc.meta or {}).get("case", "")),
-            "btc_side": str(getattr(signals.get(btc_sym), "side", "flat")),
-            "sol_side": str(getattr(signals.get(sol_sym), "side", "flat")),
-            "btc_strength": float(getattr(signals.get(btc_sym), "strength", 0.0) or 0.0),
-            "sol_strength": float(getattr(signals.get(sol_sym), "strength", 0.0) or 0.0),
-            "btc_p_win": float(btc_meta.get("p_win", 0.0) or 0.0),
-            "sol_p_win": float(sol_meta.get("p_win", 0.0) or 0.0),
-            "btc_post_ml_score": float((btc_meta.get("competitive_score", 0.0) or 0.0) * (btc_meta.get("p_win", 0.0) or 0.0)),
-            "sol_post_ml_score": float((sol_meta.get("competitive_score", 0.0) or 0.0) * (sol_meta.get("p_win", 0.0) or 0.0)),
-            "btc_ml_size_mult": float(btc_meta.get("ml_position_size_mult", 0.0) or 0.0),
-            "sol_ml_size_mult": float(sol_meta.get("ml_position_size_mult", 0.0) or 0.0),
-            "btc_subpos_count": int(btc_subpos_info["count"]),
-            "sol_subpos_count": int(sol_subpos_info["count"]),
-            "btc_subpos_weights": str(btc_subpos_info["weights"]),
-            "sol_subpos_weights": str(sol_subpos_info["weights"]),
-            "btc_cluster_id": str(((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("cluster_id", "")),
-            "sol_cluster_id": str(((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("cluster_id", "")),
-            "btc_cluster_strategy_id": str(((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("strategy_id", "")),
-            "sol_cluster_strategy_id": str(((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("strategy_id", "")),
-            "btc_cluster_side": str(((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("side", "")),
-            "sol_cluster_side": str(((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("side", "")),
-            "btc_cluster_target_weight": float((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("target_weight", 0.0) or 0.0)),
-            "sol_cluster_target_weight": float((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("target_weight", 0.0) or 0.0)),
-            "btc_cluster_planned_weight": float((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("planned_weight", 0.0) or 0.0)),
-            "sol_cluster_planned_weight": float((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("planned_weight", 0.0) or 0.0)),
-            "btc_cluster_subposition_count": int((((alloc.meta or {}).get("btc_position_cluster", {}) or {}).get("subposition_count", 0) or 0)),
-            "sol_cluster_subposition_count": int((((alloc.meta or {}).get("sol_position_cluster", {}) or {}).get("subposition_count", 0) or 0)),
-            "btc_cluster_risk_approved": int(bool((((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("approved", False)))),
-            "sol_cluster_risk_approved": int(bool((((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("approved", False)))),
-            "btc_cluster_risk_target_weight": float((((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("adjusted_target_weight", 0.0) or 0.0)),
-            "sol_cluster_risk_target_weight": float((((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("adjusted_target_weight", 0.0) or 0.0)),
-            "btc_cluster_risk_subposition_count": int((((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("adjusted_subposition_count", 0) or 0)),
-            "sol_cluster_risk_subposition_count": int((((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("adjusted_subposition_count", 0) or 0)),
-            "btc_cluster_risk_reasons": "|".join(((alloc.meta or {}).get("btc_cluster_risk", {}) or {}).get("reasons", []) or []),
-            "sol_cluster_risk_reasons": "|".join(((alloc.meta or {}).get("sol_cluster_risk", {}) or {}).get("reasons", []) or []),
-            "btc_execution_slice_count": int((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("slice_count", 0) or 0)),
-            "sol_execution_slice_count": int((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("slice_count", 0) or 0)),
-            "btc_execution_planned_weight": float((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("planned_weight", 0.0) or 0.0)),
-            "sol_execution_planned_weight": float((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("planned_weight", 0.0) or 0.0)),
-            "btc_execution_target_weight": float((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("target_weight", 0.0) or 0.0)),
-            "sol_execution_target_weight": float((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("target_weight", 0.0) or 0.0)),
-            "btc_execution_mode": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("execution_mode", "") or "")),
-            "sol_execution_mode": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("execution_mode", "") or "")),
-            "btc_execution_order_type": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("order_type", "") or "")),
-            "sol_execution_order_type": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("order_type", "") or "")),
-            "btc_execution_time_offsets": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("time_offsets", "") or "")),
-            "sol_execution_time_offsets": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("time_offsets", "") or "")),
-            "btc_execution_ladder_offsets": str((((alloc.meta or {}).get("btc_execution_plan", {}) or {}).get("ladder_offsets", "") or "")),
-            "sol_execution_ladder_offsets": str((((alloc.meta or {}).get("sol_execution_plan", {}) or {}).get("ladder_offsets", "") or "")),
             "execution_fill_count": int(((alloc.meta or {}).get("execution_fill_count", 0) or 0)),
             "execution_slippage_bps": float(((alloc.meta or {}).get("execution_slippage_bps", execution_slippage_bps) or execution_slippage_bps)),
             "execution_size_slippage_factor": float(((alloc.meta or {}).get("execution_size_slippage_factor", execution_size_slippage_factor) or execution_size_slippage_factor)),
             "case": (alloc.meta or {}).get("case", ""),
-            "btc_strategy_id": btc_meta.get("strategy_id"),
-            "btc_engine": btc_meta.get("engine"),
-            "btc_reason": ((getattr(signals.get(btc_sym), "meta", {}) or {}).get("reason") or (getattr(signals.get(btc_sym), "meta", {}) or {}).get("skip")),
-            "btc_registry_symbol": btc_meta.get("registry_symbol"),
-            "btc_base_weight": float(btc_meta.get("base_weight", 1.0) or 1.0),
-            "btc_competitive_score": float(btc_meta.get("competitive_score", 0.0) or 0.0),
-            "sol_strategy_id": sol_meta.get("strategy_id"),
-            "sol_engine": sol_meta.get("engine"),
-            "sol_reason": ((getattr(signals.get(sol_sym), "meta", {}) or {}).get("reason") or (getattr(signals.get(sol_sym), "meta", {}) or {}).get("skip")),
-            "sol_adx": float(((getattr(signals.get(sol_sym), "meta", {}) or {}).get("adx")) or 0.0),
-            "sol_atrp": float(((getattr(signals.get(sol_sym), "meta", {}) or {}).get("atrp")) or 0.0),
-            "sol_bb_width": float(((getattr(signals.get(sol_sym), "meta", {}) or {}).get("bb_width")) or 0.0),
-            "sol_registry_symbol": sol_meta.get("registry_symbol"),
-            "sol_base_weight": float(sol_meta.get("base_weight", 1.0) or 1.0),
-            "sol_competitive_score": float(sol_meta.get("competitive_score", 0.0) or 0.0),
-        })
+            "regime_on_by_symbol": str({
+                sym: bool(getattr(regimes.get(sym), "on", False))
+                for sym in universe_symbols
+            }),
+            "portfolio_risk_scale_by_symbol": str(((alloc.meta or {}).get("portfolio_risk_scale_by_symbol", {}) or {})),
+        }
+
+        _subpos_meta_by_symbol = ((alloc.meta or {}).get("subposition_plan_by_symbol", {}) or {})
+        _cluster_meta_by_symbol = ((alloc.meta or {}).get("position_cluster_by_symbol", {}) or {})
+        _cluster_risk_meta_by_symbol = ((alloc.meta or {}).get("cluster_risk_by_symbol", {}) or {})
+        _execution_meta_by_symbol = ((alloc.meta or {}).get("execution_plan_by_symbol", {}) or {})
+
+        for sym in universe_symbols:
+            sym_key = _sym_field_key(sym)
+            sym_meta = dict(symbol_meta.get(sym, {}) or {})
+            sym_signal = signals.get(sym)
+
+            _prev_w = float(_prev_alloc_for_rows.weights.get(sym, 0.0)) if _prev_alloc_for_rows is not None else 0.0
+            _curr_w = float(alloc.weights.get(sym, 0.0) or 0.0)
+            _subpos_info = symbol_subpos_info.get(sym, {"count": 0, "weights": [], "plan": None})
+            _cluster_meta = (_cluster_meta_by_symbol.get(sym, {}) or {})
+            _cluster_risk_meta = (_cluster_risk_meta_by_symbol.get(sym, {}) or {})
+            _execution_meta = (_execution_meta_by_symbol.get(sym, {}) or {})
+
+            row[f"w_{sym_key}"] = _curr_w
+            row[f"prev_w_{sym_key}"] = _prev_w
+            row[f"dw_{sym_key}"] = abs(_curr_w - _prev_w)
+
+            row[f"{sym_key}_w_raw_allocator"] = float(alloc_raw_weights.get(sym, 0.0) or 0.0)
+            row[f"{sym_key}_w_after_ml_position_sizing"] = float(alloc_after_ml_weights.get(sym, 0.0) or 0.0)
+            row[f"{sym_key}_w_after_smoothing"] = float(alloc_after_smoothing_weights.get(sym, 0.0) or 0.0)
+            row[f"{sym_key}_w_after_signal_gating"] = float(alloc_after_signal_gating_weights.get(sym, 0.0) or 0.0)
+
+            row[f"{sym_key}_side"] = str(getattr(sym_signal, "side", "flat"))
+            row[f"{sym_key}_strength"] = float(getattr(sym_signal, "strength", 0.0) or 0.0)
+            row[f"{sym_key}_p_win"] = float(sym_meta.get("p_win", 0.0) or 0.0)
+            row[f"{sym_key}_post_ml_score"] = float((sym_meta.get("competitive_score", 0.0) or 0.0) * (sym_meta.get("p_win", 0.0) or 0.0))
+            row[f"{sym_key}_ml_size_mult"] = float(sym_meta.get("ml_position_size_mult", 0.0) or 0.0)
+
+            row[f"{sym_key}_subpos_count"] = int(_subpos_info.get("count", 0) or 0)
+            row[f"{sym_key}_subpos_weights"] = str(_subpos_info.get("weights", []))
+
+            row[f"{sym_key}_cluster_id"] = str(_cluster_meta.get("cluster_id", ""))
+            row[f"{sym_key}_cluster_strategy_id"] = str(_cluster_meta.get("strategy_id", ""))
+            row[f"{sym_key}_cluster_side"] = str(_cluster_meta.get("side", ""))
+            row[f"{sym_key}_cluster_target_weight"] = float(_cluster_meta.get("target_weight", 0.0) or 0.0)
+            row[f"{sym_key}_cluster_planned_weight"] = float(_cluster_meta.get("planned_weight", 0.0) or 0.0)
+            row[f"{sym_key}_cluster_subposition_count"] = int(_cluster_meta.get("subposition_count", 0) or 0)
+
+            row[f"{sym_key}_cluster_risk_approved"] = int(bool(_cluster_risk_meta.get("approved", False)))
+            row[f"{sym_key}_cluster_risk_target_weight"] = float(_cluster_risk_meta.get("adjusted_target_weight", 0.0) or 0.0)
+            row[f"{sym_key}_cluster_risk_subposition_count"] = int(_cluster_risk_meta.get("adjusted_subposition_count", 0) or 0)
+            row[f"{sym_key}_cluster_risk_reasons"] = "|".join(_cluster_risk_meta.get("reasons", []) or [])
+
+            row[f"{sym_key}_execution_slice_count"] = int(_execution_meta.get("slice_count", 0) or 0)
+            row[f"{sym_key}_execution_planned_weight"] = float(_execution_meta.get("planned_weight", 0.0) or 0.0)
+            row[f"{sym_key}_execution_target_weight"] = float(_execution_meta.get("target_weight", 0.0) or 0.0)
+            row[f"{sym_key}_execution_mode"] = str(_execution_meta.get("execution_mode", "") or "")
+            row[f"{sym_key}_execution_order_type"] = str(_execution_meta.get("order_type", "") or "")
+            row[f"{sym_key}_execution_time_offsets"] = str(_execution_meta.get("time_offsets", "") or "")
+            row[f"{sym_key}_execution_ladder_offsets"] = str(_execution_meta.get("ladder_offsets", "") or "")
+
+            row[f"{sym_key}_strategy_id"] = sym_meta.get("strategy_id")
+            row[f"{sym_key}_engine"] = sym_meta.get("engine")
+            row[f"{sym_key}_reason"] = ((getattr(sym_signal, "meta", {}) or {}).get("reason") or (getattr(sym_signal, "meta", {}) or {}).get("skip"))
+            row[f"{sym_key}_registry_symbol"] = sym_meta.get("registry_symbol")
+            row[f"{sym_key}_base_weight"] = float(sym_meta.get("base_weight", 1.0) or 1.0)
+            row[f"{sym_key}_competitive_score"] = float(sym_meta.get("competitive_score", 0.0) or 0.0)
+
+        rows.append(row)
 
     df = pd.DataFrame(rows)
     df.to_csv(f"results/pipeline_allocations_{name}.csv", index=False)
@@ -1524,8 +1567,9 @@ def run(
                 _ml_df = _ml_df.sort_values(_sort_cols).reset_index(drop=True)
 
             _close_map = {
-                btc_sym: btc["close"].astype(float),
-                sol_sym: sol["close"].astype(float),
+                sym: data_by_symbol[sym]["close"].astype(float)
+                for sym in universe_symbols
+                if sym in data_by_symbol
             }
 
             _parts = []
@@ -1616,7 +1660,7 @@ def run(
 
     # Portfolio performance (equity/drawdown)
     pe = SimplePortfolioEngine(initial_equity=1000.0)
-    perf = pe.run(candles_by_symbol=candles_by_symbol, allocations=allocs, symbols=(btc_sym, sol_sym))
+    perf = pe.run(candles_by_symbol=candles_by_symbol, allocations=allocs, symbols=tuple(universe_symbols))
     perf_out = perf.reset_index().copy()
     perf_out["gross_port_ret"] = pd.to_numeric(perf_out["port_ret"], errors="coerce").fillna(0.0)
     perf_out["gross_equity"] = pd.to_numeric(perf_out["equity"], errors="coerce").fillna(0.0)
@@ -2140,9 +2184,18 @@ def main() -> None:
         allocator_target_exposure=float(args.allocator_target_exposure),
         allocator_max_step_per_bar=float(args.allocator_max_step_per_bar),
         portfolio_riskoff_filter=bool(args.portfolio_riskoff_filter),
-        portfolio_riskoff_btc_adx_min=float(args.portfolio_riskoff_btc_adx_min),
-        portfolio_riskoff_btc_slope_min=float(args.portfolio_riskoff_btc_slope_min),
-        portfolio_riskoff_sol_atrp_max=float(args.portfolio_riskoff_sol_atrp_max),
+        portfolio_riskoff_primary_adx_min=float(
+            getattr(args, "portfolio_riskoff_primary_adx_min",
+                    getattr(args, "portfolio_riskoff_btc_adx_min", 18.0))
+        ),
+        portfolio_riskoff_primary_slope_min=float(
+            getattr(args, "portfolio_riskoff_primary_slope_min",
+                    getattr(args, "portfolio_riskoff_btc_slope_min", 1.5))
+        ),
+        portfolio_riskoff_secondary_atrp_max=float(
+            getattr(args, "portfolio_riskoff_secondary_atrp_max",
+                    getattr(args, "portfolio_riskoff_sol_atrp_max", 0.035))
+        ),
         portfolio_risk_scale_enable=bool(args.portfolio_risk_scale_enable),
         portfolio_risk_scale_atrp_low=float(args.portfolio_risk_scale_atrp_low),
         portfolio_risk_scale_atrp_high=float(args.portfolio_risk_scale_atrp_high),
