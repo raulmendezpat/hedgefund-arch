@@ -17,3 +17,8 @@ results/
 secret.json
 *.pem
 *.key
+
+# ML artifacts (ignore future versions, keep committed stable baselines)
+artifacts/ml_strategy_ensemble_registry_v4*.joblib
+artifacts/ml_strategy_ensemble_registry_v4*_metrics.json
+artifacts/ml_thresholds_registry_v4*.json
