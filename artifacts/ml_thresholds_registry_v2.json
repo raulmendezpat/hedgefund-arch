@@ -1,0 +1,10 @@
+{
+  "quantile": 0.4,
+  "thresholds": {
+    "btc_trend": 0.0,
+    "btc_trend_loose": 0.0,
+    "link_trend": 0.0,
+    "sol_bbrsi": 0.0,
+    "sol_trend_pullback": 0.0
+  }
+}

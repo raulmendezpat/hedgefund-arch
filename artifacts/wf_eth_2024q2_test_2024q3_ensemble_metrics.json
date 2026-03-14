@@ -1,0 +1,26 @@
+{
+  "input_rows_total": 0,
+  "target_col": "y_win",
+  "train_frac": 0.8,
+  "strategies": {},
+  "feature_cols_num": [
+    "strength",
+    "base_weight",
+    "competitive_score",
+    "adx",
+    "atr",
+    "atrp",
+    "rsi",
+    "ema_gap",
+    "ema_gap_pct",
+    "bb_width",
+    "bb_span",
+    "bb_pos",
+    "close",
+    "volume"
+  ],
+  "feature_cols_cat": [
+    "symbol",
+    "side_raw"
+  ]
+}

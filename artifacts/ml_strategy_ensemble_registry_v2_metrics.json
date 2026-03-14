@@ -1,0 +1,51 @@
+{
+  "input_rows_total": 15007,
+  "target_col": "y_win",
+  "train_frac": 0.8,
+  "strategies": {
+    "btc_trend": {
+      "status": "skipped",
+      "reason": "class_count<10",
+      "rows": 4613,
+      "positive_count": 0,
+      "negative_count": 4613
+    },
+    "btc_trend_loose": {
+      "status": "skipped",
+      "reason": "class_count<10",
+      "rows": 5537,
+      "positive_count": 0,
+      "negative_count": 5537
+    },
+    "link_trend": {
+      "status": "skipped",
+      "reason": "class_count<10",
+      "rows": 4456,
+      "positive_count": 0,
+      "negative_count": 4456
+    },
+    "sol_bbrsi": {
+      "status": "skipped",
+      "reason": "class_count<10",
+      "rows": 125,
+      "positive_count": 0,
+      "negative_count": 125
+    },
+    "sol_trend_pullback": {
+      "status": "skipped",
+      "reason": "class_count<10",
+      "rows": 276,
+      "positive_count": 0,
+      "negative_count": 276
+    }
+  },
+  "feature_cols_num": [
+    "strength",
+    "base_weight",
+    "competitive_score"
+  ],
+  "feature_cols_cat": [
+    "symbol",
+    "side_raw"
+  ]
+}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 
 import argparse
 from pathlib import Path
@@ -122,28 +123,105 @@ def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = 
     )
 
 
-def _load_universe_symbols(strategy_registry_path: str) -> list[str]:
+def _load_strategy_registry_rows(strategy_registry_path: str) -> list[dict]:
     p = Path(strategy_registry_path)
     if not p.exists():
-        return [LEGACY_SYMBOLS["BTC"], LEGACY_SYMBOLS["SOL"]]
+        return [
+            {"strategy_id": "btc_trend", "symbol": LEGACY_SYMBOLS["BTC"], "enabled": True},
+            {"strategy_id": "sol_bbrsi", "symbol": LEGACY_SYMBOLS["SOL"], "enabled": True},
+        ]
 
     payload = json.loads(p.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
         raise ValueError("Strategy registry must be a list")
+    return [dict(x or {}) for x in payload]
 
+
+def _extract_universe_symbols(strategy_registry_rows: list[dict]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for row in payload:
-        row = row or {}
-        if not bool(row.get("enabled", True)):
+    for row in strategy_registry_rows:
+        if not bool((row or {}).get("enabled", True)):
             continue
-        sym = str(row.get("symbol", "") or "").strip()
+        sym = str((row or {}).get("symbol", "") or "").strip()
         if not sym or sym in seen:
             continue
         seen.add(sym)
         out.append(sym)
-
     return out or [LEGACY_SYMBOLS["BTC"], LEGACY_SYMBOLS["SOL"]]
+
+
+def _build_symbol_cluster_metadata(strategy_registry_rows: list[dict]) -> tuple[dict[str, str], dict[str, float]]:
+    symbol_cluster_map: dict[str, str] = {}
+    cluster_cap_map: dict[str, float] = {}
+
+    for row in strategy_registry_rows:
+        if not bool((row or {}).get("enabled", True)):
+            continue
+        sym = str((row or {}).get("symbol", "") or "").strip()
+        if not sym:
+            continue
+
+        cluster_id = str((row or {}).get("cluster_id", "") or "").strip()
+        if cluster_id:
+            symbol_cluster_map[sym] = cluster_id
+
+        if cluster_id:
+            cap_val = (row or {}).get("cluster_cap", None)
+            if cap_val is not None and str(cap_val).strip() != "":
+                try:
+                    cluster_cap_map[cluster_id] = float(cap_val)
+                except Exception:
+                    pass
+
+    return symbol_cluster_map, cluster_cap_map
+
+
+def _apply_symbol_top_n_and_cluster_caps(
+    weights: dict[str, float],
+    *,
+    symbol_cluster_map: dict[str, str] | None = None,
+    cluster_cap_map: dict[str, float] | None = None,
+    top_n_symbols: int | None = None,
+) -> dict[str, float]:
+    out = {str(k): float(v or 0.0) for k, v in (weights or {}).items()}
+
+    if top_n_symbols is not None and int(top_n_symbols) > 0:
+        ranked = sorted(
+            [sym for sym, w in out.items() if abs(float(w or 0.0)) > 0.0],
+            key=lambda sym: (abs(float(out.get(sym, 0.0) or 0.0)), str(sym)),
+            reverse=True,
+        )
+        keep = set(ranked[: int(top_n_symbols)])
+        for sym in list(out.keys()):
+            if sym not in keep:
+                out[sym] = 0.0
+
+    symbol_cluster_map = dict(symbol_cluster_map or {})
+    cluster_cap_map = dict(cluster_cap_map or {})
+
+    if symbol_cluster_map and cluster_cap_map:
+        cluster_abs_sum: dict[str, float] = {}
+        for sym, w in out.items():
+            cid = symbol_cluster_map.get(sym)
+            if not cid:
+                continue
+            cluster_abs_sum[cid] = float(cluster_abs_sum.get(cid, 0.0) + abs(float(w or 0.0)))
+
+        for cid, total_abs in cluster_abs_sum.items():
+            cap = cluster_cap_map.get(cid, None)
+            if cap is None:
+                continue
+            cap = float(cap)
+            if cap <= 0.0 or total_abs <= cap:
+                continue
+
+            scale = float(cap / total_abs)
+            for sym in list(out.keys()):
+                if symbol_cluster_map.get(sym) == cid:
+                    out[sym] = float(out[sym] * scale)
+
+    return out
 
 
 def _fetch_symbol_ohlcv_map(
@@ -360,7 +438,13 @@ def run(
     btc_sym = LEGACY_SYMBOLS["BTC"]
     sol_sym = LEGACY_SYMBOLS["SOL"]
 
-    universe_symbols = _load_universe_symbols(str(strategy_registry_path))
+    strategy_registry_rows = _load_strategy_registry_rows(str(strategy_registry_path))
+    universe_symbols = _extract_universe_symbols(strategy_registry_rows)
+    symbol_cluster_map, cluster_cap_map = _build_symbol_cluster_metadata(strategy_registry_rows)
+
+    allocator_top_n_symbols = int(os.environ.get("HF_ALLOCATOR_TOP_N_SYMBOLS", "0") or 0)
+    allocator_apply_cluster_caps = str(os.environ.get("HF_ALLOCATOR_APPLY_CLUSTER_CAPS", "0")).strip().lower() in {"1", "true", "yes", "on"}
+
     data_by_symbol = _fetch_symbol_ohlcv_map(
         symbols=universe_symbols,
         start_ms=start_ms,
@@ -1221,6 +1305,27 @@ def run(
                 )
         # --- end signal gating ---
         alloc_after_signal_gating_weights = dict(getattr(alloc, "weights", {}) or {})
+        alloc_pre_cluster_controls = dict(alloc.weights)
+
+        alloc = Allocation(
+            weights=_apply_symbol_top_n_and_cluster_caps(
+                dict(alloc.weights),
+                symbol_cluster_map=symbol_cluster_map if bool(allocator_apply_cluster_caps) else {},
+                cluster_cap_map=cluster_cap_map if bool(allocator_apply_cluster_caps) else {},
+                top_n_symbols=(allocator_top_n_symbols if int(allocator_top_n_symbols) > 0 else None),
+            ),
+            meta={
+                **dict(getattr(alloc, "meta", {}) or {}),
+                "allocator_top_n_symbols": int(allocator_top_n_symbols or 0),
+                "allocator_apply_cluster_caps": bool(allocator_apply_cluster_caps),
+                "symbol_cluster_map": dict(symbol_cluster_map),
+                "cluster_cap_map": dict(cluster_cap_map),
+                "alloc_pre_cluster_controls": dict(alloc_pre_cluster_controls),
+            },
+        )
+
+        alloc_after_signal_gating_weights = dict(alloc.weights)
+
         symbol_meta = {
             sym: dict(getattr(signals.get(sym), "meta", {}) or {})
             for sym in universe_symbols

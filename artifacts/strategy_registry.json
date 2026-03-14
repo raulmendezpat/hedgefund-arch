@@ -5,7 +5,9 @@
     "engine": "btc_trend_signal",
     "enabled": true,
     "base_weight": 1.0,
-    "params": {}
+    "params": {},
+    "cluster_id": "majors",
+    "cluster_cap": 0.3
   },
   {
     "strategy_id": "btc_trend_loose",
@@ -15,7 +17,9 @@
     "base_weight": 0.9,
     "params": {
       "adx_min": 12.0
-    }
+    },
+    "cluster_id": "majors",
+    "cluster_cap": 0.3
   },
   {
     "strategy_id": "sol_bbrsi",
@@ -23,7 +27,9 @@
     "engine": "sol_bbrsi_signal",
     "enabled": true,
     "base_weight": 0.6,
-    "params": {}
+    "params": {},
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.25
   },
   {
     "strategy_id": "sol_extreme_mr",
@@ -39,7 +45,9 @@
       "adx_max": 22.0,
       "bb_long_mult": 1.002,
       "bb_short_mult": 0.998
-    }
+    },
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.25
   },
   {
     "strategy_id": "sol_trend_pullback",
@@ -57,7 +65,9 @@
       "atrp_max": 0.05,
       "require_adx": true,
       "adx_min": 20
-    }
+    },
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.25
   },
   {
     "strategy_id": "link_trend",
@@ -65,6 +75,38 @@
     "engine": "btc_trend_signal",
     "enabled": true,
     "base_weight": 1.0,
+    "params": {},
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.25
+  },
+  {
+    "strategy_id": "bnb_trend",
+    "symbol": "BNB/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.8,
+    "cluster_id": "infra",
+    "cluster_cap": 0.2,
+    "params": {}
+  },
+  {
+    "strategy_id": "xrp_trend",
+    "symbol": "XRP/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "liquid_alt",
+    "cluster_cap": 0.2,
+    "params": {}
+  },
+  {
+    "strategy_id": "eth_trend",
+    "symbol": "ETH/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "majors",
+    "cluster_cap": 0.3,
     "params": {}
   }
 ]

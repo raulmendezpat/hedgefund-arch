@@ -1,0 +1,38 @@
+[
+  {
+    "tag": "wf_2024q1_test_2024q2",
+    "total_return_pct": null,
+    "cagr_pct": null,
+    "sharpe_annual": null,
+    "max_drawdown_pct": null,
+    "vol_annual": null,
+    "execution_fill_count_total": 0
+  },
+  {
+    "tag": "wf_2024q2_test_2024q3",
+    "total_return_pct": 2.7738530758595337,
+    "cagr_pct": 231.4817197413001,
+    "sharpe_annual": 4.58325916939139,
+    "max_drawdown_pct": -4.504365257747378,
+    "vol_annual": 0.26939957629689115,
+    "execution_fill_count_total": 1082
+  },
+  {
+    "tag": "wf_2024q3_test_2024q4",
+    "total_return_pct": 41.97459561808032,
+    "cagr_pct": 2586.061674880985,
+    "sharpe_annual": 4.812592062330934,
+    "max_drawdown_pct": -10.351656277782329,
+    "vol_annual": 0.7372117794670165,
+    "execution_fill_count_total": 4596
+  },
+  {
+    "tag": "wf_2024q4_test_2025q1",
+    "total_return_pct": -0.9760383766856617,
+    "cagr_pct": -9.43491758166617,
+    "sharpe_annual": 0.02110697998239899,
+    "max_drawdown_pct": -17.17676211991427,
+    "vol_annual": 0.4612867707505363,
+    "execution_fill_count_total": 2816
+  }
+]

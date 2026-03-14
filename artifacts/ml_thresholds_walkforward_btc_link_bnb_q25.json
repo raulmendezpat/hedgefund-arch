@@ -1,0 +1,11 @@
+{
+  "quantile": 0.25,
+  "thresholds": {
+    "bnb_trend": 0.5622148505048554,
+    "btc_trend": 0.5585367156386147,
+    "btc_trend_loose": 0.534295653345644,
+    "link_trend": 0.5090531592094265,
+    "sol_bbrsi": 0.631824137971746,
+    "sol_trend_pullback": 0.5676672045890431
+  }
+}
