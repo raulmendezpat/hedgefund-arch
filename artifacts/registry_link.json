@@ -1,0 +1,10 @@
+[
+  {
+    "strategy_id": "link_trend_test",
+    "symbol": "LINK/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {}
+  }
+]

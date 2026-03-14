@@ -1,0 +1,10 @@
+[
+  {
+    "strategy_id": "avax_trend_test",
+    "symbol": "AVAX/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {}
+  }
+]

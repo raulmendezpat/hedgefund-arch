@@ -1,0 +1,10 @@
+[
+  {
+    "strategy_id": "eth_trend_test",
+    "symbol": "ETH/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {}
+  }
+]

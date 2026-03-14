@@ -1,0 +1,10 @@
+[
+  {
+    "strategy_id": "btc_trend_test",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {}
+  }
+]
