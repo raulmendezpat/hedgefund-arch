@@ -410,6 +410,12 @@ def run(
     allocator_rebalance_deadband: float = 0.0,
     allocator_symbol_cap: float = 1.0,
     allocator_target_exposure: float = 0.0,
+    portfolio_regime_detection: bool = True,
+    portfolio_regime_breadth_aggressive: int = 4,
+    portfolio_regime_breadth_defensive: int = 2,
+    portfolio_regime_pwin_aggressive: float = 0.58,
+    portfolio_regime_pwin_defensive: float = 0.52,
+    portfolio_regime_atrp_defensive: float = 0.030,
     allocator_max_step_per_bar: float = 1.0,
     portfolio_riskoff_filter: bool = False,
     portfolio_riskoff_primary_adx_min: float = 18.0,
@@ -1481,8 +1487,79 @@ def run(
                 "execution_cost_pct": float(getattr(_fill, "execution_cost_pct", 0.0) or 0.0),
             })
 
+        # --- portfolio regime detection (logging only) ---
+        _portfolio_regime = "normal"
+        _portfolio_breadth = 0
+        _portfolio_avg_strength = 0.0
+        _portfolio_avg_pwin = 0.0
+        _portfolio_avg_atrp = 0.0
+
+        if portfolio_regime_detection:
+            _active_syms = []
+            _strengths = []
+            _pwins = []
+            _atrps = []
+
+            for _sym, _sig in (signals or {}).items():
+                _side = str(getattr(_sig, "side", "flat") or "flat").lower()
+                if _side != "flat":
+                    _active_syms.append(_sym)
+
+                    try:
+                        _strengths.append(float(getattr(_sig, "strength", 0.0) or 0.0))
+                    except Exception:
+                        pass
+
+                    _meta_sig = dict(getattr(_sig, "meta", {}) or {})
+                    try:
+                        _pwins.append(float(_meta_sig.get("post_ml_score", _meta_sig.get("p_win", 0.0)) or 0.0))
+                    except Exception:
+                        pass
+
+                    try:
+                        _atrps.append(float(atrp_now_by_symbol.get(_sym, 0.0) or 0.0))
+                    except Exception:
+                        pass
+
+            _portfolio_breadth = int(len(_active_syms))
+            _portfolio_avg_strength = float(sum(_strengths) / len(_strengths)) if _strengths else 0.0
+            _portfolio_avg_pwin = float(sum(_pwins) / len(_pwins)) if _pwins else 0.0
+            _portfolio_avg_atrp = float(sum(_atrps) / len(_atrps)) if _atrps else 0.0
+
+            if (
+                _portfolio_breadth >= int(portfolio_regime_breadth_aggressive)
+                and _portfolio_avg_pwin >= float(portfolio_regime_pwin_aggressive)
+                and _portfolio_avg_atrp <= float(portfolio_regime_atrp_defensive)
+            ):
+                _portfolio_regime = "aggressive"
+            elif (
+                _portfolio_breadth <= int(portfolio_regime_breadth_defensive)
+                or _portfolio_avg_pwin <= float(portfolio_regime_pwin_defensive)
+                or _portfolio_avg_atrp >= float(portfolio_regime_atrp_defensive)
+            ):
+                _portfolio_regime = "defensive"
+
+        # --- portfolio conviction index ---
+        _portfolio_conviction = 0.0
+        try:
+            _breadth_score = min(1.0, float(_portfolio_breadth) / 5.0)
+            _pwin_score = max(0.0, min(1.0, float(_portfolio_avg_pwin)))
+            _strength_score = max(0.0, min(1.0, float(_portfolio_avg_strength)))
+            _portfolio_conviction = float(_breadth_score * _pwin_score * _strength_score)
+        except Exception:
+            _portfolio_conviction = 0.0
+
+        # soft portfolio-level scaling from conviction
+        _regime_symbol_cap_mult = 1.0
+        _scale = 0.95 + 0.40 * float(_portfolio_conviction)
+
+        _weights_regime = {}
+        for _sym, _w in dict(alloc.weights or {}).items():
+            _w2 = float(_w or 0.0) * float(_scale)
+            _weights_regime[_sym] = _w2
+
         alloc = Allocation(
-            weights=dict(alloc.weights),
+            weights=dict(_weights_regime),
             meta={
                 **dict(getattr(alloc, "meta", {}) or {}),
                 "subposition_plan_by_symbol": {
@@ -1512,6 +1589,14 @@ def run(
                     }
                     for sym in universe_symbols
                 },
+                "portfolio_regime": str(_portfolio_regime),
+                "portfolio_breadth": int(_portfolio_breadth),
+                "portfolio_avg_strength": float(_portfolio_avg_strength),
+                "portfolio_avg_pwin": float(_portfolio_avg_pwin),
+                "portfolio_avg_atrp": float(_portfolio_avg_atrp),
+                "portfolio_conviction": float(_portfolio_conviction),
+                "portfolio_regime_symbol_cap_mult": float(_regime_symbol_cap_mult),
+                "portfolio_regime_scale_applied": float(_scale),
                 "execution_plan_by_symbol": {
                     sym: {
                         "cluster_id": str(symbol_execution_plans[sym].cluster_id),
@@ -1564,6 +1649,14 @@ def run(
             "ts_utc": pd.to_datetime(int(ts), unit="ms", utc=True).isoformat(),
             "pipeline_weight_order": "raw->ml->smoothing->signal_gating",
             "allocation_case": str((alloc.meta or {}).get("case", "")),
+            "portfolio_regime": str((alloc.meta or {}).get("portfolio_regime", "normal")),
+            "portfolio_breadth": int(((alloc.meta or {}).get("portfolio_breadth")) or 0),
+            "portfolio_avg_strength": float(((alloc.meta or {}).get("portfolio_avg_strength")) or 0.0),
+            "portfolio_avg_pwin": float(((alloc.meta or {}).get("portfolio_avg_pwin")) or 0.0),
+            "portfolio_avg_atrp": float(((alloc.meta or {}).get("portfolio_avg_atrp")) or 0.0),
+            "portfolio_conviction": float(((alloc.meta or {}).get("portfolio_conviction")) or 0.0),
+            "portfolio_regime_symbol_cap_mult": float(((alloc.meta or {}).get("portfolio_regime_symbol_cap_mult")) or 1.0),
+            "portfolio_regime_scale_applied": float(((alloc.meta or {}).get("portfolio_regime_scale_applied")) or 1.0),
             "execution_fill_count": int(((alloc.meta or {}).get("execution_fill_count", 0) or 0)),
             "execution_slippage_bps": float(((alloc.meta or {}).get("execution_slippage_bps", execution_slippage_bps) or execution_slippage_bps)),
             "execution_size_slippage_factor": float(((alloc.meta or {}).get("execution_size_slippage_factor", execution_size_slippage_factor) or execution_size_slippage_factor)),
