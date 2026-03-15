@@ -33,6 +33,7 @@ SYMBOL_OVERRIDES = {
         "tp_atr_mult_max": 3.8,
         "tp_atr_pct_pivot": 0.012,
         "max_delta_notional": 80.0,
+        "max_target_weight": 0.25,
         "stop_refresh_rel_tol": 0.0025,
         "tp_refresh_rel_tol": 0.0035,
     },
@@ -42,6 +43,7 @@ SYMBOL_OVERRIDES = {
         "tp_atr_mult_max": 4.2,
         "tp_atr_pct_pivot": 0.018,
         "max_delta_notional": 50.0,
+        "max_target_weight": 0.25,
         "stop_refresh_rel_tol": 0.0040,
         "tp_refresh_rel_tol": 0.0050,
     },
@@ -72,6 +74,14 @@ SYMBOL_OVERRIDES = {
         "tp_atr_mult_max": 3.8,
         "tp_atr_pct_pivot": 0.014,
         "max_delta_notional": 40.0,
+    },
+    "TRX/USDT:USDT": {
+        "sl_atr_mult": 2.0,
+        "tp_atr_mult_min": 1.9,
+        "tp_atr_mult_max": 3.8,
+        "tp_atr_pct_pivot": 0.014,
+        "max_delta_notional": 80.0,
+        "max_target_weight": 0.25,
     },
 }
 
@@ -434,6 +444,17 @@ for prefix, cfg in SYMBOLS.items():
         side = "long"
 
     target_weight = signed_weight(side, weight)
+
+    max_target_weight = float(cfg.get("max_target_weight", 0.25) or 0.25)
+    uncapped_target_weight = float(target_weight)
+    target_weight = max(-max_target_weight, min(max_target_weight, float(target_weight)))
+
+    if abs(target_weight - uncapped_target_weight) > 1e-12:
+        print(
+            "execution_cap_action:",
+            f"capped target_weight from {uncapped_target_weight} to {target_weight}",
+            f"(max_target_weight={max_target_weight})",
+        )
 
     target_qty = abs(usdt_total * target_weight) / last if last > 0 else 0.0
     target_qty = float(bitget.amount_to_precision(symbol, target_qty)) if target_qty > 0 else 0.0

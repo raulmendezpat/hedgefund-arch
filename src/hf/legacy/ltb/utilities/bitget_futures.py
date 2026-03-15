@@ -203,6 +203,7 @@ class BitgetFutures():
         try:
             params = {
                 'reduceOnly': reduce,
+                'tradeSide': 'close' if reduce else 'open',
             }
             amount = self.amount_to_precision(symbol, amount)
             return self.session.create_order(symbol, 'market', side, amount, params=params)
@@ -214,6 +215,7 @@ class BitgetFutures():
         try:
             params = {
                 'reduceOnly': reduce,
+                'tradeSide': 'close' if reduce else 'open',
             }
             amount = self.amount_to_precision(symbol, amount)
             price = self.price_to_precision(symbol, price)
@@ -228,6 +230,7 @@ class BitgetFutures():
             trigger_price = self.price_to_precision(symbol, trigger_price)
             params = {
                 'reduceOnly': reduce,
+                'tradeSide': 'close' if reduce else 'open',
                 'triggerPrice': trigger_price,
                 'triggerType': 'mark_price',
                 'delegateType': 'price_fill',
