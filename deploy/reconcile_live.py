@@ -12,78 +12,11 @@ SECRET = json.loads((APP / "secret.json").read_text())["envelope"]
 
 LIVE_TRADING = os.getenv("LIVE_TRADING", "0") == "1"
 
-DEFAULT_SYMBOL_CONFIG = {
-    "timeframe": "1h",
-    "ohlcv_limit": 120,
-    "atr_period": 14,
-    "sl_atr_mult": 2.0,
-    "tp_atr_mult_min": 1.8,
-    "tp_atr_mult_max": 3.8,
-    "tp_atr_pct_pivot": 0.014,
-    "min_delta_notional": 5.0,
-    "max_delta_notional": 60.0,
-    "stop_refresh_rel_tol": 0.0030,
-    "tp_refresh_rel_tol": 0.0040,
-}
+LIVE_EXECUTION_CONFIG_PATH = APP / "deploy" / "live_execution_config.json"
+LIVE_EXECUTION_CONFIG = json.loads(LIVE_EXECUTION_CONFIG_PATH.read_text(encoding="utf-8"))
 
-SYMBOL_OVERRIDES = {
-    "BTC/USDT:USDT": {
-        "sl_atr_mult": 1.8,
-        "tp_atr_mult_min": 1.8,
-        "tp_atr_mult_max": 3.8,
-        "tp_atr_pct_pivot": 0.012,
-        "max_delta_notional": 80.0,
-        "max_target_weight": 0.25,
-        "stop_refresh_rel_tol": 0.0025,
-        "tp_refresh_rel_tol": 0.0035,
-    },
-    "SOL/USDT:USDT": {
-        "sl_atr_mult": 2.2,
-        "tp_atr_mult_min": 2.0,
-        "tp_atr_mult_max": 4.2,
-        "tp_atr_pct_pivot": 0.018,
-        "max_delta_notional": 50.0,
-        "max_target_weight": 0.25,
-        "stop_refresh_rel_tol": 0.0040,
-        "tp_refresh_rel_tol": 0.0050,
-    },
-    "ETH/USDT:USDT": {
-        "sl_atr_mult": 1.9,
-        "tp_atr_mult_min": 1.8,
-        "tp_atr_mult_max": 3.6,
-        "tp_atr_pct_pivot": 0.012,
-        "max_delta_notional": 70.0,
-    },
-    "BNB/USDT:USDT": {
-        "sl_atr_mult": 2.0,
-        "tp_atr_mult_min": 1.9,
-        "tp_atr_mult_max": 3.8,
-        "tp_atr_pct_pivot": 0.014,
-        "max_delta_notional": 60.0,
-    },
-    "LINK/USDT:USDT": {
-        "sl_atr_mult": 2.1,
-        "tp_atr_mult_min": 2.0,
-        "tp_atr_mult_max": 4.0,
-        "tp_atr_pct_pivot": 0.018,
-        "max_delta_notional": 45.0,
-    },
-    "XRP/USDT:USDT": {
-        "sl_atr_mult": 2.0,
-        "tp_atr_mult_min": 1.9,
-        "tp_atr_mult_max": 3.8,
-        "tp_atr_pct_pivot": 0.014,
-        "max_delta_notional": 40.0,
-    },
-    "TRX/USDT:USDT": {
-        "sl_atr_mult": 2.0,
-        "tp_atr_mult_min": 1.9,
-        "tp_atr_mult_max": 3.8,
-        "tp_atr_pct_pivot": 0.014,
-        "max_delta_notional": 80.0,
-        "max_target_weight": 0.25,
-    },
-}
+DEFAULT_SYMBOL_CONFIG = dict(LIVE_EXECUTION_CONFIG.get("default_symbol_config", {}) or {})
+SYMBOL_OVERRIDES = dict(LIVE_EXECUTION_CONFIG.get("symbol_overrides", {}) or {})
 
 def symbol_to_prefix(symbol: str) -> str:
     return (
@@ -406,6 +339,9 @@ usdt_total = float((bal.get("USDT", {}) or {}).get("total", (bal.get("USDT", {})
 
 print("=== LIVE RECONCILIATION ===")
 print("live_trading:", LIVE_TRADING)
+
+execution_snapshot = {}
+
 print("usdt_total:", usdt_total)
 print()
 
@@ -475,7 +411,11 @@ for prefix, cfg in SYMBOLS.items():
     print("delta_qty:", delta_qty)
     print("delta_notional:", delta_notional)
 
+    _action = "unknown"
+    _blocked_reason = ""
+
     if abs(delta_notional) < cfg["min_delta_notional"]:
+        _action = "skip_below_min_delta_notional"
         print("action: skip rebalance (below min_delta_notional)")
         effective_qty = current_qty
         try:
@@ -483,24 +423,53 @@ for prefix, cfg in SYMBOLS.items():
             ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
         except Exception as e:
             print(f"protective_action: skipped due to ATR/order error: {e}")
+        execution_snapshot[symbol] = {
+            "side": str(side),
+            "target_weight": float(target_weight),
+            "last": float(last),
+            "current_qty": float(current_qty),
+            "target_qty": float(target_qty),
+            "delta_qty": float(delta_qty),
+            "delta_notional": float(delta_notional),
+            "action": str(_action),
+            "blocked_reason": str(_blocked_reason),
+        }
         print()
         continue
 
     if abs(delta_notional) > cfg["max_delta_notional"]:
+        _action = "blocked_above_max_delta_notional"
+        _blocked_reason = "above_max_delta_notional"
         print("action: BLOCKED (above max_delta_notional)")
+        execution_snapshot[symbol] = {
+            "side": str(side),
+            "target_weight": float(target_weight),
+            "last": float(last),
+            "current_qty": float(current_qty),
+            "target_qty": float(target_qty),
+            "delta_qty": float(delta_qty),
+            "delta_notional": float(delta_notional),
+            "action": str(_action),
+            "blocked_reason": str(_blocked_reason),
+        }
         print()
         continue
 
     if current_qty == 0 or (current_qty > 0 and target_qty >= 0) or (current_qty < 0 and target_qty <= 0):
         if delta_qty > 0:
+            _action = "open_long"
             place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
         elif delta_qty < 0:
             if current_qty > 0 and target_qty >= 0:
+                _action = "reduce_long"
                 place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
             elif current_qty < 0 and target_qty <= 0:
+                _action = "reduce_short"
                 place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             else:
-                print("action: none")
+                _action = "none"
+                _action = "none"
+            print("action: none")
         else:
             print("action: none")
 
@@ -511,9 +480,21 @@ for prefix, cfg in SYMBOLS.items():
         except Exception as e:
             print(f"protective_action: skipped due to ATR/order error: {e}")
 
+        execution_snapshot[symbol] = {
+            "side": str(side),
+            "target_weight": float(target_weight),
+            "last": float(last),
+            "current_qty": float(current_qty),
+            "target_qty": float(target_qty),
+            "delta_qty": float(delta_qty),
+            "delta_notional": float(delta_notional),
+            "action": str(_action),
+            "blocked_reason": str(_blocked_reason),
+        }
         print()
         continue
 
+    _action = "flip_position"
     print("flip detected: closing current position first")
     if current_qty > 0:
         place_market(bitget, symbol, "sell", abs(current_qty), reduce=True)
@@ -532,4 +513,20 @@ for prefix, cfg in SYMBOLS.items():
     except Exception as e:
         print(f"protective_action: skipped due to ATR/order error: {e}")
 
+    execution_snapshot[symbol] = {
+        "side": str(side),
+        "target_weight": float(target_weight),
+        "last": float(last),
+        "current_qty": float(current_qty),
+        "target_qty": float(target_qty),
+        "delta_qty": float(delta_qty),
+        "delta_notional": float(delta_notional),
+        "action": str(_action),
+        "blocked_reason": str(_blocked_reason),
+    }
     print()
+
+
+print("=== EXECUTION SNAPSHOT ===")
+import json
+print(json.dumps(execution_snapshot, indent=2))
