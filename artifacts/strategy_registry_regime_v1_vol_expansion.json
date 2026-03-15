@@ -108,5 +108,15 @@
     "cluster_id": "majors",
     "cluster_cap": 0.3,
     "params": {}
+  },
+  {
+    "strategy_id": "trx_trend",
+    "symbol": "TRX/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "payments",
+    "cluster_cap": 0.2,
+    "params": {}
   }
 ]

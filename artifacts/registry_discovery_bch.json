@@ -1,0 +1,12 @@
+[
+  {
+    "strategy_id": "bch_trend",
+    "symbol": "BCH/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "cluster_id": "discovery",
+    "cluster_cap": 0.25,
+    "params": {}
+  }
+]
