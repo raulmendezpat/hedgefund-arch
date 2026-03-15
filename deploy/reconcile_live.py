@@ -12,37 +12,103 @@ SECRET = json.loads((APP / "secret.json").read_text())["envelope"]
 
 LIVE_TRADING = os.getenv("LIVE_TRADING", "0") == "1"
 
-SYMBOLS = {
-    "btc": {
-        "symbol": "BTC/USDT:USDT",
-        "timeframe": "1h",
-        "ohlcv_limit": 120,
-        "atr_period": 14,
+DEFAULT_SYMBOL_CONFIG = {
+    "timeframe": "1h",
+    "ohlcv_limit": 120,
+    "atr_period": 14,
+    "sl_atr_mult": 2.0,
+    "tp_atr_mult_min": 1.8,
+    "tp_atr_mult_max": 3.8,
+    "tp_atr_pct_pivot": 0.014,
+    "min_delta_notional": 5.0,
+    "max_delta_notional": 60.0,
+    "stop_refresh_rel_tol": 0.0030,
+    "tp_refresh_rel_tol": 0.0040,
+}
+
+SYMBOL_OVERRIDES = {
+    "BTC/USDT:USDT": {
         "sl_atr_mult": 1.8,
         "tp_atr_mult_min": 1.8,
         "tp_atr_mult_max": 3.8,
         "tp_atr_pct_pivot": 0.012,
-        "min_delta_notional": 5.0,
         "max_delta_notional": 80.0,
         "stop_refresh_rel_tol": 0.0025,
         "tp_refresh_rel_tol": 0.0035,
     },
-    "sol": {
-        "symbol": "SOL/USDT:USDT",
-        "timeframe": "1h",
-        "ohlcv_limit": 120,
-        "atr_period": 14,
+    "SOL/USDT:USDT": {
         "sl_atr_mult": 2.2,
         "tp_atr_mult_min": 2.0,
         "tp_atr_mult_max": 4.2,
         "tp_atr_pct_pivot": 0.018,
-        "min_delta_notional": 5.0,
         "max_delta_notional": 50.0,
         "stop_refresh_rel_tol": 0.0040,
         "tp_refresh_rel_tol": 0.0050,
     },
+    "ETH/USDT:USDT": {
+        "sl_atr_mult": 1.9,
+        "tp_atr_mult_min": 1.8,
+        "tp_atr_mult_max": 3.6,
+        "tp_atr_pct_pivot": 0.012,
+        "max_delta_notional": 70.0,
+    },
+    "BNB/USDT:USDT": {
+        "sl_atr_mult": 2.0,
+        "tp_atr_mult_min": 1.9,
+        "tp_atr_mult_max": 3.8,
+        "tp_atr_pct_pivot": 0.014,
+        "max_delta_notional": 60.0,
+    },
+    "LINK/USDT:USDT": {
+        "sl_atr_mult": 2.1,
+        "tp_atr_mult_min": 2.0,
+        "tp_atr_mult_max": 4.0,
+        "tp_atr_pct_pivot": 0.018,
+        "max_delta_notional": 45.0,
+    },
+    "XRP/USDT:USDT": {
+        "sl_atr_mult": 2.0,
+        "tp_atr_mult_min": 1.9,
+        "tp_atr_mult_max": 3.8,
+        "tp_atr_pct_pivot": 0.014,
+        "max_delta_notional": 40.0,
+    },
 }
 
+def symbol_to_prefix(symbol: str) -> str:
+    return (
+        str(symbol)
+        .replace("/USDT:USDT", "")
+        .replace("/USDT", "")
+        .replace(":USDT", "")
+        .replace("/", "_")
+        .lower()
+    )
+
+def build_runtime_symbols(df: pd.DataFrame) -> dict:
+    out = {}
+    weight_cols = [c for c in df.columns if c.startswith("w_")]
+    for col in weight_cols:
+        sym = col[2:].replace("_usdt_usdt", "").upper() + "/USDT:USDT"
+        prefix = symbol_to_prefix(sym)
+
+        side_col = f"{prefix}_side"
+        cluster_side_col = f"{prefix}_cluster_side"
+
+        latest_w = float(df[col].fillna(0.0).iloc[-1]) if col in df.columns else 0.0
+        latest_side = "flat"
+        if cluster_side_col in df.columns:
+            latest_side = str(df[cluster_side_col].fillna("flat").iloc[-1]).lower()
+        elif side_col in df.columns:
+            latest_side = str(df[side_col].fillna("flat").iloc[-1]).lower()
+
+
+        cfg = dict(DEFAULT_SYMBOL_CONFIG)
+        cfg.update(SYMBOL_OVERRIDES.get(sym, {}))
+        cfg["symbol"] = sym
+        out[prefix] = cfg
+
+    return out
 
 def signed_weight(side: str, w: float) -> float:
     side = str(side or "flat").lower()
@@ -320,7 +386,9 @@ def ensure_leverage(bitget, symbol: str, leverage: int = 2):
     except Exception:
         pass
 
-df = pd.read_csv(APP / "results/pipeline_allocations_prod_candidate_live.csv")
+df = pd.read_csv(APP / "results/pipeline_allocations_prod_candidate_live.csv", low_memory=False)
+SYMBOLS = build_runtime_symbols(df)
+print("runtime_symbols:", list(SYMBOLS.keys()))
 row = df.iloc[-1]
 
 bal = bitget.fetch_balance()
@@ -333,11 +401,38 @@ print()
 
 for prefix, cfg in SYMBOLS.items():
     symbol = cfg["symbol"]
+    csv_prefix = f"{prefix}_usdt_usdt"
     ensure_leverage(bitget, symbol, 2)
     last = fetch_last_price(bitget, symbol)
 
-    side = str(row.get(f"{prefix}_side", "flat"))
-    weight = float(row.get(f"{prefix}_execution_target_weight", row.get(f"w_{prefix}", 0.0)) or 0.0)
+    side = str(row.get(f"{csv_prefix}_side", "flat"))
+    exec_weight = float(row.get(f"{csv_prefix}_execution_target_weight", 0.0) or 0.0)
+    cluster_weight = float(row.get(f"{csv_prefix}_cluster_target_weight", 0.0) or 0.0)
+    raw_weight = float(row.get(f"w_{csv_prefix}", 0.0) or 0.0)
+
+    weight = exec_weight
+    if abs(weight) <= 1e-12:
+        weight = cluster_weight
+    if abs(weight) <= 1e-12:
+        weight = raw_weight
+
+    exec_side = str(row.get(f"{csv_prefix}_execution_side", "") or "").lower()
+    cluster_side = str(row.get(f"{csv_prefix}_cluster_side", "") or "").lower()
+    signal_side = str(row.get(f"{csv_prefix}_side", "") or "").lower()
+
+    if exec_side in {"long", "short"}:
+        side = exec_side
+    elif cluster_side in {"long", "short"}:
+        side = cluster_side
+    elif signal_side in {"long", "short"}:
+        side = signal_side
+    else:
+        side = "flat"
+
+    if abs(weight) > 1e-12 and side == "flat":
+        # fallback: if we have non-zero target weight but no valid side, infer long by sign convention
+        side = "long"
+
     target_weight = signed_weight(side, weight)
 
     target_qty = abs(usdt_total * target_weight) / last if last > 0 else 0.0
