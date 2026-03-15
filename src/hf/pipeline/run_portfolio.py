@@ -410,6 +410,7 @@ def run(
     allocator_rebalance_deadband: float = 0.0,
     allocator_symbol_cap: float = 1.0,
     allocator_target_exposure: float = 0.0,
+    execution_symbol_cap: float = 0.25,
     portfolio_regime_detection: bool = True,
     portfolio_regime_breadth_aggressive: int = 4,
     portfolio_regime_breadth_defensive: int = 2,
@@ -1601,8 +1602,12 @@ def run(
                     sym: {
                         "cluster_id": str(symbol_execution_plans[sym].cluster_id),
                         "slice_count": int(symbol_execution_plans[sym].slice_count),
-                        "planned_weight": float(symbol_execution_plans[sym].planned_weight),
-                        "target_weight": float(symbol_execution_plans[sym].total_target_weight),
+                        "planned_weight": float(
+                            max(-float(execution_symbol_cap), min(float(execution_symbol_cap), float(symbol_execution_plans[sym].planned_weight)))
+                        ),
+                        "target_weight": float(
+                            max(-float(execution_symbol_cap), min(float(execution_symbol_cap), float(symbol_execution_plans[sym].total_target_weight)))
+                        ),
                         "execution_mode": str((symbol_execution_plans[sym].meta or {}).get("execution_mode", str(execution_mode))),
                         "order_type": str(symbol_execution_plans[sym].slices[0].order_type if symbol_execution_plans[sym].slices else ""),
                         "time_in_force": str(symbol_execution_plans[sym].slices[0].time_in_force if symbol_execution_plans[sym].slices else "GTC"),
@@ -1617,9 +1622,23 @@ def run(
             },
         )
 
+        _execution_meta_by_symbol = ((alloc.meta or {}).get("execution_plan_by_symbol", {}) or {})
+
+        _perf_weights = {}
+        for sym in universe_symbols:
+            _execution_meta = (_execution_meta_by_symbol.get(sym, {}) or {})
+            _exec_target_weight = float(_execution_meta.get("target_weight", 0.0) or 0.0)
+            _exec_target_weight = max(-float(execution_symbol_cap), min(float(execution_symbol_cap), _exec_target_weight))
+            _perf_weights[sym] = float(_exec_target_weight)
+
+        alloc_for_perf = Allocation(
+            weights=dict(_perf_weights),
+            meta=dict(getattr(alloc, "meta", {}) or {}),
+        )
+
         _prev_alloc_for_rows = prev_alloc
-        prev_alloc = alloc
-        allocs.append(alloc)
+        prev_alloc = alloc_for_perf
+        allocs.append(alloc_for_perf)
 
         def _sym_field_key(sym: str) -> str:
             return str(sym).lower().replace("/", "_").replace(":", "_").replace("-", "_")
@@ -1716,8 +1735,14 @@ def run(
             row[f"{sym_key}_cluster_risk_reasons"] = "|".join(_cluster_risk_meta.get("reasons", []) or [])
 
             row[f"{sym_key}_execution_slice_count"] = int(_execution_meta.get("slice_count", 0) or 0)
-            row[f"{sym_key}_execution_planned_weight"] = float(_execution_meta.get("planned_weight", 0.0) or 0.0)
-            row[f"{sym_key}_execution_target_weight"] = float(_execution_meta.get("target_weight", 0.0) or 0.0)
+            _exec_planned_weight = float(_execution_meta.get("planned_weight", 0.0) or 0.0)
+            _exec_target_weight = float(_execution_meta.get("target_weight", 0.0) or 0.0)
+
+            _exec_planned_weight = max(-float(execution_symbol_cap), min(float(execution_symbol_cap), _exec_planned_weight))
+            _exec_target_weight = max(-float(execution_symbol_cap), min(float(execution_symbol_cap), _exec_target_weight))
+
+            row[f"{sym_key}_execution_planned_weight"] = float(_exec_planned_weight)
+            row[f"{sym_key}_execution_target_weight"] = float(_exec_target_weight)
             row[f"{sym_key}_execution_mode"] = str(_execution_meta.get("execution_mode", "") or "")
             row[f"{sym_key}_execution_order_type"] = str(_execution_meta.get("order_type", "") or "")
             row[f"{sym_key}_execution_time_offsets"] = str(_execution_meta.get("time_offsets", "") or "")
