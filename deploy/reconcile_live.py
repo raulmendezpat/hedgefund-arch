@@ -152,6 +152,14 @@ def desired_take_profit_price(
     return 0.0
 
 
+def desired_take_profit_price_fixed_mult(side: str, ref_price: float, atr: float, tp_atr_mult: float) -> float:
+    if side == "long":
+        return ref_price + float(tp_atr_mult) * atr
+    if side == "short":
+        return ref_price - float(tp_atr_mult) * atr
+    return 0.0
+
+
 def extract_trigger_order_id(o):
     if not isinstance(o, dict):
         return None
@@ -288,7 +296,7 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         return
 
     sl_price = desired_stop_price(pos_side, ref_price, atr, cfg["sl_atr_mult"])
-    tp_price = desired_take_profit_price(
+    tp2_price = desired_take_profit_price(
         pos_side,
         ref_price,
         atr,
@@ -296,8 +304,13 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         cfg["tp_atr_mult_max"],
         cfg["tp_atr_pct_pivot"],
     )
+
+    partial_tp_enabled = bool(cfg.get("partial_tp_enabled", True))
+    partial_tp1_atr_mult = float(cfg.get("partial_tp1_atr_mult", 1.0) or 1.0)
+    partial_tp1_fraction = float(cfg.get("partial_tp1_fraction", 0.5) or 0.5)
+
     sl_price = float(bitget.price_to_precision(symbol, sl_price))
-    tp_price = float(bitget.price_to_precision(symbol, tp_price))
+    tp2_price = float(bitget.price_to_precision(symbol, tp2_price))
 
     maintain_single_trigger(
         bitget=bitget,
@@ -310,16 +323,72 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         ref_price=ref_price,
     )
 
-    maintain_single_trigger(
-        bitget=bitget,
-        symbol=symbol,
-        desired_price=tp_price,
-        pos_side=pos_side,
-        qty=qty,
-        kind="tp",
-        rel_tol=float(cfg["tp_refresh_rel_tol"]),
-        ref_price=ref_price,
+    if not partial_tp_enabled:
+        maintain_single_trigger(
+            bitget=bitget,
+            symbol=symbol,
+            desired_price=tp2_price,
+            pos_side=pos_side,
+            qty=qty,
+            kind="tp",
+            rel_tol=float(cfg["tp_refresh_rel_tol"]),
+            ref_price=ref_price,
+        )
+        return
+
+    tp1_price = desired_take_profit_price_fixed_mult(
+        pos_side,
+        ref_price,
+        atr,
+        partial_tp1_atr_mult,
     )
+    tp1_price = float(bitget.price_to_precision(symbol, tp1_price))
+
+    qty1 = max(0.0, float(qty) * partial_tp1_fraction)
+    qty1 = float(bitget.amount_to_precision(symbol, qty1)) if qty1 > 0 else 0.0
+    qty2 = max(0.0, float(qty) - float(qty1))
+    qty2 = float(bitget.amount_to_precision(symbol, qty2)) if qty2 > 0 else 0.0
+
+    if qty1 <= 0 or qty2 <= 0:
+        maintain_single_trigger(
+            bitget=bitget,
+            symbol=symbol,
+            desired_price=tp2_price,
+            pos_side=pos_side,
+            qty=qty,
+            kind="tp",
+            rel_tol=float(cfg["tp_refresh_rel_tol"]),
+            ref_price=ref_price,
+        )
+        return
+
+    reduce_side = "sell" if pos_side == "long" else "buy"
+    open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
+    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price)
+
+    # clean all existing TP orders only; preserve SL
+    for o in tp_like:
+        cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
+
+    print(f"PLACE_TP1 -> symbol={symbol} side={reduce_side} qty={qty1} trigger={tp1_price} live={LIVE_TRADING}")
+    if LIVE_TRADING:
+        bitget.place_trigger_market_order(
+            symbol=symbol,
+            side=reduce_side,
+            amount=qty1,
+            trigger_price=tp1_price,
+            reduce=True,
+        )
+
+    print(f"PLACE_TP2 -> symbol={symbol} side={reduce_side} qty={qty2} trigger={tp2_price} live={LIVE_TRADING}")
+    if LIVE_TRADING:
+        bitget.place_trigger_market_order(
+            symbol=symbol,
+            side=reduce_side,
+            amount=qty2,
+            trigger_price=tp2_price,
+            reduce=True,
+        )
 
 
 bitget = BitgetFutures(SECRET)

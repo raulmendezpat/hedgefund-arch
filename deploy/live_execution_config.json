@@ -9,8 +9,11 @@
     "tp_atr_pct_pivot": 0.014,
     "min_delta_notional": 5.0,
     "max_delta_notional": 60.0,
-    "stop_refresh_rel_tol": 0.0030,
-    "tp_refresh_rel_tol": 0.0040
+    "stop_refresh_rel_tol": 0.003,
+    "tp_refresh_rel_tol": 0.004,
+    "partial_tp_enabled": true,
+    "partial_tp1_atr_mult": 1.0,
+    "partial_tp1_fraction": 0.5
   },
   "symbol_overrides": {
     "BTC/USDT:USDT": {
@@ -30,8 +33,8 @@
       "tp_atr_pct_pivot": 0.018,
       "max_delta_notional": 50.0,
       "max_target_weight": 0.25,
-      "stop_refresh_rel_tol": 0.0040,
-      "tp_refresh_rel_tol": 0.0050
+      "stop_refresh_rel_tol": 0.004,
+      "tp_refresh_rel_tol": 0.005
     },
     "ETH/USDT:USDT": {
       "sl_atr_mult": 1.9,
