@@ -183,11 +183,15 @@ def is_reduce_only(o):
     if not isinstance(o, dict):
         return False
     info = o.get("info", {}) if isinstance(o.get("info"), dict) else {}
+    trade_side = str(info.get("tradeSide") or "").lower()
+    plan_status = str(info.get("planStatus") or "").lower()
     return bool(
         o.get("reduceOnly")
         or o.get("reduce")
         or info.get("reduceOnly")
         or info.get("reduce")
+        or trade_side == "close"
+        or plan_status == "live" and trade_side == "close"
     )
 
 
@@ -237,10 +241,10 @@ def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float):
     return stop_like, tp_like
 
 
-def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side: str, qty: float, kind: str, rel_tol: float):
+def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side: str, qty: float, kind: str, rel_tol: float, ref_price: float):
     reduce_side = "sell" if pos_side == "long" else "buy"
     open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
-    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, desired_price)
+    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price)
     current_bucket = stop_like if kind == "sl" else tp_like
     other_bucket = tp_like if kind == "sl" else stop_like
 
@@ -254,12 +258,12 @@ def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side:
                 print(f"{kind}_action: keep existing (existing={existing_price}, desired={desired_price}, rel_diff={rel_diff:.6f})")
 
     if keep_existing:
-        extras = [o for o in current_bucket[1:]] + other_bucket
+        extras = [o for o in current_bucket[1:]]
         for o in extras:
             cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
         return
 
-    for o in current_bucket + other_bucket:
+    for o in current_bucket:
         cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
 
     print(f"PLACE_{kind.upper()} -> symbol={symbol} side={reduce_side} qty={qty} trigger={desired_price} live={LIVE_TRADING}")
@@ -303,6 +307,7 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         qty=qty,
         kind="sl",
         rel_tol=float(cfg["stop_refresh_rel_tol"]),
+        ref_price=ref_price,
     )
 
     maintain_single_trigger(
@@ -313,6 +318,7 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         qty=qty,
         kind="tp",
         rel_tol=float(cfg["tp_refresh_rel_tol"]),
+        ref_price=ref_price,
     )
 
 

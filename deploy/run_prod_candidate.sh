@@ -64,26 +64,40 @@ if alloc_path.exists():
         active_weights = {}
         exposure = 0.0
 
+        # load live execution config so snapshot matches real execution caps
+        exec_cfg_path = app / "deploy" / "live_execution_config.json"
+        exec_cfg = json.loads(exec_cfg_path.read_text()) if exec_cfg_path.exists() else {}
+        symbol_overrides = exec_cfg.get("symbol_overrides", {}) or {}
+        default_max_target_weight = 0.25
+
         for c in wcols:
             base = c[2:]  # remove leading "w_"
             exec_col = f"{base}_execution_target_weight"
             cluster_col = f"{base}_cluster_target_weight"
 
             if exec_col in df.columns:
-                v = float(row.get(exec_col, 0.0) or 0.0)
+                raw_v = float(row.get(exec_col, 0.0) or 0.0)
                 source = exec_col
             elif cluster_col in df.columns:
-                v = float(row.get(cluster_col, 0.0) or 0.0)
+                raw_v = float(row.get(cluster_col, 0.0) or 0.0)
                 source = cluster_col
             else:
-                v = float(row.get(c, 0.0) or 0.0)
+                raw_v = float(row.get(c, 0.0) or 0.0)
                 source = c
 
-            exposure += abs(v)
-            if abs(v) > 1e-12:
+            sym = base.replace("_usdt_usdt", "").upper() + "/USDT:USDT"
+            max_target_weight = float(
+                (symbol_overrides.get(sym, {}) or {}).get("max_target_weight", default_max_target_weight)
+            )
+            capped_v = max(-max_target_weight, min(max_target_weight, raw_v))
+
+            exposure += abs(capped_v)
+            if abs(capped_v) > 1e-12:
                 active_weights[c] = {
-                    "target_weight": v,
                     "source": source,
+                    "raw_target_weight": raw_v,
+                    "capped_target_weight": capped_v,
+                    "max_target_weight": max_target_weight,
                 }
 
         payload = {
@@ -96,7 +110,7 @@ if alloc_path.exists():
             "portfolio_regime_symbol_cap_mult": float(row.get("portfolio_regime_symbol_cap_mult", 1.0) or 1.0),
             "portfolio_regime_scale_applied": float(row.get("portfolio_regime_scale_applied", 1.0) or 1.0),
             "exposure": float(exposure),
-            "active_symbol_count": int(sum(1 for v in active_weights.values() if abs(float(v.get("target_weight", 0.0))) > 1e-12)),
+            "active_symbol_count": int(sum(1 for v in active_weights.values() if abs(float(v.get("capped_target_weight", 0.0))) > 1e-12)),
             "active_weights": active_weights,
         }
 
