@@ -169,6 +169,26 @@ def extract_trigger_order_id(o):
 def extract_trigger_price(o):
     if not isinstance(o, dict):
         return None
+
+def extract_trigger_amount(o):
+    if not isinstance(o, dict):
+        return 0.0
+    info = o.get("info", {}) if isinstance(o.get("info"), dict) else {}
+    for k in ("amount", "size"):
+        v = o.get(k, None)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except Exception:
+                pass
+        v = info.get(k, None)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return 0.0
+
     info = o.get("info", {}) if isinstance(o.get("info"), dict) else {}
     for k in ["triggerPrice", "trigger_price", "stopPrice", "planPrice", "executePrice"]:
         v = info.get(k, None)
@@ -228,8 +248,45 @@ def cancel_trigger_order_safe(bitget, symbol: str, oid):
         bitget.cancel_trigger_order(oid, symbol)
 
 
-def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float):
+def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float, pos_qty: float | None = None):
     matched_side = [o for o in open_reduce if side_matches_reduce_order(pos_side, o)]
+
+    qty = abs(float(pos_qty or 0.0))
+    if qty > 0:
+        qty_tol = max(1.0, qty * 0.10)
+        full_like = []
+        partial_like = []
+
+        for o in matched_side:
+            amt = float(extract_trigger_amount(o) or 0.0)
+            px = extract_trigger_price(o)
+            if px is None:
+                continue
+            if abs(amt - qty) <= qty_tol or amt >= qty * 0.90:
+                full_like.append(o)
+            else:
+                partial_like.append(o)
+
+        # Si encontramos parciales, asumimos esquema: 1 SL full-size + N TPs parciales
+        if partial_like:
+            stop_like = []
+            for o in full_like:
+                px = extract_trigger_price(o)
+                if px is None:
+                    continue
+                if pos_side == "long":
+                    if px < ref_price:
+                        stop_like.append(o)
+                elif pos_side == "short":
+                    if px > ref_price:
+                        stop_like.append(o)
+
+            if not stop_like:
+                stop_like = list(full_like)
+
+            tp_like = [o for o in partial_like if extract_trigger_price(o) is not None]
+            return stop_like, tp_like
+
     stop_like = []
     tp_like = []
     for o in matched_side:
@@ -248,11 +305,10 @@ def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float):
                 tp_like.append(o)
     return stop_like, tp_like
 
-
 def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side: str, qty: float, kind: str, rel_tol: float, ref_price: float):
     reduce_side = "sell" if pos_side == "long" else "buy"
     open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
-    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price)
+    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price, qty)
     current_bucket = stop_like if kind == "sl" else tp_like
     other_bucket = tp_like if kind == "sl" else stop_like
 
@@ -364,7 +420,7 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
 
     reduce_side = "sell" if pos_side == "long" else "buy"
     open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
-    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price)
+    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price, qty)
 
     # Keep existing TP orders while the position remains open.
     # TP should be fixed from the moment the position is opened.
