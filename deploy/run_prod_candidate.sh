@@ -31,15 +31,15 @@ if python scripts/hf_pipeline_alloc.py \
   --name prod_candidate_live \
   --start "$START_TS" \
   --signal-engine registry_portfolio \
-  --strategy-registry artifacts/strategy_registry_regime_v1_vol_expansion.json \
+  --strategy-registry artifacts/strategy_registry_regime_v1_vol_expansion_plus_aave.json \
   --opportunity-selection-mode competitive \
   --allocation-engine-mode multi_strategy \
-  --allocator-blend-alpha 0.40 \
+  --allocator-blend-alpha 0.55 \
   --allocator-smoothing-alpha 0.50 \
   --allocator-smoothing-snap-eps 0.02 \
   --allocator-rebalance-deadband 0.03 \
-  --allocator-symbol-cap 0.25 \
-  --allocator-target-exposure 0.05 \
+  --allocator-symbol-cap 0.50 \
+  --allocator-target-exposure 0.07 \
   --ml-filter \
   --ml-model-registry artifacts/ml_registry.json \
   --ml-thresholds-path artifacts/ml_thresholds_registry_v1.json \
