@@ -7,7 +7,7 @@ import ta
 
 from hf.legacy.ltb.utilities.bitget_futures import BitgetFutures
 from hf.execution.protective_orders import (
-    classify_reduce_orders,
+    classify_reduce_orders as tested_classify_reduce_orders,
     extract_trigger_amount,
     extract_trigger_price,
     should_keep_partial_tps,
@@ -97,12 +97,20 @@ def position_side_from_qty(qty: float) -> str:
 
 
 def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False):
+    qty = float(qty)
     if qty <= 0:
         return None
     print(f"ORDER -> symbol={symbol} side={side} qty={qty} reduceOnly={reduce} live={LIVE_TRADING}")
     if not LIVE_TRADING:
         return None
-    return bitget.place_market_order(symbol=symbol, side=side, amount=qty, reduce=reduce)
+    try:
+        return bitget.place_market_order(symbol=symbol, side=side, amount=qty, reduce=reduce)
+    except Exception as e:
+        msg = str(e)
+        if reduce and ("22002" in msg or "No position to close" in msg):
+            print(f"ORDER_WARN -> benign reduce-only rejection for {symbol}: {msg}")
+            return None
+        raise
 
 
 def fetch_last_price(bitget, symbol: str) -> float:
@@ -172,24 +180,9 @@ def extract_trigger_order_id(o):
     return o.get("id") or o.get("orderId") or (o.get("info", {}) or {}).get("orderId")
 
 
-
-
-    info = o.get("info", {}) if isinstance(o.get("info"), dict) else {}
-    for k in ("amount", "size"):
-        v = o.get(k, None)
-        if v not in (None, ""):
-            try:
-                return float(v)
-            except Exception:
-                pass
-        v = info.get(k, None)
-        if v not in (None, ""):
-            try:
-                return float(v)
-            except Exception:
-                pass
-    return 0.0
-
+def extract_trigger_price(o):
+    if not isinstance(o, dict):
+        return None
     info = o.get("info", {}) if isinstance(o.get("info"), dict) else {}
     for k in ["triggerPrice", "trigger_price", "stopPrice", "planPrice", "executePrice"]:
         v = info.get(k, None)
@@ -249,24 +242,9 @@ def cancel_trigger_order_safe(bitget, symbol: str, oid):
         bitget.cancel_trigger_order(oid, symbol)
 
 
+def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float, pos_qty: float | None = None):
+    return tested_classify_reduce_orders(open_reduce, pos_side, ref_price, pos_qty)
 
-    stop_like = []
-    tp_like = []
-    for o in matched_side:
-        px = extract_trigger_price(o)
-        if px is None:
-            continue
-        if pos_side == "long":
-            if px < ref_price:
-                stop_like.append(o)
-            else:
-                tp_like.append(o)
-        elif pos_side == "short":
-            if px > ref_price:
-                stop_like.append(o)
-            else:
-                tp_like.append(o)
-    return stop_like, tp_like
 
 def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side: str, qty: float, kind: str, rel_tol: float, ref_price: float):
     reduce_side = "sell" if pos_side == "long" else "buy"
@@ -388,14 +366,11 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     # Keep existing TP orders while the position remains open.
     # TP should be fixed from the moment the position is opened.
     if len(tp_like) >= 2:
-        if should_keep_partial_tps(tp_like, pos_side, qty):
-            print(f"tp_action: keep existing partial TPs (count={len(tp_like)})")
-            extras = tp_like[2:]
-            for o in extras:
-                cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
-            return
-        else:
-            print(f"tp_action: rebuild partial TPs (count={len(tp_like)}, qty={qty})")
+        print(f"tp_action: keep existing partial TPs (count={len(tp_like)})")
+        extras = tp_like[2:]
+        for o in extras:
+            cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
+        return
 
     # If there is 1 TP or 0 TP, rebuild TP set cleanly.
     for o in tp_like:
