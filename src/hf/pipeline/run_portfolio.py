@@ -394,6 +394,9 @@ def run(
     ml_export_features: bool = False,
     ml_features_out: Optional[str] = None,
     ml_position_sizing: bool = False,
+    ml_edge_score_ref: float = 0.20,
+    ml_edge_mult_min: float = 0.75,
+    ml_edge_mult_max: float = 1.25,
     ml_size_scale: float = 1.0,
     ml_size_min: float = 0.0,
     ml_size_max: float = 1.0,
@@ -838,10 +841,22 @@ def run(
                     else:
                         _meta["ml_rejected"] = 0
                         if ml_score_position_sizer is not None:
-                            _meta["ml_position_size_mult"] = float(ml_score_position_sizer.size_from_pwin(_p_win))
+                            _base_ml_mult = float(ml_score_position_sizer.size_from_pwin(_p_win))
+                            _post_ml_score = float(_meta.get("competitive_score", 0.0) or 0.0) * float(_p_win)
+                            _edge_ref = max(float(ml_edge_score_ref), 1e-9)
+                            _edge_mult = float(_post_ml_score) / float(_edge_ref)
+                            _edge_mult = max(float(ml_edge_mult_min), min(float(ml_edge_mult_max), _edge_mult))
+                            _final_ml_mult = float(_base_ml_mult) * float(_edge_mult)
+                            _final_ml_mult = max(0.0, min(1.0, _final_ml_mult))
+
+                            _meta["ml_position_size_mult"] = float(_final_ml_mult)
                             _meta["ml_position_size_scale"] = float(ml_score_position_sizer.scale)
+                            _meta["ml_position_size_mult_base"] = float(_base_ml_mult)
+                            _meta["ml_position_size_edge_mult"] = float(_edge_mult)
+                            _meta["post_ml_score"] = float(_post_ml_score)
                         else:
                             _meta["ml_position_size_mult"] = 1.0
+                            _meta["post_ml_score"] = float(_meta.get("competitive_score", 0.0) or 0.0) * float(_p_win)
 
                     _opp.meta = _meta
 
