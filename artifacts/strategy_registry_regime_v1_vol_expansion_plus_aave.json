@@ -1,0 +1,84 @@
+[
+  {
+    "strategy_id": "btc_trend",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {},
+    "cluster_id": "majors",
+    "cluster_cap": 0.3
+  },
+  {
+    "strategy_id": "btc_trend_loose",
+    "symbol": "BTC/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.9,
+    "params": {
+      "adx_min": 12.0
+    },
+    "cluster_id": "majors",
+    "cluster_cap": 0.3
+  },
+  {
+    "strategy_id": "link_trend",
+    "symbol": "LINK/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "params": {},
+    "cluster_id": "high_beta",
+    "cluster_cap": 0.25
+  },
+  {
+    "strategy_id": "bnb_trend",
+    "symbol": "BNB/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.8,
+    "cluster_id": "infra",
+    "cluster_cap": 0.2,
+    "params": {}
+  },
+  {
+    "strategy_id": "xrp_trend",
+    "symbol": "XRP/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "liquid_alt",
+    "cluster_cap": 0.2,
+    "params": {}
+  },
+  {
+    "strategy_id": "eth_trend",
+    "symbol": "ETH/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "majors",
+    "cluster_cap": 0.3,
+    "params": {}
+  },
+  {
+    "strategy_id": "trx_trend",
+    "symbol": "TRX/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 0.7,
+    "cluster_id": "payments",
+    "cluster_cap": 0.2,
+    "params": {}
+  },
+  {
+    "strategy_id": "aave_trend",
+    "symbol": "AAVE/USDT:USDT",
+    "engine": "btc_trend_signal",
+    "enabled": true,
+    "base_weight": 1.0,
+    "cluster_id": "discovery",
+    "cluster_cap": 0.25,
+    "params": {}
+  }
+]

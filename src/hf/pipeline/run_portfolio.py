@@ -411,6 +411,9 @@ def run(
     allocator_symbol_cap: float = 1.0,
     allocator_target_exposure: float = 0.0,
     execution_symbol_cap: float = 0.25,
+    research_partial_tp_enabled: bool = True,
+    research_partial_tp1_fraction: float = 0.5,
+    research_partial_tp1_ret_threshold: float = 0.01,
     portfolio_regime_detection: bool = True,
     portfolio_regime_breadth_aggressive: int = 4,
     portfolio_regime_breadth_defensive: int = 2,
@@ -1900,6 +1903,57 @@ def run(
     perf_out["execution_turnover"] = 0.0
     perf_out["execution_cost_rate"] = 0.0
     perf_out["execution_cost_drag_pct"] = 0.0
+
+    if bool(research_partial_tp_enabled):
+        _tp_frac = float(research_partial_tp1_fraction)
+        _tp_frac = max(0.0, min(1.0, _tp_frac))
+        _tp_thr = float(research_partial_tp1_ret_threshold)
+
+        _adj_port_ret = pd.Series(0.0, index=perf_out.index, dtype="float64")
+
+        for sym in universe_symbols:
+            _ret_col = f"ret_{sym}"
+            _w_col = f"w_{sym}"
+
+            if _ret_col not in perf_out.columns or _w_col not in perf_out.columns:
+                continue
+
+            _ret = pd.to_numeric(perf_out[_ret_col], errors="coerce").fillna(0.0)
+            _w = pd.to_numeric(perf_out[_w_col], errors="coerce").fillna(0.0)
+
+            # signed pnl contribution direction
+            _signed_ret = _w * _ret
+
+            # favorable move for current position
+            _favorable = (_signed_ret > 0.0) & (_ret.abs() > _tp_thr)
+
+            # if favorable move exceeds threshold, assume TP1 realizes on fraction of size
+            _ret_adj = _ret.copy()
+            _ret_adj.loc[_favorable & (_w > 0)] = (
+                (1.0 - _tp_frac) * _ret.loc[_favorable & (_w > 0)]
+                + _tp_frac * _tp_thr
+            )
+            _ret_adj.loc[_favorable & (_w < 0)] = (
+                (1.0 - _tp_frac) * _ret.loc[_favorable & (_w < 0)]
+                - _tp_frac * _tp_thr
+            )
+
+            _adj_port_ret = _adj_port_ret.add(_w * _ret_adj, fill_value=0.0)
+
+        
+        perf_out["port_ret"] = _adj_port_ret.values
+
+        # recompute equity after research partial TP adjustment
+        _equity = perf_out["equity"].copy()
+        _equity.iloc[0] = 1000.0
+        for i in range(1, len(_equity)):
+            _equity.iloc[i] = _equity.iloc[i-1] * (1.0 + perf_out["port_ret"].iloc[i])
+        perf_out["equity"] = _equity
+
+        _peak = _equity.cummax()
+        perf_out["drawdown"] = (_equity / _peak) - 1.0
+        perf_out["drawdown_pct"] = perf_out["drawdown"] * 100
+
 
     if execution_rows:
         _exec_df = pd.DataFrame(execution_rows)
