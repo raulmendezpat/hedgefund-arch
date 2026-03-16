@@ -366,7 +366,16 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
     stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price)
 
-    # clean all existing TP orders only; preserve SL
+    # Keep existing TP orders while the position remains open.
+    # TP should be fixed from the moment the position is opened.
+    if len(tp_like) >= 2:
+        print(f"tp_action: keep existing partial TPs (count={len(tp_like)})")
+        extras = tp_like[2:]
+        for o in extras:
+            cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
+        return
+
+    # If there is 1 TP or 0 TP, rebuild TP set cleanly.
     for o in tp_like:
         cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
 
