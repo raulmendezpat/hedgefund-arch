@@ -6,6 +6,12 @@ import pandas as pd
 import ta
 
 from hf.legacy.ltb.utilities.bitget_futures import BitgetFutures
+from hf.execution.protective_orders import (
+    classify_reduce_orders,
+    extract_trigger_amount,
+    extract_trigger_price,
+    should_keep_partial_tps,
+)
 
 APP = Path("/home/ubuntu/hedgefund-arch")
 SECRET = json.loads((APP / "secret.json").read_text())["envelope"]
@@ -166,13 +172,8 @@ def extract_trigger_order_id(o):
     return o.get("id") or o.get("orderId") or (o.get("info", {}) or {}).get("orderId")
 
 
-def extract_trigger_price(o):
-    if not isinstance(o, dict):
-        return None
 
-def extract_trigger_amount(o):
-    if not isinstance(o, dict):
-        return 0.0
+
     info = o.get("info", {}) if isinstance(o.get("info"), dict) else {}
     for k in ("amount", "size"):
         v = o.get(k, None)
@@ -248,44 +249,6 @@ def cancel_trigger_order_safe(bitget, symbol: str, oid):
         bitget.cancel_trigger_order(oid, symbol)
 
 
-def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float, pos_qty: float | None = None):
-    matched_side = [o for o in open_reduce if side_matches_reduce_order(pos_side, o)]
-
-    qty = abs(float(pos_qty or 0.0))
-    if qty > 0:
-        qty_tol = max(1.0, qty * 0.10)
-        full_like = []
-        partial_like = []
-
-        for o in matched_side:
-            amt = float(extract_trigger_amount(o) or 0.0)
-            px = extract_trigger_price(o)
-            if px is None:
-                continue
-            if abs(amt - qty) <= qty_tol or amt >= qty * 0.90:
-                full_like.append(o)
-            else:
-                partial_like.append(o)
-
-        # Si encontramos parciales, asumimos esquema: 1 SL full-size + N TPs parciales
-        if partial_like:
-            stop_like = []
-            for o in full_like:
-                px = extract_trigger_price(o)
-                if px is None:
-                    continue
-                if pos_side == "long":
-                    if px < ref_price:
-                        stop_like.append(o)
-                elif pos_side == "short":
-                    if px > ref_price:
-                        stop_like.append(o)
-
-            if not stop_like:
-                stop_like = list(full_like)
-
-            tp_like = [o for o in partial_like if extract_trigger_price(o) is not None]
-            return stop_like, tp_like
 
     stop_like = []
     tp_like = []
@@ -425,11 +388,14 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     # Keep existing TP orders while the position remains open.
     # TP should be fixed from the moment the position is opened.
     if len(tp_like) >= 2:
-        print(f"tp_action: keep existing partial TPs (count={len(tp_like)})")
-        extras = tp_like[2:]
-        for o in extras:
-            cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
-        return
+        if should_keep_partial_tps(tp_like, pos_side, qty):
+            print(f"tp_action: keep existing partial TPs (count={len(tp_like)})")
+            extras = tp_like[2:]
+            for o in extras:
+                cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
+            return
+        else:
+            print(f"tp_action: rebuild partial TPs (count={len(tp_like)}, qty={qty})")
 
     # If there is 1 TP or 0 TP, rebuild TP set cleanly.
     for o in tp_like:
