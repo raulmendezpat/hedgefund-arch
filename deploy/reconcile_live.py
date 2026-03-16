@@ -287,9 +287,15 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     qty = abs(pos_qty)
 
     if pos_side == "flat" or qty <= 0:
-        for o in fetch_reduce_only_trigger_orders(bitget, symbol):
+        try:
+            _all_triggers = bitget.fetch_open_trigger_orders(symbol) or []
+        except Exception:
+            _all_triggers = []
+
+        for o in _all_triggers:
             cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
-        print("protective_action: no position -> stale SL/TP cancelled if any")
+
+        print(f"protective_action: no position for {symbol} -> cancelled stale trigger orders (count={len(_all_triggers)})")
         return
 
     sl_price = desired_stop_price(pos_side, ref_price, atr, cfg["sl_atr_mult"])
@@ -543,10 +549,20 @@ for prefix, cfg in SYMBOLS.items():
         elif delta_qty < 0:
             if current_qty > 0 and target_qty >= 0:
                 _action = "reduce_long"
-                place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
+                if target_qty == 0:
+                    print(f"CLOSE_POSITION -> symbol={symbol} side=long live={LIVE_TRADING}")
+                    if LIVE_TRADING:
+                        bitget.flash_close_position(symbol, side="long")
+                else:
+                    place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
             elif current_qty < 0 and target_qty <= 0:
                 _action = "reduce_short"
-                place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
+                if target_qty == 0:
+                    print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
+                    if LIVE_TRADING:
+                        bitget.flash_close_position(symbol, side="short")
+                else:
+                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             else:
                 _action = "none"
                 _action = "none"
