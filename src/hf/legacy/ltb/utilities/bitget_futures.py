@@ -107,6 +107,95 @@ class BitgetFutures():
         except Exception as e:
             raise Exception(f"Failed to cancel the {symbol} trigger order {id}: {e}")
 
+
+    def _api_symbol(self, symbol: str) -> str:
+        try:
+            return self.session.market(symbol)["id"]
+        except Exception as e:
+            raise Exception(f"Failed to resolve api symbol for {symbol}: {e}")
+
+    def fetch_open_tpsl_orders(self, symbol: str) -> List[Dict[str, Any]]:
+        try:
+            fn = (
+                getattr(self.session, "privateMixGetV2MixOrderOrdersPlanPending", None)
+                or getattr(self.session, "private_mix_get_v2_mix_order_orders_plan_pending", None)
+            )
+            if fn is None:
+                raise Exception("orders-plan-pending not available")
+            resp = fn({
+                "productType": "USDT-FUTURES",
+                "planType": "profit_loss",
+                "symbol": self._api_symbol(symbol),
+                "limit": "100",
+            })
+            return ((resp or {}).get("data") or {}).get("entrustedList") or []
+        except Exception as e:
+            raise Exception(f"Failed to fetch open TP/SL orders: {e}")
+
+    def cancel_plan_order(self, symbol: str, order_id: str, plan_type: str) -> Dict[str, Any]:
+        try:
+            fn = (
+                getattr(self.session, "privateMixPostV2MixOrderCancelPlanOrder", None)
+                or getattr(self.session, "private_mix_post_v2_mix_order_cancel_plan_order", None)
+            )
+            if fn is None:
+                raise Exception("cancel-plan-order not available")
+            return fn({
+                "productType": "USDT-FUTURES",
+                "symbol": self._api_symbol(symbol),
+                "marginCoin": "USDT",
+                "planType": plan_type,
+                "orderIdList": [{"orderId": str(order_id)}],
+            })
+        except Exception as e:
+            raise Exception(f"Failed to cancel TP/SL plan order {order_id} for {symbol}: {e}")
+
+    def place_pos_take_profit(self, symbol: str, hold_side: str, trigger_price: float, size: float, client_oid: Optional[str] = None, trigger_type: str = "fill_price") -> Dict[str, Any]:
+        try:
+            fn = (
+                getattr(self.session, "privateMixPostV2MixOrderPlacePosTpsl", None)
+                or getattr(self.session, "private_mix_post_v2_mix_order_place_pos_tpsl", None)
+            )
+            if fn is None:
+                raise Exception("place-pos-tpsl not available")
+            params = {
+                "marginCoin": "USDT",
+                "productType": "USDT-FUTURES",
+                "symbol": self._api_symbol(symbol),
+                "holdSide": hold_side,
+                "stopSurplusTriggerPrice": self.price_to_precision(symbol, trigger_price),
+                "stopSurplusTriggerType": trigger_type,
+                "stopSurplusSize": self.amount_to_precision(symbol, size),
+            }
+            if client_oid:
+                params["stopSurplusClientOid"] = client_oid
+            return fn(params)
+        except Exception as e:
+            raise Exception(f"Failed to place TP/SL take-profit plan for {symbol}: {e}")
+
+    def place_pos_stop_loss(self, symbol: str, hold_side: str, trigger_price: float, size: float, client_oid: Optional[str] = None, trigger_type: str = "mark_price") -> Dict[str, Any]:
+        try:
+            fn = (
+                getattr(self.session, "privateMixPostV2MixOrderPlacePosTpsl", None)
+                or getattr(self.session, "private_mix_post_v2_mix_order_place_pos_tpsl", None)
+            )
+            if fn is None:
+                raise Exception("place-pos-tpsl not available")
+            params = {
+                "marginCoin": "USDT",
+                "productType": "USDT-FUTURES",
+                "symbol": self._api_symbol(symbol),
+                "holdSide": hold_side,
+                "stopLossTriggerPrice": self.price_to_precision(symbol, trigger_price),
+                "stopLossTriggerType": trigger_type,
+                "stopLossSize": self.amount_to_precision(symbol, size),
+            }
+            if client_oid:
+                params["stopLossClientOid"] = client_oid
+            return fn(params)
+        except Exception as e:
+            raise Exception(f"Failed to place TP/SL stop-loss plan for {symbol}: {e}")
+
     def fetch_open_positions(self, symbol: str) -> List[Dict[str, Any]]:
         try:
             positions = self.session.fetch_positions([symbol], params={"marginCoin": "USDT"})

@@ -1,3 +1,4 @@
+import time
 import json
 import os
 from pathlib import Path
@@ -301,20 +302,117 @@ def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side:
         )
 
 
+
+def fetch_open_profit_loss_orders(bitget, symbol: str):
+    try:
+        return bitget.fetch_open_tpsl_orders(symbol) or []
+    except Exception:
+        return []
+
+def get_plan_type(o):
+    info = o.get("info") or {}
+    return str(o.get("planType") or info.get("planType") or "").lower()
+
+def get_plan_order_id(o):
+    info = o.get("info") or {}
+    return o.get("orderId") or info.get("orderId") or o.get("id") or info.get("id")
+
+def get_plan_client_oid(o):
+    info = o.get("info") or {}
+    return o.get("clientOid") or info.get("clientOid")
+
+def get_plan_size(o):
+    info = o.get("info") or {}
+    v = o.get("size") or info.get("size") or o.get("amount") or info.get("amount") or 0
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+def get_plan_trigger_price(o):
+    info = o.get("info") or {}
+    for k in ["triggerPrice", "stopSurplusTriggerPrice", "stopLossTriggerPrice"]:
+        v = o.get(k)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except Exception:
+                pass
+        v = info.get(k)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return 0.0
+
+def get_plan_trigger_type(o):
+    info = o.get("info") or {}
+    return str(o.get("triggerType") or info.get("triggerType") or "").lower()
+
+def log_plan_snapshot(label: str, symbol: str, orders) -> None:
+    orders = orders or []
+    print(f"{label} -> symbol={symbol} count={len(orders)}")
+    for o in orders:
+        print(
+            "PLAN_SNAPSHOT -> "
+            f"symbol={symbol} "
+            f"order_id={get_plan_order_id(o)} "
+            f"client_oid={get_plan_client_oid(o)} "
+            f"plan_type={get_plan_type(o)} "
+            f"size={get_plan_size(o)} "
+            f"trigger={get_plan_trigger_price(o)} "
+            f"trigger_type={get_plan_trigger_type(o)}"
+        )
+
+def cancel_plan_order_safe(bitget, symbol: str, order_id: str, plan_type: str):
+    if not order_id:
+        return
+    print(f"CANCEL_PLAN -> symbol={symbol} order_id={order_id} plan_type={plan_type} live={LIVE_TRADING}")
+    if LIVE_TRADING:
+        bitget.cancel_plan_order(symbol, order_id, plan_type)
+
+def _rel_close(a: float, b: float, rel_tol: float = 1e-6) -> bool:
+    if a == b:
+        return True
+    denom = max(abs(b), 1e-9)
+    return abs(a - b) / denom <= rel_tol
+
+def _find_matching_plan(orders, plan_type: str, trigger_price: float, size: float, trigger_type: str, price_tol: float):
+    for o in orders:
+        if get_plan_type(o) != plan_type:
+            continue
+        if get_plan_trigger_type(o) != str(trigger_type).lower():
+            continue
+        if not _rel_close(get_plan_trigger_price(o), float(trigger_price), price_tol):
+            continue
+        if not _rel_close(get_plan_size(o), float(size), 1e-9):
+            continue
+        return o
+    return None
+
+
 def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: float, atr: float, cfg: dict):
     pos_side = position_side_from_qty(pos_qty)
+    hold_side = "long" if pos_side == "long" else "short"
     qty = abs(pos_qty)
 
-    if pos_side == "flat" or qty <= 0:
-        try:
-            _all_triggers = bitget.fetch_open_trigger_orders(symbol) or []
-        except Exception:
-            _all_triggers = []
-
-        for o in _all_triggers:
+    # migrated model:
+    # - SL and TP live as profit/loss plan orders
+    # - stale trigger orders should be removed
+    stale_triggers = fetch_reduce_only_trigger_orders(bitget, symbol)
+    if stale_triggers:
+        log_trigger_snapshot("STALE_TRIGGER_BEFORE", symbol, stale_triggers)
+        for o in stale_triggers:
             cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
 
-        print(f"protective_action: no position for {symbol} -> cancelled stale trigger orders (count={len(_all_triggers)})")
+    plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+    log_plan_snapshot("PROTECTIVE_PLAN_BEFORE", symbol, plan_orders)
+
+    if pos_side == "flat" or qty <= 0:
+        for o in plan_orders:
+            cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), get_plan_type(o))
+        print(f"protective_action: no position for {symbol} -> cancelled stale plan orders (count={len(plan_orders)})")
         return
 
     sl_price = desired_stop_price(pos_side, ref_price, atr, cfg["sl_atr_mult"])
@@ -333,31 +431,6 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
 
     sl_price = float(bitget.price_to_precision(symbol, sl_price))
     tp2_price = float(bitget.price_to_precision(symbol, tp2_price))
-
-    maintain_single_trigger(
-        bitget=bitget,
-        symbol=symbol,
-        desired_price=sl_price,
-        pos_side=pos_side,
-        qty=qty,
-        kind="sl",
-        rel_tol=float(cfg["stop_refresh_rel_tol"]),
-        ref_price=ref_price,
-    )
-
-    if not partial_tp_enabled:
-        maintain_single_trigger(
-            bitget=bitget,
-            symbol=symbol,
-            desired_price=tp2_price,
-            pos_side=pos_side,
-            qty=qty,
-            kind="tp",
-            rel_tol=float(cfg["tp_refresh_rel_tol"]),
-            ref_price=ref_price,
-        )
-        return
-
     tp1_price = desired_take_profit_price_fixed_mult(
         pos_side,
         ref_price,
@@ -371,60 +444,119 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     qty2 = max(0.0, float(qty) - float(qty1))
     qty2 = float(bitget.amount_to_precision(symbol, qty2)) if qty2 > 0 else 0.0
 
-    if qty1 <= 0 or qty2 <= 0:
-        maintain_single_trigger(
-            bitget=bitget,
-            symbol=symbol,
-            desired_price=tp2_price,
-            pos_side=pos_side,
-            qty=qty,
-            kind="tp",
-            rel_tol=float(cfg["tp_refresh_rel_tol"]),
-            ref_price=ref_price,
-        )
+    price_tol = float(cfg.get("tp_refresh_rel_tol", 0.001) or 0.001)
+
+    loss_plans = [o for o in plan_orders if get_plan_type(o) == "loss_plan"]
+    profit_plans = [o for o in plan_orders if get_plan_type(o) == "profit_plan"]
+
+    # ---- ensure SL exactly matches current position size ----
+    sl_match = _find_matching_plan(loss_plans, "loss_plan", sl_price, qty, "mark_price", float(cfg.get("stop_refresh_rel_tol", 0.001) or 0.001))
+    if sl_match:
+        print(f"sl_action: keep existing loss_plan (qty={get_plan_size(sl_match)}, trigger={get_plan_trigger_price(sl_match)})")
+        for o in loss_plans:
+            if get_plan_order_id(o) != get_plan_order_id(sl_match):
+                cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "loss_plan")
+    else:
+        for o in loss_plans:
+            cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "loss_plan")
+        print(f"PLACE_SL_PLAN -> symbol={symbol} hold_side={hold_side} qty={qty} trigger={sl_price} live={LIVE_TRADING}")
+        if LIVE_TRADING:
+            bitget.place_pos_stop_loss(
+                symbol=symbol,
+                hold_side=hold_side,
+                trigger_price=sl_price,
+                size=qty,
+                client_oid=f"sl-{symbol.replace('/', '').replace(':', '')}-{int(time.time()*1000)}",
+                trigger_type="mark_price",
+            )
+
+    if not partial_tp_enabled:
+        profit_match = _find_matching_plan(profit_plans, "profit_plan", tp2_price, qty, "fill_price", price_tol)
+        if profit_match:
+            print(f"tp_action: keep single TP2 plan (qty={get_plan_size(profit_match)}, trigger={get_plan_trigger_price(profit_match)})")
+            for o in profit_plans:
+                if get_plan_order_id(o) != get_plan_order_id(profit_match):
+                    cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "profit_plan")
+        else:
+            for o in profit_plans:
+                cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "profit_plan")
+            print(f"PLACE_TP2_PLAN -> symbol={symbol} hold_side={hold_side} qty={qty} trigger={tp2_price} live={LIVE_TRADING}")
+            if LIVE_TRADING:
+                bitget.place_pos_take_profit(
+                    symbol=symbol,
+                    hold_side=hold_side,
+                    trigger_price=tp2_price,
+                    size=qty,
+                    client_oid=f"tp2-{symbol.replace('/', '').replace(':', '')}-{int(time.time()*1000)}",
+                    trigger_type="fill_price",
+                )
+        final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+        log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
         return
 
-    reduce_side = "sell" if pos_side == "long" else "buy"
-    open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
-    stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price, qty)
+    # ---- partial TP model ----
+    # Case A: one TP remains and it matches TP2 with full remaining qty => TP1 already executed; keep only TP2.
+    if len(profit_plans) == 1:
+        lone = profit_plans[0]
+        if _find_matching_plan([lone], "profit_plan", tp2_price, qty, "fill_price", price_tol):
+            print(f"tp_action: keep remaining TP2 after partial execution (qty={qty}, trigger={tp2_price})")
+            final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+            log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
+            return
 
-    # Keep existing TP orders while the position remains open.
-    # TP should be fixed from the moment the position is opened.
-    if len(tp_like) >= 2:
-        print(f"tp_action: keep existing partial TPs (count={len(tp_like)})")
-        extras = tp_like[2:]
-        for o in extras:
-            cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
+    # Case B: full split should exist on a fresh/full position
+    tp1_match = _find_matching_plan(profit_plans, "profit_plan", tp1_price, qty1, "fill_price", price_tol) if qty1 > 0 else None
+    tp2_match = _find_matching_plan(profit_plans, "profit_plan", tp2_price, qty2, "fill_price", price_tol) if qty2 > 0 else None
+
+    if qty1 > 0 and qty2 > 0 and tp1_match and tp2_match and get_plan_order_id(tp1_match) != get_plan_order_id(tp2_match):
+        print(f"tp_action: keep existing partial TP plans (count={len(profit_plans)})")
+        for o in profit_plans:
+            oid = get_plan_order_id(o)
+            if oid not in {get_plan_order_id(tp1_match), get_plan_order_id(tp2_match)}:
+                cancel_plan_order_safe(bitget, symbol, oid, "profit_plan")
+        final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+        log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
         return
 
-    # If there is 1 TP or 0 TP, rebuild TP set cleanly.
-    for o in tp_like:
-        cancel_trigger_order_safe(bitget, symbol, extract_trigger_order_id(o))
+    for o in profit_plans:
+        cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "profit_plan")
 
-    print(f"PLACE_TP1 -> symbol={symbol} side={reduce_side} qty={qty1} trigger={tp1_price} live={LIVE_TRADING}")
-    if LIVE_TRADING:
-        bitget.place_trigger_market_order(
-            symbol=symbol,
-            side=reduce_side,
-            amount=qty1,
-            trigger_price=tp1_price,
-            reduce=True,
-            trigger_type="fill_price",
-        )
+    if qty1 > 0 and qty2 > 0:
+        print(f"PLACE_TP1_PLAN -> symbol={symbol} hold_side={hold_side} qty={qty1} trigger={tp1_price} live={LIVE_TRADING}")
+        if LIVE_TRADING:
+            bitget.place_pos_take_profit(
+                symbol=symbol,
+                hold_side=hold_side,
+                trigger_price=tp1_price,
+                size=qty1,
+                client_oid=f"tp1-{symbol.replace('/', '').replace(':', '')}-{int(time.time()*1000)}",
+                trigger_type="fill_price",
+            )
 
-    print(f"PLACE_TP2 -> symbol={symbol} side={reduce_side} qty={qty2} trigger={tp2_price} live={LIVE_TRADING}")
-    if LIVE_TRADING:
-        bitget.place_trigger_market_order(
-            symbol=symbol,
-            side=reduce_side,
-            amount=qty2,
-            trigger_price=tp2_price,
-            reduce=True,
-            trigger_type="fill_price",
-        )
+        print(f"PLACE_TP2_PLAN -> symbol={symbol} hold_side={hold_side} qty={qty2} trigger={tp2_price} live={LIVE_TRADING}")
+        if LIVE_TRADING:
+            bitget.place_pos_take_profit(
+                symbol=symbol,
+                hold_side=hold_side,
+                trigger_price=tp2_price,
+                size=qty2,
+                client_oid=f"tp2-{symbol.replace('/', '').replace(':', '')}-{int(time.time()*1000)}",
+                trigger_type="fill_price",
+            )
+    else:
+        print(f"PLACE_TP2_PLAN -> symbol={symbol} hold_side={hold_side} qty={qty} trigger={tp2_price} live={LIVE_TRADING}")
+        if LIVE_TRADING:
+            bitget.place_pos_take_profit(
+                symbol=symbol,
+                hold_side=hold_side,
+                trigger_price=tp2_price,
+                size=qty,
+                client_oid=f"tp2-{symbol.replace('/', '').replace(':', '')}-{int(time.time()*1000)}",
+                trigger_type="fill_price",
+            )
 
-    final_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
-    log_trigger_snapshot("PROTECTIVE_AFTER", symbol, final_reduce)
+    final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+    log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
 
 
 bitget = BitgetFutures(SECRET)
@@ -574,17 +706,25 @@ for prefix, cfg in SYMBOLS.items():
             if current_qty > 0 and target_qty >= 0:
                 _action = "reduce_long"
                 if target_qty == 0:
-                    print(f"CLOSE_POSITION -> symbol={symbol} side=long live={LIVE_TRADING}")
-                    if LIVE_TRADING:
-                        bitget.flash_close_position(symbol, side="long")
+                    active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
+                    if active_profit_plans:
+                        print(f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=long reason=active_profit_plans count={len(active_profit_plans)}")
+                    else:
+                        print(f"CLOSE_POSITION -> symbol={symbol} side=long live={LIVE_TRADING}")
+                        if LIVE_TRADING:
+                            bitget.flash_close_position(symbol, side="long")
                 else:
                     place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
             elif current_qty < 0 and target_qty <= 0:
                 _action = "reduce_short"
                 if target_qty == 0:
-                    print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
-                    if LIVE_TRADING:
-                        bitget.flash_close_position(symbol, side="short")
+                    active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
+                    if active_profit_plans:
+                        print(f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=short reason=active_profit_plans count={len(active_profit_plans)}")
+                    else:
+                        print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
+                        if LIVE_TRADING:
+                            bitget.flash_close_position(symbol, side="short")
                 else:
                     place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             else:
