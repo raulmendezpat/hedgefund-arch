@@ -246,9 +246,27 @@ def classify_reduce_orders(open_reduce, pos_side: str, ref_price: float, pos_qty
     return tested_classify_reduce_orders(open_reduce, pos_side, ref_price, pos_qty)
 
 
+def log_trigger_snapshot(label: str, symbol: str, orders) -> None:
+    orders = orders or []
+    print(f"{label} -> symbol={symbol} count={len(orders)}")
+    for o in orders:
+        info = o.get("info") or {}
+        print(
+            "TRIGGER_SNAPSHOT -> "
+            f"symbol={symbol} "
+            f"id={o.get('id')} "
+            f"amount={o.get('amount')} "
+            f"trigger={o.get('triggerPrice')} "
+            f"trigger_type={info.get('triggerType')} "
+            f"plan_status={info.get('planStatus')} "
+            f"side={o.get('side')} "
+            f"trade_side={info.get('tradeSide')}"
+        )
+
 def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side: str, qty: float, kind: str, rel_tol: float, ref_price: float):
     reduce_side = "sell" if pos_side == "long" else "buy"
     open_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
+    log_trigger_snapshot("PROTECTIVE_BEFORE", symbol, open_reduce)
     stop_like, tp_like = classify_reduce_orders(open_reduce, pos_side, ref_price, qty)
     current_bucket = stop_like if kind == "sl" else tp_like
     other_bucket = tp_like if kind == "sl" else stop_like
@@ -279,6 +297,7 @@ def maintain_single_trigger(bitget, symbol: str, desired_price: float, pos_side:
             amount=qty,
             trigger_price=desired_price,
             reduce=True,
+            trigger_type="mark_price",
         )
 
 
@@ -390,6 +409,7 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
             amount=qty1,
             trigger_price=tp1_price,
             reduce=True,
+            trigger_type="fill_price",
         )
 
     print(f"PLACE_TP2 -> symbol={symbol} side={reduce_side} qty={qty2} trigger={tp2_price} live={LIVE_TRADING}")
@@ -400,7 +420,11 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
             amount=qty2,
             trigger_price=tp2_price,
             reduce=True,
+            trigger_type="fill_price",
         )
+
+    final_reduce = fetch_reduce_only_trigger_orders(bitget, symbol)
+    log_trigger_snapshot("PROTECTIVE_AFTER", symbol, final_reduce)
 
 
 bitget = BitgetFutures(SECRET)

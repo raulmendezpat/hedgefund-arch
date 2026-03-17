@@ -224,7 +224,7 @@ class BitgetFutures():
         except Exception as e:
             raise Exception(f"Failed to place limit order of {amount} {symbol} at price {price}: {e}")
 
-    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False, print_error: bool = False) -> Optional[Dict[str, Any]]:
+    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False, trigger_type: str = 'mark_price', print_error: bool = False) -> Optional[Dict[str, Any]]:
         try:
             amount = self.amount_to_precision(symbol, amount)
             trigger_price = self.price_to_precision(symbol, trigger_price)
@@ -232,7 +232,7 @@ class BitgetFutures():
                 'reduceOnly': reduce,
                 'tradeSide': 'close' if reduce else 'open',
                 'triggerPrice': trigger_price,
-                'triggerType': 'mark_price',
+                'triggerType': trigger_type,
                 'delegateType': 'price_fill',
             }
             return self.session.create_order(symbol, 'market', side, amount, params=params)
@@ -243,7 +243,7 @@ class BitgetFutures():
             else:
                 raise err
 
-    def place_trigger_limit_order(self, symbol: str, side: str, amount: float, trigger_price: float, price: float, reduce: bool = False, print_error: bool = False) -> Optional[Dict[str, Any]]:
+    def place_trigger_limit_order(self, symbol: str, side: str, amount: float, trigger_price: float, price: float, reduce: bool = False, trigger_type: str = 'mark_price', print_error: bool = False) -> Optional[Dict[str, Any]]:
         try:
             amount = self.amount_to_precision(symbol, amount)
             trigger_price = self.price_to_precision(symbol, trigger_price)
@@ -251,7 +251,7 @@ class BitgetFutures():
             params = {
                 'reduceOnly': reduce,
                 'triggerPrice': trigger_price,
-                'triggerType': 'mark_price',
+                'triggerType': trigger_type,
                 'delegateType': 'price_fill',
             }
             return self.session.create_order(symbol, 'limit', side, amount, price, params=params)
