@@ -565,12 +565,14 @@ bitget = BitgetFutures(SECRET)
 def ensure_leverage(bitget, symbol: str, leverage: int = 2):
     try:
         bitget.set_margin_mode(symbol, "isolated")
-    except Exception:
-        pass
+        print(f"MARGIN_MODE_OK -> symbol={symbol} margin_mode=isolated")
+    except Exception as e:
+        print(f"MARGIN_MODE_ERROR -> symbol={symbol} margin_mode=isolated error={e!r}")
     try:
         bitget.set_leverage(symbol, "isolated", leverage)
-    except Exception:
-        pass
+        print(f"LEVERAGE_OK -> symbol={symbol} margin_mode=isolated leverage={leverage}")
+    except Exception as e:
+        print(f"LEVERAGE_ERROR -> symbol={symbol} margin_mode=isolated leverage={leverage} error={e!r}")
 
 df = pd.read_csv(APP / "results/pipeline_allocations_prod_candidate_live.csv", low_memory=False)
 SYMBOLS = build_runtime_symbols(df)

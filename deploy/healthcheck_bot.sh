@@ -59,7 +59,14 @@ from hf.legacy.ltb.utilities.bitget_futures import BitgetFutures
 
 APP = Path("/home/ubuntu/hedgefund-arch")
 secret = json.loads((APP / "secret.json").read_text())["envelope"]
+
 bitget = BitgetFutures(secret)
+
+def fetch_open_profit_loss_orders(bitget, symbol: str):
+    try:
+        return bitget.fetch_open_tpsl_orders(symbol) or []
+    except Exception:
+        return []
 
 print("=== ACCOUNT ===")
 bal = bitget.fetch_balance()
@@ -77,12 +84,12 @@ for sym in symbols:
     print(sym, "->", pos)
 print()
 
-print("=== OPEN TRIGGER ORDERS (SL/TP) ===")
+print("=== OPEN PROTECTIVE PLANS (SL/TP) ===")
 import os
 symbols = os.environ["HEALTHCHECK_SYMBOLS_CSV"].split()
 for sym in symbols:
     try:
-        orders = bitget.fetch_open_trigger_orders(sym) or []
+        orders = fetch_open_profit_loss_orders(bitget, sym) or []
     except Exception as e:
         orders = f"ERROR: {e}"
     print(sym, "->", orders)
@@ -102,6 +109,14 @@ if p.exists():
             "btc_p_win", "sol_p_win",
             "btc_post_ml_score", "sol_post_ml_score",
             "btc_execution_target_weight", "sol_execution_target_weight",
+            "trx_side", "trx_strategy_id", "trx_p_win", "trx_post_ml_score", "trx_execution_target_weight",
+            "dot_side", "dot_strategy_id", "dot_p_win", "dot_post_ml_score", "dot_execution_target_weight",
+            "avax_side", "avax_strategy_id", "avax_p_win", "avax_post_ml_score", "avax_execution_target_weight",
+            "eth_side", "eth_strategy_id", "eth_p_win", "eth_post_ml_score", "eth_execution_target_weight",
+            "bnb_side", "bnb_strategy_id", "bnb_p_win", "bnb_post_ml_score", "bnb_execution_target_weight",
+            "link_side", "link_strategy_id", "link_p_win", "link_post_ml_score", "link_execution_target_weight",
+            "xrp_side", "xrp_strategy_id", "xrp_p_win", "xrp_post_ml_score", "xrp_execution_target_weight",
+            "aave_side", "aave_strategy_id", "aave_p_win", "aave_post_ml_score", "aave_execution_target_weight",
         ]
         for c in cols:
             if c in df.columns:
