@@ -701,9 +701,30 @@ for prefix, cfg in SYMBOLS.items():
         continue
 
     if current_qty == 0 or (current_qty > 0 and target_qty >= 0) or (current_qty < 0 and target_qty <= 0):
+        _effective_qty_override = None
+
         if delta_qty > 0:
-            _action = "open_long"
-            place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
+            if current_qty > 0 and target_qty >= 0:
+                active_profit_plans = [
+                    o for o in fetch_open_profit_loss_orders(bitget, symbol)
+                    if get_plan_type(o) == "profit_plan"
+                ]
+                if active_profit_plans:
+                    _action = "skip_due_to_active_tp"
+                    _blocked_reason = "active_profit_plans"
+                    _effective_qty_override = current_qty
+                    print(
+                        f"BLOCK_INCREASE_DUE_TO_TP -> symbol={symbol} side=long "
+                        f"current_qty={current_qty} target_qty={target_qty} delta_qty={delta_qty} "
+                        f"active_profit_plans={len(active_profit_plans)}"
+                    )
+                    print("action: skip rebalance (active profit_plan after TP1/TP ladder)")
+                else:
+                    _action = "open_long"
+                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
+            else:
+                _action = "open_long"
+                place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
         elif delta_qty < 0:
             if current_qty > 0 and target_qty >= 0:
                 _action = "reduce_long"
@@ -731,12 +752,11 @@ for prefix, cfg in SYMBOLS.items():
                     place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             else:
                 _action = "none"
-                _action = "none"
-            print("action: none")
+                print("action: none")
         else:
             print("action: none")
 
-        effective_qty = target_qty
+        effective_qty = current_qty if _effective_qty_override is not None else target_qty
         try:
             atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
             ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
