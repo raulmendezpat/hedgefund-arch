@@ -2053,6 +2053,42 @@ def run(
 
     perf_out.to_csv(f"results/pipeline_equity_{name}.csv", index=False)
 
+    # Enriquecer el allocations CSV con métricas reales de performance del backtest.
+    # Aquí evitamos merge por ts porque allocations suele llevar ts epoch-ms (int)
+    # mientras perf_out puede traer datetime tz-aware. Como ambos dataframes salen del
+    # mismo run y misma grilla temporal, preferimos alineación posicional validada.
+    _perf_cols = [
+        "gross_port_ret",
+        "port_ret",
+        "gross_equity",
+        "equity",
+        "gross_drawdown_pct",
+        "drawdown_pct",
+        "execution_turnover",
+        "execution_cost_rate",
+        "execution_cost_drag_pct",
+    ]
+    _perf_cols = [c for c in _perf_cols if c in perf_out.columns]
+    _perf_enrich = perf_out[_perf_cols].copy().reset_index(drop=True)
+
+    if "gross_equity" in _perf_enrich.columns:
+        _gross_eq = pd.to_numeric(_perf_enrich["gross_equity"], errors="coerce")
+        _perf_enrich["gross_pnl"] = _gross_eq.diff().fillna(0.0)
+        _perf_enrich["gross_pnl_cum"] = _gross_eq - float(_gross_eq.iloc[0])
+
+    if "equity" in _perf_enrich.columns:
+        _net_eq = pd.to_numeric(_perf_enrich["equity"], errors="coerce")
+        _perf_enrich["pnl"] = _net_eq.diff().fillna(0.0)
+        _perf_enrich["pnl_cum"] = _net_eq - float(_net_eq.iloc[0])
+
+    if len(df) != len(_perf_enrich):
+        raise ValueError(
+            f"Cannot enrich allocations with perf columns: len(df)={len(df)} != len(perf_out)={len(_perf_enrich)}"
+        )
+
+    df = pd.concat([df.reset_index(drop=True), _perf_enrich], axis=1)
+    df.to_csv(f"results/pipeline_allocations_{name}.csv", index=False)
+
     # Portfolio metrics (hedge-fund style summary)
     metrics = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(
         perf_df=perf_out[["ts", "equity", "port_ret", "drawdown_pct"]],

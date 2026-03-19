@@ -123,6 +123,11 @@ class PortfolioMetricsEngine:
                 ).fillna(0.0)
                 exposure_pct = float((wsum > 1e-12).mean() * 100.0)
 
+        pos_periods = int((port_ret > 0).sum())
+        neg_periods = int((port_ret < 0).sum())
+        decided_periods = int(pos_periods + neg_periods)
+        win_rate_pct = float((pos_periods / decided_periods) * 100.0) if decided_periods > 0 else float("nan")
+
         return {
             "start_equity": start_eq,
             "end_equity": end_eq,
@@ -134,4 +139,8 @@ class PortfolioMetricsEngine:
             "sharpe_annual": sharpe_annual,
             "periods_per_year": periods_per_year,
             "exposure_pct": exposure_pct,
+            "win_rate_pct": win_rate_pct,
+            "positive_periods": pos_periods,
+            "negative_periods": neg_periods,
+            "decided_periods": decided_periods,
         }
