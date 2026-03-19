@@ -1972,7 +1972,6 @@ def run(
 
             _adj_port_ret = _adj_port_ret.add(_w * _ret_adj, fill_value=0.0)
 
-        
         perf_out["port_ret"] = _adj_port_ret.values
 
         # recompute equity after research partial TP adjustment
