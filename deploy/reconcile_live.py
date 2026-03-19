@@ -439,10 +439,30 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     )
     tp1_price = float(bitget.price_to_precision(symbol, tp1_price))
 
-    qty1 = max(0.0, float(qty) * partial_tp1_fraction)
-    qty1 = float(bitget.amount_to_precision(symbol, qty1)) if qty1 > 0 else 0.0
-    qty2 = max(0.0, float(qty) - float(qty1))
-    qty2 = float(bitget.amount_to_precision(symbol, qty2)) if qty2 > 0 else 0.0
+    qty1 = 0.0
+    qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
+
+    if partial_tp_enabled:
+        raw_qty1 = max(0.0, float(qty) * partial_tp1_fraction)
+        try:
+            qty1 = float(bitget.amount_to_precision(symbol, raw_qty1)) if raw_qty1 > 0 else 0.0
+            qty2 = max(0.0, float(qty) - float(qty1))
+            qty2 = float(bitget.amount_to_precision(symbol, qty2)) if qty2 > 0 else 0.0
+
+            if qty1 <= 0.0 or qty2 <= 0.0:
+                print(
+                    f"TP_SPLIT_COLLAPSED -> symbol={symbol} qty={qty} "
+                    f"raw_qty1={raw_qty1} qty1={qty1} qty2={qty2}"
+                )
+                qty1 = 0.0
+                qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
+        except Exception as e:
+            print(
+                f"TP_SPLIT_FALLBACK -> symbol={symbol} qty={qty} "
+                f"raw_qty1={raw_qty1} error={e!r}"
+            )
+            qty1 = 0.0
+            qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
 
     price_tol = float(cfg.get("tp_refresh_rel_tol", 0.001) or 0.001)
 

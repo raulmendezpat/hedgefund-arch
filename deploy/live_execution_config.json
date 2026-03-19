@@ -41,7 +41,8 @@
       "tp_atr_mult_min": 1.8,
       "tp_atr_mult_max": 3.6,
       "tp_atr_pct_pivot": 0.012,
-      "max_delta_notional": 70.0
+      "max_delta_notional": 70.0,
+      "partial_tp_enabled": false
     },
     "BNB/USDT:USDT": {
       "sl_atr_mult": 2.0,
