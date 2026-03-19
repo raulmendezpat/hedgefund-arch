@@ -71,6 +71,22 @@
       "tp_atr_pct_pivot": 0.014,
       "max_delta_notional": 80.0,
       "max_target_weight": 0.25
+    },
+    "BCH/USDT:USDT": {
+      "sl_atr_mult": 2.0,
+      "tp_atr_mult_min": 1.9,
+      "tp_atr_mult_max": 3.8,
+      "tp_atr_pct_pivot": 0.014,
+      "max_delta_notional": 45.0,
+      "max_target_weight": 0.15
+    },
+    "DOGE/USDT:USDT": {
+      "sl_atr_mult": 2.1,
+      "tp_atr_mult_min": 2.0,
+      "tp_atr_mult_max": 4.0,
+      "tp_atr_pct_pivot": 0.018,
+      "max_delta_notional": 40.0,
+      "max_target_weight": 0.15
     }
   }
 }
