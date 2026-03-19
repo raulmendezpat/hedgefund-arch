@@ -751,7 +751,14 @@ for prefix, cfg in SYMBOLS.items():
                 if target_qty == 0:
                     active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
                     if active_profit_plans:
-                        print(f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=long reason=active_profit_plans count={len(active_profit_plans)}")
+                        _action = "skip_due_to_active_tp"
+                        _blocked_reason = "active_profit_plans"
+                        _effective_qty_override = current_qty
+                        print(
+                            f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=long "
+                            f"reason=active_profit_plans count={len(active_profit_plans)} "
+                            f"current_qty={current_qty} target_qty={target_qty}"
+                        )
                     else:
                         print(f"CLOSE_POSITION -> symbol={symbol} side=long live={LIVE_TRADING}")
                         if LIVE_TRADING:
@@ -763,7 +770,14 @@ for prefix, cfg in SYMBOLS.items():
                 if target_qty == 0:
                     active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
                     if active_profit_plans:
-                        print(f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=short reason=active_profit_plans count={len(active_profit_plans)}")
+                        _action = "skip_due_to_active_tp"
+                        _blocked_reason = "active_profit_plans"
+                        _effective_qty_override = current_qty
+                        print(
+                            f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=short "
+                            f"reason=active_profit_plans count={len(active_profit_plans)} "
+                            f"current_qty={current_qty} target_qty={target_qty}"
+                        )
                     else:
                         print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
                         if LIVE_TRADING:
@@ -779,7 +793,14 @@ for prefix, cfg in SYMBOLS.items():
         effective_qty = current_qty if _effective_qty_override is not None else target_qty
         try:
             atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
-            ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
+            if _blocked_reason == "active_profit_plans" and abs(current_qty) > 0:
+                print(
+                    f"protective_action: preserve current protection due to active TP "
+                    f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
+                )
+                ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
+            else:
+                ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
         except Exception as e:
             print(f"protective_action: skipped due to ATR/order error: {e}")
 
