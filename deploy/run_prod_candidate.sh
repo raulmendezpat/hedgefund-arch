@@ -40,6 +40,8 @@ if python scripts/hf_pipeline_alloc.py \
   --allocator-rebalance-deadband 0.03 \
   --allocator-symbol-cap 0.50 \
   --allocator-target-exposure 0.07 \
+  --portfolio-regime-defensive-scale 0.50 \
+  --portfolio-regime-defensive-conviction-k 0.30 \
   --ml-filter \
   --ml-model-registry artifacts/ml_registry.json \
   --ml-thresholds-path artifacts/ml_thresholds_registry_v1.json \
