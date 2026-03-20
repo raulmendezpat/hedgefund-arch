@@ -362,6 +362,7 @@ def run(
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
     portfolio_regime_defensive_scale: float = 1.0,
+    portfolio_regime_defensive_conviction_k: float = 0.0,
     portfolio_regime_aggressive_scale: float = 1.0,
     # SOL SignalEngine (BBRSI) knobs (separados de Regime3)
     sol_rsi_long_max: float = 36.0,
@@ -1575,17 +1576,15 @@ def run(
         _scale = 0.95 + 0.40 * float(_portfolio_conviction)
 
         if _portfolio_regime == "defensive":
-            _conv = float(_portfolio_conviction)
-
-            # dynamic defensive scaling:
-            # portfolio_regime_defensive_scale acts as the minimum floor in defensive mode
             _def_base = float(portfolio_regime_defensive_scale)
-            _def_k = 0.50
+            _def_k = float(portfolio_regime_defensive_conviction_k)
+            _conv = max(0.0, min(1.0, float(_portfolio_conviction)))
 
-            _dynamic_def_scale = _def_base + _def_k * _conv
-            _dynamic_def_scale = max(0.30, min(1.00, _dynamic_def_scale))
+            # anchored dynamic modulation around the fixed defensive winner
+            _dynamic_mult = 1.0 + _def_k * (_conv - 0.5)
+            _dynamic_mult = max(0.70, min(1.30, _dynamic_mult))
 
-            _scale *= float(_dynamic_def_scale)
+            _scale *= float(max(0.0, _def_base * _dynamic_mult))
         elif _portfolio_regime == "aggressive":
             _scale *= float(portfolio_regime_aggressive_scale)
 
@@ -2259,6 +2258,7 @@ def main() -> None:
     ap.add_argument("--fee-bps", type=float, default=0.0, help="Execution fee in bps applied to turnover (net simulation)")
     ap.add_argument("--slippage-bps", type=float, default=0.0, help="Execution slippage in bps applied to turnover (net simulation)")
     ap.add_argument("--portfolio-regime-defensive-scale", type=float, default=1.0)
+    ap.add_argument("--portfolio-regime-defensive-conviction-k", type=float, default=0.0)
     ap.add_argument("--portfolio-regime-aggressive-scale", type=float, default=1.0)
     ap.add_argument("--trades-csv", default="results/portfolio_trades_v8ml_regime3_flags.csv")
     ap.add_argument("--refresh-cache", action="store_true")
@@ -2490,6 +2490,7 @@ def main() -> None:
         fee_bps=float(args.fee_bps),
         slippage_bps=float(args.slippage_bps),
         portfolio_regime_defensive_scale=float(args.portfolio_regime_defensive_scale),
+        portfolio_regime_defensive_conviction_k=float(args.portfolio_regime_defensive_conviction_k),
         portfolio_regime_aggressive_scale=float(args.portfolio_regime_aggressive_scale),
         sol_rsi_long_max=float(args.sol_rsi_long_max),
         sol_rsi_short_min=float(args.sol_rsi_short_min),
