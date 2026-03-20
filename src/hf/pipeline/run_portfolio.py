@@ -408,6 +408,7 @@ def run(
     ml_size_pwin_threshold: float = 0.55,
     ml_size_artifact_path: str = "artifacts/ml_position_size_map_v1.json",
     strategy_registry_path: str = "artifacts/strategy_registry.json",
+    disabled_strategy_sides: Optional[str] = None,
     opportunity_selection_mode: str = "best_per_symbol",
     allocation_engine_mode: str = "regime",
     strategy_score_power: float = 1.0,
@@ -741,6 +742,14 @@ def run(
     # --- signal diagnostics (counts) ---
     signal_side_counts = {}  # sym -> {side -> n}
     signal_skip_counts = {}  # sym -> n
+    _disabled_strategy_side_pairs = set()
+    if disabled_strategy_sides:
+        for _raw in str(disabled_strategy_sides).split(","):
+            _raw = str(_raw).strip()
+            if not _raw or "|" not in _raw:
+                continue
+            _sid, _side = _raw.split("|", 1)
+            _disabled_strategy_side_pairs.add((str(_sid).strip().lower(), str(_side).strip().lower()))
     # --- end signal diagnostics ---
 
 
@@ -1032,6 +1041,23 @@ def run(
                     "ml_rejected": 0,
                     **{col: float(_feat_row.get(col, 0.0)) for col in FEATURE_COLUMNS},
                 })
+
+        if _disabled_strategy_side_pairs:
+            for _sym, _sig in list((signals or {}).items()):
+                _side_now = str(getattr(_sig, "side", "flat") or "flat").lower()
+                _meta_now = dict(getattr(_sig, "meta", {}) or {})
+                _sid_now = str(_meta_now.get("strategy_id", "") or "").lower()
+                if (_sid_now, _side_now) in _disabled_strategy_side_pairs:
+                    signals[_sym] = Signal(
+                        symbol=str(_sym),
+                        side="flat",
+                        strength=0.0,
+                        meta={
+                            **_meta_now,
+                            "reason": "disabled_strategy_side",
+                            "disabled_strategy_side": f"{_sid_now}|{_side_now}",
+                        },
+                    )
 
         if bool(ml_filter):
             signals, _ml_rejected = apply_ml_filter_to_signals(
@@ -2309,6 +2335,7 @@ def main() -> None:
     ap.add_argument("--ml-size-pwin-threshold", type=float, default=0.55, help="Probability threshold used by calibrated mode.")
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json", help="Strategy registry JSON used by registry_portfolio.")
+    ap.add_argument("--disabled-strategy-sides", default=None, help="Comma-separated strategy_id|side blocks, e.g. aave_trend|short,xrp_trend|short")
     ap.add_argument(
         "--opportunity-selection-mode",
         default="best_per_symbol",
@@ -2532,6 +2559,7 @@ def main() -> None:
         ml_size_pwin_threshold=float(args.ml_size_pwin_threshold),
         ml_size_artifact_path=str(args.ml_size_artifact_path),
         strategy_registry_path=str(args.strategy_registry),
+        disabled_strategy_sides=args.disabled_strategy_sides,
         opportunity_selection_mode=str(args.opportunity_selection_mode),
         allocation_engine_mode=str(args.allocation_engine_mode),
         strategy_score_power=float(args.strategy_score_power),
