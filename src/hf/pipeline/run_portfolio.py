@@ -136,6 +136,21 @@ def _load_selector_time_registry(registry_path: Optional[str]) -> dict:
     except Exception:
         return {}
 
+
+def _clip(x: float, lo: float, hi: float) -> float:
+    try:
+        x = float(x)
+    except Exception:
+        x = 0.0
+    return max(float(lo), min(float(hi), float(x)))
+
+
+def _sigmoid(x: float) -> float:
+    import math
+    x = max(-60.0, min(60.0, float(x)))
+    return 1.0 / (1.0 + math.exp(-x))
+
+
 def _load_strategy_registry_rows(strategy_registry_path: str) -> list[dict]:
     p = Path(strategy_registry_path)
     if not p.exists():
@@ -427,6 +442,20 @@ def run(
     selector_time_registry_path: Optional[str] = None,
     selector_time_pwin_min: float = 0.52,
     selector_time_apply_only_in_defensive: bool = True,
+    selector_alpha_enable: bool = False,
+    selector_alpha_score_ref: float = 0.0015,
+    selector_alpha_p0: float = 0.52,
+    selector_alpha_kp: float = 10.0,
+    selector_alpha_conf_pstd_w: float = 4.0,
+    selector_alpha_conf_estd_w: float = 2.0,
+    selector_alpha_size_min: float = 0.25,
+    selector_alpha_size_max: float = 1.35,
+    selector_alpha_kill_pwin_floor: float = 0.47,
+    selector_alpha_kill_conf_floor: float = 0.32,
+    selector_alpha_tp_mult_min: float = 0.60,
+    selector_alpha_tp_mult_max: float = 1.80,
+    selector_alpha_be_mult_min: float = 0.50,
+    selector_alpha_be_mult_max: float = 1.20,
     opportunity_selection_mode: str = "best_per_symbol",
     allocation_engine_mode: str = "regime",
     strategy_score_power: float = 1.0,
@@ -1227,45 +1256,73 @@ def run(
 
                         _x = pd.DataFrame([_feat])
 
+                        _p_preds = []
+                        _r_preds = []
                         _p_final = 0.0
                         _r_final = 0.0
 
                         if "2024" in _selector_time_models:
                             _p = float(_selector_time_models["2024"]["pwin"].predict_proba(_x)[0, 1])
                             _r = float(_selector_time_models["2024"]["retnet"].predict(_x)[0])
+                            _p_preds.append(_p)
+                            _r_preds.append(_r)
                             _p_final += (_w_2024 / _w_sum) * _p
                             _r_final += (_w_2024 / _w_sum) * _r
                         if "2025" in _selector_time_models:
                             _p = float(_selector_time_models["2025"]["pwin"].predict_proba(_x)[0, 1])
                             _r = float(_selector_time_models["2025"]["retnet"].predict(_x)[0])
+                            _p_preds.append(_p)
+                            _r_preds.append(_r)
                             _p_final += (_w_2025 / _w_sum) * _p
                             _r_final += (_w_2025 / _w_sum) * _r
                         if "2026_ytd" in _selector_time_models:
                             _p = float(_selector_time_models["2026_ytd"]["pwin"].predict_proba(_x)[0, 1])
                             _r = float(_selector_time_models["2026_ytd"]["retnet"].predict(_x)[0])
+                            _p_preds.append(_p)
+                            _r_preds.append(_r)
                             _p_final += (_w_2026 / _w_sum) * _p
                             _r_final += (_w_2026 / _w_sum) * _r
 
-                        _score = float(_p_final * max(_r_final, 0.0))
+                        _p_std = float(pd.Series(_p_preds).std(ddof=0)) if _p_preds else 0.0
+                        _e_std = float(pd.Series(_r_preds).std(ddof=0)) if _r_preds else 0.0
+                        _conf = float(
+                            1.0 / (
+                                1.0
+                                + float(selector_alpha_conf_pstd_w) * float(_p_std)
+                                + float(selector_alpha_conf_estd_w) * float(_e_std)
+                            )
+                        )
+
+                        _p_adj = float(_sigmoid(float(selector_alpha_kp) * (float(_p_final) - float(selector_alpha_p0))))
+                        _score = float(_p_adj * max(float(_r_final), 0.0) * float(_conf))
 
                         _accept = True
                         _mult = 1.0
 
-                        # --- V4 policy: harder LONG filter in defensive / high-risk ---
-                        if str(_portfolio_regime).lower() == "defensive":
-                            if _side == "long":
-                                _high_risk = (
-                                    float(_portfolio_breadth) >= float(portfolio_regime_breadth_high_risk)
-                                    and float(_portfolio_avg_pwin) <= float(portfolio_regime_pwin_high_risk)
+                        if bool(selector_alpha_enable):
+                            if str(_portfolio_regime).lower() == "defensive" and _side == "long":
+                                _kill = (
+                                    float(_r_final) <= 0.0
+                                    or float(_p_final) < float(selector_alpha_kill_pwin_floor)
+                                    or float(_conf) < float(selector_alpha_kill_conf_floor)
                                 )
 
-                                _p_thr = 0.58 if _high_risk else 0.55
+                                _score_ref = max(1e-9, float(selector_alpha_score_ref))
+                                _ratio = float(_score) / float(_score_ref)
+                                _ratio = float(_clip(_ratio, 0.0, 4.0))
 
-                                _accept = (float(_r_final) > 0.0) and (float(_p_final) >= float(_p_thr))
-                                _mult = 1.0 if _accept else 0.0
+                                if _kill:
+                                    _mult = 0.0
+                                else:
+                                    _mult = float(_clip(
+                                        0.35 + 0.45 * float(_ratio) + 0.20 * (float(_ratio) ** 0.5),
+                                        float(selector_alpha_size_min),
+                                        float(selector_alpha_size_max),
+                                    ))
 
                                 _base_w = float(_meta.get("base_weight", 0.0) or 0.0)
                                 _meta["base_weight"] = float(_base_w) * float(_mult)
+                                _accept = float(_meta["base_weight"]) > 1e-12
                             else:
                                 _accept = True
                                 _mult = 1.0
@@ -1273,21 +1330,57 @@ def run(
                             _accept = True
                             _mult = 1.0
 
+                        _score_ref = max(1e-9, float(selector_alpha_score_ref))
+                        _score_ratio = float(_score) / float(_score_ref)
+                        _score_ratio = float(_clip(_score_ratio, 0.0, 4.0))
+
+                        _tp_mult = float(_clip(
+                            0.8 + 0.9 * float(_score_ratio),
+                            float(selector_alpha_tp_mult_min),
+                            float(selector_alpha_tp_mult_max),
+                        ))
+                        _be_mult = float(_clip(
+                            1.15 - 0.40 * float(_score_ratio),
+                            float(selector_alpha_be_mult_min),
+                            float(selector_alpha_be_mult_max),
+                        ))
+                        _tp1_fraction = float(_clip(
+                            0.68 - 0.25 * float(_score_ratio),
+                            0.35,
+                            0.70,
+                        ))
+
                         _selector_debug_by_symbol[_sym] = {
                             "side": str(_side),
                             "strategy_id": str(_meta.get("strategy_id", "") or ""),
                             "pwin": float(_p_final),
                             "retnet": float(_r_final),
+                            "p_std": float(_p_std),
+                            "e_std": float(_e_std),
+                            "conf": float(_conf),
+                            "p_adj": float(_p_adj),
                             "score": float(_score),
+                            "score_ratio": float(_score_ratio),
                             "mult": float(_mult),
+                            "tp_mult": float(_tp_mult),
+                            "be_mult": float(_be_mult),
+                            "tp1_fraction": float(_tp1_fraction),
                             "accept": bool(_accept),
                         }
 
                         if _accept:
                             _meta["selector_time_pwin"] = float(_p_final)
                             _meta["selector_time_retnet"] = float(_r_final)
+                            _meta["selector_time_p_std"] = float(_p_std)
+                            _meta["selector_time_e_std"] = float(_e_std)
+                            _meta["selector_time_conf"] = float(_conf)
+                            _meta["selector_time_p_adj"] = float(_p_adj)
                             _meta["selector_time_score"] = float(_score)
+                            _meta["selector_time_score_ratio"] = float(_score_ratio)
                             _meta["selector_time_mult"] = float(_mult)
+                            _meta["selector_time_tp_mult"] = float(_tp_mult)
+                            _meta["selector_time_be_mult"] = float(_be_mult)
+                            _meta["selector_time_tp1_fraction"] = float(_tp1_fraction)
                             _meta["selector_time_accept"] = True
                             try:
                                 _opp.meta = _meta
@@ -2598,6 +2691,20 @@ def main() -> None:
     ap.add_argument("--selector-time-registry-path", default=None)
     ap.add_argument("--selector-time-pwin-min", type=float, default=0.52)
     ap.add_argument("--selector-time-apply-only-in-defensive", action="store_true")
+    ap.add_argument("--selector-alpha-enable", action="store_true")
+    ap.add_argument("--selector-alpha-score-ref", type=float, default=0.0020)
+    ap.add_argument("--selector-alpha-p0", type=float, default=0.52)
+    ap.add_argument("--selector-alpha-kp", type=float, default=10.0)
+    ap.add_argument("--selector-alpha-conf-pstd-w", type=float, default=4.0)
+    ap.add_argument("--selector-alpha-conf-estd-w", type=float, default=2.0)
+    ap.add_argument("--selector-alpha-size-min", type=float, default=0.25)
+    ap.add_argument("--selector-alpha-size-max", type=float, default=1.25)
+    ap.add_argument("--selector-alpha-kill-pwin-floor", type=float, default=0.48)
+    ap.add_argument("--selector-alpha-kill-conf-floor", type=float, default=0.35)
+    ap.add_argument("--selector-alpha-tp-mult-min", type=float, default=0.60)
+    ap.add_argument("--selector-alpha-tp-mult-max", type=float, default=1.80)
+    ap.add_argument("--selector-alpha-be-mult-min", type=float, default=0.50)
+    ap.add_argument("--selector-alpha-be-mult-max", type=float, default=1.20)
     ap.add_argument(
         "--opportunity-selection-mode",
         default="best_per_symbol",
@@ -2829,6 +2936,20 @@ def main() -> None:
         selector_time_registry_path=args.selector_time_registry_path,
         selector_time_pwin_min=float(args.selector_time_pwin_min),
         selector_time_apply_only_in_defensive=bool(args.selector_time_apply_only_in_defensive),
+        selector_alpha_enable=bool(args.selector_alpha_enable),
+        selector_alpha_score_ref=float(args.selector_alpha_score_ref),
+        selector_alpha_p0=float(args.selector_alpha_p0),
+        selector_alpha_kp=float(args.selector_alpha_kp),
+        selector_alpha_conf_pstd_w=float(args.selector_alpha_conf_pstd_w),
+        selector_alpha_conf_estd_w=float(args.selector_alpha_conf_estd_w),
+        selector_alpha_size_min=float(args.selector_alpha_size_min),
+        selector_alpha_size_max=float(args.selector_alpha_size_max),
+        selector_alpha_kill_pwin_floor=float(args.selector_alpha_kill_pwin_floor),
+        selector_alpha_kill_conf_floor=float(args.selector_alpha_kill_conf_floor),
+        selector_alpha_tp_mult_min=float(args.selector_alpha_tp_mult_min),
+        selector_alpha_tp_mult_max=float(args.selector_alpha_tp_mult_max),
+        selector_alpha_be_mult_min=float(args.selector_alpha_be_mult_min),
+        selector_alpha_be_mult_max=float(args.selector_alpha_be_mult_max),
         opportunity_selection_mode=str(args.opportunity_selection_mode),
         allocation_engine_mode=str(args.allocation_engine_mode),
         strategy_score_power=float(args.strategy_score_power),
