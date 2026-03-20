@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import pickle
 import os
 
 import argparse
@@ -122,6 +123,18 @@ def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = 
         features=features,
     )
 
+
+
+def _load_selector_time_registry(registry_path: Optional[str]) -> dict:
+    if not registry_path:
+        return {}
+    p = Path(str(registry_path))
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 def _load_strategy_registry_rows(strategy_registry_path: str) -> list[dict]:
     p = Path(strategy_registry_path)
@@ -410,6 +423,10 @@ def run(
     strategy_registry_path: str = "artifacts/strategy_registry.json",
     disabled_strategy_sides: Optional[str] = None,
     strategy_side_post_ml_weight_rules: Optional[str] = None,
+    selector_time_filter_enabled: bool = False,
+    selector_time_registry_path: Optional[str] = None,
+    selector_time_pwin_min: float = 0.52,
+    selector_time_apply_only_in_defensive: bool = True,
     opportunity_selection_mode: str = "best_per_symbol",
     allocation_engine_mode: str = "regime",
     strategy_score_power: float = 1.0,
@@ -459,6 +476,24 @@ def run(
     sol_sym = LEGACY_SYMBOLS["SOL"]
 
     strategy_registry_rows = _load_strategy_registry_rows(str(strategy_registry_path))
+    _selector_time_registry = _load_selector_time_registry(selector_time_registry_path)
+    _selector_time_models = {}
+    if bool(selector_time_filter_enabled) and _selector_time_registry:
+        try:
+            for _period, _meta in dict((_selector_time_registry.get("periods") or {})).items():
+                _p_path = (_meta or {}).get("pwin_model_path")
+                _r_path = (_meta or {}).get("retnet_model_path")
+                if _p_path and _r_path and Path(_p_path).exists() and Path(_r_path).exists():
+                    with open(_p_path, "rb") as _f:
+                        _p_model = pickle.load(_f)
+                    with open(_r_path, "rb") as _f:
+                        _r_model = pickle.load(_f)
+                    _selector_time_models[str(_period)] = {
+                        "pwin": _p_model,
+                        "retnet": _r_model,
+                    }
+        except Exception:
+            _selector_time_models = {}
     universe_symbols = _extract_universe_symbols(strategy_registry_rows)
     symbol_cluster_map, cluster_cap_map = _build_symbol_cluster_metadata(strategy_registry_rows)
 
@@ -1134,6 +1169,136 @@ def run(
         # --- end counts ---
         regimes = reg_engine.evaluate(candles, signals)
 
+        # --- selector_time filter on candidate opportunities (UPSTREAM) ---
+        if bool(selector_time_filter_enabled) and _selector_time_models and selected_opps_for_alloc:
+            try:
+                _apply_selector_now = True
+                if bool(selector_time_apply_only_in_defensive):
+                    _apply_selector_now = str(_portfolio_regime).lower() == "defensive"
+
+                if _apply_selector_now:
+                    _selector_filtered_opps = []
+                    _selector_debug_by_symbol = {}
+
+                    _num_cols = list((_selector_time_registry.get("feature_numeric") or []))
+                    _cat_cols = list((_selector_time_registry.get("feature_categorical") or []))
+
+                    _w_2024, _w_2025, _w_2026 = 0.15, 0.35, 0.50
+                    _w_sum = _w_2024 + _w_2025 + _w_2026
+
+                    for _opp in list(selected_opps_for_alloc):
+                        _sym = str(getattr(_opp, "symbol", "") or "")
+                        _side = str(getattr(_opp, "side", "flat") or "flat").lower()
+                        _meta = dict(getattr(_opp, "meta", {}) or {})
+
+                        _feat = {}
+                        for _c in _num_cols:
+                            if _c == "abs_weight":
+                                _feat[_c] = float(abs(_meta.get("base_weight", 0.0) or 0.0))
+                            elif _c == "signed_weight":
+                                _base_w = float(_meta.get("base_weight", 0.0) or 0.0)
+                                _feat[_c] = float(_base_w if _side == "long" else -_base_w)
+                            elif _c == "portfolio_breadth":
+                                _feat[_c] = float(_portfolio_breadth)
+                            elif _c == "portfolio_avg_pwin":
+                                _feat[_c] = float(_portfolio_avg_pwin)
+                            elif _c == "portfolio_avg_atrp":
+                                _feat[_c] = float(_portfolio_avg_atrp)
+                            elif _c == "portfolio_avg_strength":
+                                _feat[_c] = float(_portfolio_avg_strength)
+                            elif _c == "portfolio_conviction":
+                                _feat[_c] = float(_portfolio_conviction)
+                            elif _c == "portfolio_regime_scale_applied":
+                                _feat[_c] = float(_scale)
+                            else:
+                                _feat[_c] = float(_meta.get(_c, 0.0) or 0.0)
+
+                        for _c in _cat_cols:
+                            if _c == "symbol":
+                                _feat[_c] = str(_sym).replace("/USDT:USDT", "")
+                            elif _c == "strategy_id":
+                                _feat[_c] = str(_meta.get("strategy_id", "") or "")
+                            elif _c == "side":
+                                _feat[_c] = str(_side)
+                            elif _c == "portfolio_regime":
+                                _feat[_c] = str(_portfolio_regime)
+                            else:
+                                _feat[_c] = str(_meta.get(_c, "missing") or "missing")
+
+                        _x = pd.DataFrame([_feat])
+
+                        _p_final = 0.0
+                        _r_final = 0.0
+
+                        if "2024" in _selector_time_models:
+                            _p = float(_selector_time_models["2024"]["pwin"].predict_proba(_x)[0, 1])
+                            _r = float(_selector_time_models["2024"]["retnet"].predict(_x)[0])
+                            _p_final += (_w_2024 / _w_sum) * _p
+                            _r_final += (_w_2024 / _w_sum) * _r
+                        if "2025" in _selector_time_models:
+                            _p = float(_selector_time_models["2025"]["pwin"].predict_proba(_x)[0, 1])
+                            _r = float(_selector_time_models["2025"]["retnet"].predict(_x)[0])
+                            _p_final += (_w_2025 / _w_sum) * _p
+                            _r_final += (_w_2025 / _w_sum) * _r
+                        if "2026_ytd" in _selector_time_models:
+                            _p = float(_selector_time_models["2026_ytd"]["pwin"].predict_proba(_x)[0, 1])
+                            _r = float(_selector_time_models["2026_ytd"]["retnet"].predict(_x)[0])
+                            _p_final += (_w_2026 / _w_sum) * _p
+                            _r_final += (_w_2026 / _w_sum) * _r
+
+                        _score = float(_p_final * max(_r_final, 0.0))
+
+                        _accept = True
+                        _mult = 1.0
+
+                        # --- V4 policy: harder LONG filter in defensive / high-risk ---
+                        if str(_portfolio_regime).lower() == "defensive":
+                            if _side == "long":
+                                _high_risk = (
+                                    float(_portfolio_breadth) >= float(portfolio_regime_breadth_high_risk)
+                                    and float(_portfolio_avg_pwin) <= float(portfolio_regime_pwin_high_risk)
+                                )
+
+                                _p_thr = 0.58 if _high_risk else 0.55
+
+                                _accept = (float(_r_final) > 0.0) and (float(_p_final) >= float(_p_thr))
+                                _mult = 1.0 if _accept else 0.0
+
+                                _base_w = float(_meta.get("base_weight", 0.0) or 0.0)
+                                _meta["base_weight"] = float(_base_w) * float(_mult)
+                            else:
+                                _accept = True
+                                _mult = 1.0
+                        else:
+                            _accept = True
+                            _mult = 1.0
+
+                        _selector_debug_by_symbol[_sym] = {
+                            "side": str(_side),
+                            "strategy_id": str(_meta.get("strategy_id", "") or ""),
+                            "pwin": float(_p_final),
+                            "retnet": float(_r_final),
+                            "score": float(_score),
+                            "mult": float(_mult),
+                            "accept": bool(_accept),
+                        }
+
+                        if _accept:
+                            _meta["selector_time_pwin"] = float(_p_final)
+                            _meta["selector_time_retnet"] = float(_r_final)
+                            _meta["selector_time_score"] = float(_score)
+                            _meta["selector_time_mult"] = float(_mult)
+                            _meta["selector_time_accept"] = True
+                            try:
+                                _opp.meta = _meta
+                            except Exception:
+                                pass
+                            _selector_filtered_opps.append(_opp)
+
+                    selected_opps_for_alloc = list(_selector_filtered_opps)
+            except Exception:
+                pass
+
         if bool(strategy_regime_gating) and selected_opps_for_alloc:
             regime_on_by_symbol = {
                 sym: bool(getattr(regimes.get(sym), "on", False))
@@ -1748,6 +1913,7 @@ def run(
                 "portfolio_conviction": float(_portfolio_conviction),
                 "portfolio_regime_symbol_cap_mult": float(_regime_symbol_cap_mult),
                 "portfolio_regime_scale_applied": float(_scale),
+                "selector_time_by_symbol": dict(locals().get("_selector_debug_by_symbol", {}) or {}),
                 "execution_plan_by_symbol": {
                     sym: {
                         "cluster_id": str(symbol_execution_plans[sym].cluster_id),
@@ -1826,6 +1992,7 @@ def run(
             "portfolio_conviction": float(((alloc.meta or {}).get("portfolio_conviction")) or 0.0),
             "portfolio_regime_symbol_cap_mult": float(((alloc.meta or {}).get("portfolio_regime_symbol_cap_mult")) or 1.0),
             "portfolio_regime_scale_applied": float(((alloc.meta or {}).get("portfolio_regime_scale_applied")) or 1.0),
+            "selector_time_by_symbol": str(((alloc.meta or {}).get("selector_time_by_symbol", {}) or {})),
             "execution_fill_count": int(((alloc.meta or {}).get("execution_fill_count", 0) or 0)),
             "execution_slippage_bps": float(((alloc.meta or {}).get("execution_slippage_bps", execution_slippage_bps) or execution_slippage_bps)),
             "execution_size_slippage_factor": float(((alloc.meta or {}).get("execution_size_slippage_factor", execution_size_slippage_factor) or execution_size_slippage_factor)),
@@ -2427,6 +2594,10 @@ def main() -> None:
     ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json", help="Strategy registry JSON used by registry_portfolio.")
     ap.add_argument("--disabled-strategy-sides", default=None, help="Comma-separated strategy_id|side blocks, e.g. aave_trend|short,xrp_trend|short")
     ap.add_argument("--strategy-side-post-ml-weight-rules", default=None, help="Comma-separated rules strategy_id|side|ref|min_mult|max_mult, e.g. trx_trend|short|0.50|0.80|1.00")
+    ap.add_argument("--selector-time-filter-enabled", action="store_true")
+    ap.add_argument("--selector-time-registry-path", default=None)
+    ap.add_argument("--selector-time-pwin-min", type=float, default=0.52)
+    ap.add_argument("--selector-time-apply-only-in-defensive", action="store_true")
     ap.add_argument(
         "--opportunity-selection-mode",
         default="best_per_symbol",
@@ -2654,6 +2825,10 @@ def main() -> None:
         strategy_registry_path=str(args.strategy_registry),
         disabled_strategy_sides=args.disabled_strategy_sides,
         strategy_side_post_ml_weight_rules=args.strategy_side_post_ml_weight_rules,
+        selector_time_filter_enabled=bool(args.selector_time_filter_enabled),
+        selector_time_registry_path=args.selector_time_registry_path,
+        selector_time_pwin_min=float(args.selector_time_pwin_min),
+        selector_time_apply_only_in_defensive=bool(args.selector_time_apply_only_in_defensive),
         opportunity_selection_mode=str(args.opportunity_selection_mode),
         allocation_engine_mode=str(args.allocation_engine_mode),
         strategy_score_power=float(args.strategy_score_power),

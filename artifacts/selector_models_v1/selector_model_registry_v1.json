@@ -1,0 +1,118 @@
+{
+  "feature_categorical": [
+    "symbol",
+    "strategy_id",
+    "side",
+    "engine",
+    "registry_symbol",
+    "portfolio_regime"
+  ],
+  "feature_numeric": [
+    "abs_weight",
+    "signed_weight",
+    "strength",
+    "base_weight",
+    "p_win",
+    "competitive_score",
+    "post_ml_score",
+    "portfolio_breadth",
+    "portfolio_avg_pwin",
+    "portfolio_avg_atrp",
+    "portfolio_avg_strength",
+    "portfolio_conviction",
+    "portfolio_regime_scale_applied",
+    "execution_target_weight",
+    "cluster_target_weight",
+    "adx",
+    "atrp",
+    "bb_width",
+    "ml_position_size_mult"
+  ],
+  "min_local_rows": 600,
+  "models": {
+    "global": {
+      "pwin_model_path": "artifacts/selector_models_v1/global/global_pwin_model.pkl",
+      "retnet_model_path": "artifacts/selector_models_v1/global/global_retnet_model.pkl",
+      "valid_auc": 0.4922455138910571,
+      "valid_rmse": 0.019230840509523152
+    },
+    "local_by_symbol": {
+      "AAVE": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/aave_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/aave_retnet_model.pkl",
+        "train_rows": 1652,
+        "valid_auc": 0.3831939466348069,
+        "valid_rmse": 0.031147189832614906,
+        "valid_rows": 236
+      },
+      "AVAX": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/avax_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/avax_retnet_model.pkl",
+        "train_rows": 1578,
+        "valid_auc": 0.5570649704679691,
+        "valid_rmse": 0.02899011532660718,
+        "valid_rows": 572
+      },
+      "BNB": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/bnb_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/bnb_retnet_model.pkl",
+        "train_rows": 1994,
+        "valid_auc": 0.5234859797577568,
+        "valid_rmse": 0.01262876193730885,
+        "valid_rows": 491
+      },
+      "BTC": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/btc_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/btc_retnet_model.pkl",
+        "train_rows": 2678,
+        "valid_auc": 0.5203007913719447,
+        "valid_rmse": 0.013295966573961008,
+        "valid_rows": 480
+      },
+      "DOT": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/dot_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/dot_retnet_model.pkl",
+        "train_rows": 1358,
+        "valid_auc": 0.5886771995043371,
+        "valid_rmse": 0.032808714487457424,
+        "valid_rows": 629
+      },
+      "ETH": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/eth_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/eth_retnet_model.pkl",
+        "train_rows": 2012,
+        "valid_auc": 0.4134119380987472,
+        "valid_rmse": 0.037395114060683986,
+        "valid_rows": 489
+      },
+      "LINK": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/link_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/link_retnet_model.pkl",
+        "train_rows": 1940,
+        "valid_auc": 0.48272091529109423,
+        "valid_rmse": 0.032416164909119485,
+        "valid_rows": 570
+      },
+      "TRX": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/trx_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/trx_retnet_model.pkl",
+        "train_rows": 3180,
+        "valid_auc": 0.4691920031012904,
+        "valid_rmse": 0.008190820998581953,
+        "valid_rows": 853
+      },
+      "XRP": {
+        "pwin_model_path": "artifacts/selector_models_v1/local/xrp_pwin_model.pkl",
+        "retnet_model_path": "artifacts/selector_models_v1/local/xrp_retnet_model.pkl",
+        "train_rows": 1793,
+        "valid_auc": 0.5401481356788149,
+        "valid_rmse": 0.033710973873404285,
+        "valid_rows": 218
+      }
+    }
+  },
+  "target_ret": "ret_net_3",
+  "target_win": "y_win_3",
+  "train_rows": 18185,
+  "valid_rows": 4538
+}

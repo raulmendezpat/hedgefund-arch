@@ -1,0 +1,60 @@
+{
+  "feature_categorical": [
+    "symbol",
+    "strategy_id",
+    "side",
+    "engine",
+    "registry_symbol",
+    "portfolio_regime"
+  ],
+  "feature_numeric": [
+    "abs_weight",
+    "signed_weight",
+    "strength",
+    "base_weight",
+    "p_win",
+    "competitive_score",
+    "post_ml_score",
+    "portfolio_breadth",
+    "portfolio_avg_pwin",
+    "portfolio_avg_atrp",
+    "portfolio_avg_strength",
+    "portfolio_conviction",
+    "portfolio_regime_scale_applied",
+    "execution_target_weight",
+    "cluster_target_weight",
+    "adx",
+    "atrp",
+    "bb_width",
+    "ml_position_size_mult"
+  ],
+  "holdout_run": "replay_bad_30d_regime_guard_v1",
+  "periods": {
+    "2024": {
+      "pwin_model_path": "artifacts/selector_models_time_v1/2024/2024_pwin.pkl",
+      "retnet_model_path": "artifacts/selector_models_time_v1/2024/2024_retnet.pkl",
+      "train_rows": 4279,
+      "valid_auc_on_holdout": 0.5669439979690907,
+      "valid_rmse_on_holdout": 0.05295281565029283,
+      "valid_rows": 1654
+    },
+    "2025": {
+      "pwin_model_path": "artifacts/selector_models_time_v1/2025/2025_pwin.pkl",
+      "retnet_model_path": "artifacts/selector_models_time_v1/2025/2025_retnet.pkl",
+      "train_rows": 10743,
+      "valid_auc_on_holdout": 0.4722631798786473,
+      "valid_rmse_on_holdout": 0.025023887995871224,
+      "valid_rows": 1654
+    },
+    "2026_ytd": {
+      "pwin_model_path": "artifacts/selector_models_time_v1/2026_ytd/2026_ytd_pwin.pkl",
+      "retnet_model_path": "artifacts/selector_models_time_v1/2026_ytd/2026_ytd_retnet.pkl",
+      "train_rows": 6047,
+      "valid_auc_on_holdout": 0.7394665025408507,
+      "valid_rmse_on_holdout": 0.012115957558770898,
+      "valid_rows": 1654
+    }
+  },
+  "target_ret": "ret_net_3",
+  "target_win": "y_win_3"
+}
