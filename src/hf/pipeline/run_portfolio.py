@@ -361,6 +361,9 @@ def run(
     fallback_sol_weight: float = 0.0,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
+    portfolio_regime_defensive_scale: float = 1.0,
+    portfolio_regime_defensive_conviction_k: float = 0.0,
+    portfolio_regime_aggressive_scale: float = 1.0,
     # SOL SignalEngine (BBRSI) knobs (separados de Regime3)
     sol_rsi_long_max: float = 36.0,
     sol_rsi_short_min: float = 64.0,
@@ -1568,9 +1571,22 @@ def run(
         except Exception:
             _portfolio_conviction = 0.0
 
-        # soft portfolio-level scaling from conviction
+        # soft portfolio-level scaling from conviction + explicit regime scaling
         _regime_symbol_cap_mult = 1.0
         _scale = 0.95 + 0.40 * float(_portfolio_conviction)
+
+        if _portfolio_regime == "defensive":
+            _def_base = float(portfolio_regime_defensive_scale)
+            _def_k = float(portfolio_regime_defensive_conviction_k)
+            _conv = max(0.0, min(1.0, float(_portfolio_conviction)))
+
+            # anchored dynamic modulation around the fixed defensive winner
+            _dynamic_mult = 1.0 + _def_k * (_conv - 0.5)
+            _dynamic_mult = max(0.70, min(1.30, _dynamic_mult))
+
+            _scale *= float(max(0.0, _def_base * _dynamic_mult))
+        elif _portfolio_regime == "aggressive":
+            _scale *= float(portfolio_regime_aggressive_scale)
 
         _weights_regime = {}
         for _sym, _w in dict(alloc.weights or {}).items():
@@ -1955,7 +1971,6 @@ def run(
 
             _adj_port_ret = _adj_port_ret.add(_w * _ret_adj, fill_value=0.0)
 
-        
         perf_out["port_ret"] = _adj_port_ret.values
 
         # recompute equity after research partial TP adjustment
@@ -2052,6 +2067,42 @@ def run(
         metrics_min_execution_cost_bps = 0.0
 
     perf_out.to_csv(f"results/pipeline_equity_{name}.csv", index=False)
+
+    # Enriquecer el allocations CSV con métricas reales de performance del backtest.
+    # Aquí evitamos merge por ts porque allocations suele llevar ts epoch-ms (int)
+    # mientras perf_out puede traer datetime tz-aware. Como ambos dataframes salen del
+    # mismo run y misma grilla temporal, preferimos alineación posicional validada.
+    _perf_cols = [
+        "gross_port_ret",
+        "port_ret",
+        "gross_equity",
+        "equity",
+        "gross_drawdown_pct",
+        "drawdown_pct",
+        "execution_turnover",
+        "execution_cost_rate",
+        "execution_cost_drag_pct",
+    ]
+    _perf_cols = [c for c in _perf_cols if c in perf_out.columns]
+    _perf_enrich = perf_out[_perf_cols].copy().reset_index(drop=True)
+
+    if "gross_equity" in _perf_enrich.columns:
+        _gross_eq = pd.to_numeric(_perf_enrich["gross_equity"], errors="coerce")
+        _perf_enrich["gross_pnl"] = _gross_eq.diff().fillna(0.0)
+        _perf_enrich["gross_pnl_cum"] = _gross_eq - float(_gross_eq.iloc[0])
+
+    if "equity" in _perf_enrich.columns:
+        _net_eq = pd.to_numeric(_perf_enrich["equity"], errors="coerce")
+        _perf_enrich["pnl"] = _net_eq.diff().fillna(0.0)
+        _perf_enrich["pnl_cum"] = _net_eq - float(_net_eq.iloc[0])
+
+    if len(df) != len(_perf_enrich):
+        raise ValueError(
+            f"Cannot enrich allocations with perf columns: len(df)={len(df)} != len(perf_out)={len(_perf_enrich)}"
+        )
+
+    df = pd.concat([df.reset_index(drop=True), _perf_enrich], axis=1)
+    df.to_csv(f"results/pipeline_allocations_{name}.csv", index=False)
 
     # Portfolio metrics (hedge-fund style summary)
     metrics = PortfolioMetricsEngine(risk_free_rate_annual=0.0).compute(
@@ -2206,6 +2257,9 @@ def main() -> None:
     ap.add_argument("--fallback-sol-weight", type=float, default=0.0)
     ap.add_argument("--fee-bps", type=float, default=0.0, help="Execution fee in bps applied to turnover (net simulation)")
     ap.add_argument("--slippage-bps", type=float, default=0.0, help="Execution slippage in bps applied to turnover (net simulation)")
+    ap.add_argument("--portfolio-regime-defensive-scale", type=float, default=1.0)
+    ap.add_argument("--portfolio-regime-defensive-conviction-k", type=float, default=0.0)
+    ap.add_argument("--portfolio-regime-aggressive-scale", type=float, default=1.0)
     ap.add_argument("--trades-csv", default="results/portfolio_trades_v8ml_regime3_flags.csv")
     ap.add_argument("--refresh-cache", action="store_true")
 
@@ -2435,6 +2489,9 @@ def main() -> None:
         fallback_sol_weight=float(args.fallback_sol_weight),
         fee_bps=float(args.fee_bps),
         slippage_bps=float(args.slippage_bps),
+        portfolio_regime_defensive_scale=float(args.portfolio_regime_defensive_scale),
+        portfolio_regime_defensive_conviction_k=float(args.portfolio_regime_defensive_conviction_k),
+        portfolio_regime_aggressive_scale=float(args.portfolio_regime_aggressive_scale),
         sol_rsi_long_max=float(args.sol_rsi_long_max),
         sol_rsi_short_min=float(args.sol_rsi_short_min),
         sol_adx_hard_signal=float(args.sol_adx_hard_signal),
