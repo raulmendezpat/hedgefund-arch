@@ -409,6 +409,7 @@ def run(
     ml_size_artifact_path: str = "artifacts/ml_position_size_map_v1.json",
     strategy_registry_path: str = "artifacts/strategy_registry.json",
     disabled_strategy_sides: Optional[str] = None,
+    strategy_side_post_ml_weight_rules: Optional[str] = None,
     opportunity_selection_mode: str = "best_per_symbol",
     allocation_engine_mode: str = "regime",
     strategy_score_power: float = 1.0,
@@ -424,8 +425,10 @@ def run(
     portfolio_regime_detection: bool = True,
     portfolio_regime_breadth_aggressive: int = 4,
     portfolio_regime_breadth_defensive: int = 2,
+    portfolio_regime_breadth_high_risk: int = 5,
     portfolio_regime_pwin_aggressive: float = 0.58,
     portfolio_regime_pwin_defensive: float = 0.52,
+    portfolio_regime_pwin_high_risk: float = 0.56,
     portfolio_regime_atrp_defensive: float = 0.030,
     allocator_max_step_per_bar: float = 1.0,
     portfolio_riskoff_filter: bool = False,
@@ -503,9 +506,11 @@ def run(
         _df = data_by_symbol[sym]
         _close = close_by_symbol[sym]
         _atr_series = _atr(_df, 14)
+        _atrp_series = _atr_series / _close.replace(0.0, np.nan)
         trend_feature_series_by_symbol[sym] = {
             "adx": _adx(_df, 14),
             "atr": _atr_series,
+            "atrp": _atrp_series,
             "ema_fast": _ema(_close, 20),
             "ema_slow": _ema(_close, 200),
         }
@@ -750,6 +755,24 @@ def run(
                 continue
             _sid, _side = _raw.split("|", 1)
             _disabled_strategy_side_pairs.add((str(_sid).strip().lower(), str(_side).strip().lower()))
+
+    _strategy_side_post_ml_weight_rules = {}
+    if strategy_side_post_ml_weight_rules:
+        for _raw in str(strategy_side_post_ml_weight_rules).split(","):
+            _raw = str(_raw).strip()
+            if not _raw or _raw.count("|") != 4:
+                continue
+            _sid, _side, _ref, _min_mult, _max_mult = _raw.split("|", 4)
+            try:
+                _strategy_side_post_ml_weight_rules[
+                    (str(_sid).strip().lower(), str(_side).strip().lower())
+                ] = (
+                    float(_ref),
+                    float(_min_mult),
+                    float(_max_mult),
+                )
+            except Exception:
+                pass
     # --- end signal diagnostics ---
 
 
@@ -1228,34 +1251,76 @@ def run(
             )
             alloc_after_smoothing_weights = dict(_clamped)
 
-        # Portfolio-level risk-off filter:
-        # usar fuente real de ATRP: candle dict -> atributo -> signal.meta.
-        if bool(portfolio_riskoff_filter):
-            signal_meta_by_symbol = {
-                sym: dict(getattr(signals.get(sym), "meta", {}) or {})
-                for sym in universe_symbols
-            }
+        # Build ATRP snapshot from the real feature series at current timestamp.
+        signal_meta_by_symbol = {
+            sym: dict(getattr(signals.get(sym), "meta", {}) or {})
+            for sym in universe_symbols
+        }
 
-            _sol_candle = candles.get(secondary_feature_symbol)
-            _sol_sig = signals.get(secondary_feature_symbol)
+        atrp_now_by_symbol = {}
+        for sym in universe_symbols:
+            _sym_atrp = 0.0
+            try:
+                _feat_map = feature_map_by_symbol.get(sym, {}) or {}
+                _atrp_series = _feat_map.get("atrp")
+                _ts_dt = pd.to_datetime(ts, unit="ms", utc=True)
+                _ts_int = int(ts)
 
-            atrp_now_by_symbol = {}
-            for sym in universe_symbols:
-                _sym_candle = candles.get(sym)
-                _sym_sig = signals.get(sym)
+                if _atrp_series is not None:
+                    _atrp_val = None
+
+                    # 1) direct datetime lookup
+                    try:
+                        _atrp_val = _atrp_series.loc[_ts_dt]
+                    except Exception:
+                        _atrp_val = None
+
+                    # 2) direct int-ms lookup
+                    if _atrp_val is None:
+                        try:
+                            _atrp_val = _atrp_series.loc[_ts_int]
+                        except Exception:
+                            _atrp_val = None
+
+                    # 3) tolerant reindex/ffill lookup on datetime index
+                    if _atrp_val is None:
+                        try:
+                            _s_dt = _atrp_series.copy()
+                            _s_dt.index = pd.to_datetime(_s_dt.index, utc=True, errors="coerce")
+                            _s_dt = _s_dt[~_s_dt.index.isna()]
+                            if len(_s_dt):
+                                _atrp_val = _s_dt.sort_index().reindex(
+                                    _s_dt.index.union([_ts_dt])
+                                ).sort_index().ffill().loc[_ts_dt]
+                        except Exception:
+                            _atrp_val = None
+
+                    # 4) tolerant reindex/ffill lookup on int-ms index
+                    if _atrp_val is None:
+                        try:
+                            _s_int = _atrp_series.copy()
+                            _s_int.index = pd.to_numeric(_s_int.index, errors="coerce")
+                            _s_int = _s_int[~pd.isna(_s_int.index)]
+                            if len(_s_int):
+                                _s_int = _s_int.sort_index()
+                                _new_index = sorted(set(list(_s_int.index) + [_ts_int]))
+                                _atrp_val = _s_int.reindex(_new_index).ffill().loc[_ts_int]
+                        except Exception:
+                            _atrp_val = None
+
+                    if _atrp_val is not None and pd.notna(_atrp_val):
+                        _sym_atrp = float(_atrp_val)
+
+                if _sym_atrp == 0.0:
+                    _sym_sig = signals.get(sym)
+                    _sym_meta = dict(getattr(_sym_sig, "meta", {}) or {}) if _sym_sig is not None else {}
+                    _sym_atrp = float(_sym_meta.get("atrp", 0.0) or 0.0)
+            except Exception:
                 _sym_atrp = 0.0
-                try:
-                    if isinstance(_sym_candle, dict) and ("atrp" in _sym_candle):
-                        _sym_atrp = float(_sym_candle.get("atrp", 0.0) or 0.0)
-                    elif _sym_candle is not None and hasattr(_sym_candle, "atrp"):
-                        _sym_atrp = float(getattr(_sym_candle, "atrp", 0.0) or 0.0)
-                    else:
-                        _sym_meta = dict(getattr(_sym_sig, "meta", {}) or {}) if _sym_sig is not None else {}
-                        _sym_atrp = float(_sym_meta.get("atrp", 0.0) or 0.0)
-                except Exception:
-                    _sym_atrp = 0.0
-                atrp_now_by_symbol[sym] = float(_sym_atrp)
+            atrp_now_by_symbol[sym] = float(_sym_atrp)
 
+        # Portfolio-level risk-off filter:
+        if bool(portfolio_riskoff_filter):
             _sol_atrp_now = float(atrp_now_by_symbol.get(secondary_feature_symbol, 0.0) or 0.0)
 
             _riskoff = _sol_atrp_now > float(portfolio_riskoff_secondary_atrp_max)
@@ -1581,6 +1646,11 @@ def run(
             ):
                 _portfolio_regime = "aggressive"
             elif (
+                _portfolio_breadth >= int(portfolio_regime_breadth_high_risk)
+                and _portfolio_avg_pwin <= float(portfolio_regime_pwin_high_risk)
+            ):
+                _portfolio_regime = "defensive"
+            elif (
                 _portfolio_breadth <= int(portfolio_regime_breadth_defensive)
                 or _portfolio_avg_pwin <= float(portfolio_regime_pwin_defensive)
                 or _portfolio_avg_atrp >= float(portfolio_regime_atrp_defensive)
@@ -1617,6 +1687,26 @@ def run(
         _weights_regime = {}
         for _sym, _w in dict(alloc.weights or {}).items():
             _w2 = float(_w or 0.0) * float(_scale)
+
+            if _strategy_side_post_ml_weight_rules and abs(_w2) > 1e-12:
+                _shape_meta = dict(symbol_meta.get(_sym, {}) or {})
+                _shape_signal = signals.get(_sym)
+                _shape_side = str(
+                    _shape_meta.get(
+                        "side",
+                        getattr(_shape_signal, "side", "flat") if _shape_signal is not None else "flat",
+                    ) or "flat"
+                ).lower()
+                _shape_sid = str(_shape_meta.get("strategy_id", "") or "").lower()
+                _rule = _strategy_side_post_ml_weight_rules.get((_shape_sid, _shape_side))
+                if _rule is not None:
+                    _ref, _min_mult, _max_mult = _rule
+                    _post_ml = float(_shape_meta.get("post_ml_score", 0.0) or 0.0)
+                    if float(_ref) > 0.0:
+                        _shape_mult = float(_post_ml) / float(_ref)
+                        _shape_mult = max(float(_min_mult), min(float(_max_mult), float(_shape_mult)))
+                        _w2 = float(_w2) * float(_shape_mult)
+
             _weights_regime[_sym] = _w2
 
         alloc = Allocation(
@@ -2336,6 +2426,7 @@ def main() -> None:
     ap.add_argument("--btc-adx-min", type=float, default=18.0)
     ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json", help="Strategy registry JSON used by registry_portfolio.")
     ap.add_argument("--disabled-strategy-sides", default=None, help="Comma-separated strategy_id|side blocks, e.g. aave_trend|short,xrp_trend|short")
+    ap.add_argument("--strategy-side-post-ml-weight-rules", default=None, help="Comma-separated rules strategy_id|side|ref|min_mult|max_mult, e.g. trx_trend|short|0.50|0.80|1.00")
     ap.add_argument(
         "--opportunity-selection-mode",
         default="best_per_symbol",
@@ -2390,6 +2481,8 @@ def main() -> None:
         default=1.0,
         help="Maximum absolute weight change allowed per symbol in a single bar after smoothing.",
     )
+    ap.add_argument("--portfolio-regime-breadth-high-risk", type=int, default=5)
+    ap.add_argument("--portfolio-regime-pwin-high-risk", type=float, default=0.56)
     ap.add_argument(
         "--portfolio-riskoff-filter",
         action="store_true",
@@ -2560,6 +2653,7 @@ def main() -> None:
         ml_size_artifact_path=str(args.ml_size_artifact_path),
         strategy_registry_path=str(args.strategy_registry),
         disabled_strategy_sides=args.disabled_strategy_sides,
+        strategy_side_post_ml_weight_rules=args.strategy_side_post_ml_weight_rules,
         opportunity_selection_mode=str(args.opportunity_selection_mode),
         allocation_engine_mode=str(args.allocation_engine_mode),
         strategy_score_power=float(args.strategy_score_power),
@@ -2569,6 +2663,8 @@ def main() -> None:
         allocator_symbol_cap=float(args.allocator_symbol_cap),
         allocator_target_exposure=float(args.allocator_target_exposure),
         allocator_max_step_per_bar=float(args.allocator_max_step_per_bar),
+        portfolio_regime_breadth_high_risk=int(args.portfolio_regime_breadth_high_risk),
+        portfolio_regime_pwin_high_risk=float(args.portfolio_regime_pwin_high_risk),
         portfolio_riskoff_filter=bool(args.portfolio_riskoff_filter),
         portfolio_riskoff_primary_adx_min=float(
             getattr(args, "portfolio_riskoff_primary_adx_min",
