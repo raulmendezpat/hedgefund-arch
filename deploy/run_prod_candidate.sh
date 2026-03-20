@@ -42,6 +42,8 @@ if python scripts/hf_pipeline_alloc.py \
   --allocator-target-exposure 0.07 \
   --portfolio-regime-defensive-scale 0.50 \
   --portfolio-regime-defensive-conviction-k 0.30 \
+  --portfolio-regime-breadth-high-risk 5 \
+  --portfolio-regime-pwin-high-risk 0.56 \
   --disabled-strategy-sides "aave_trend|short,xrp_trend|short" \
   --ml-filter \
   --ml-model-registry artifacts/ml_registry.json \
