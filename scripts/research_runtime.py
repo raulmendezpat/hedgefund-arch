@@ -132,6 +132,8 @@ def main() -> None:
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--target-exposure", type=float, default=0.07)
     ap.add_argument("--symbol-cap", type=float, default=0.50)
+    ap.add_argument("--policy-config", default="artifacts/policy_config_v1.json")
+    ap.add_argument("--policy-profile", default="default")
     args = ap.parse_args()
 
     t0 = time.perf_counter()
@@ -148,7 +150,15 @@ def main() -> None:
     book = RegistryOpportunityBook(registry_path=args.strategy_registry)
     fb = FeatureBuilder()
     mm = MetaModel()
-    pm = PolicyModel()
+
+    policy_cfg = {}
+    if args.policy_config and Path(args.policy_config).exists():
+        policy_cfg = json.loads(Path(args.policy_config).read_text(encoding="utf-8"))
+
+    pm = PolicyModel(
+        profile=str(args.policy_profile),
+        config=dict(policy_cfg or {}),
+    )
     bridge = AllocationBridge()
     allocator = Allocator(target_exposure=float(args.target_exposure), symbol_cap=float(args.symbol_cap))
 

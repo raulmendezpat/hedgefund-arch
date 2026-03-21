@@ -1,0 +1,45 @@
+{
+  "default_profile": "default",
+  "profiles": {
+    "default": {
+      "p_floor": 0.45,
+      "small_size": 0.35,
+      "normal_size": 0.60,
+      "high_conviction_size": 1.00,
+      "penalty_adx": 0.85,
+      "penalty_ema_gap": 0.90,
+      "penalty_atrp": 0.90,
+      "penalty_range_expansion": 0.92,
+      "min_size": 0.10
+    },
+    "open": {
+      "small_size": 0.35,
+      "normal_size": 0.60,
+      "high_conviction_size": 1.00,
+      "penalty_adx": 0.85,
+      "penalty_ema_gap": 0.90,
+      "penalty_atrp": 0.90,
+      "penalty_range_expansion": 0.92,
+      "min_size": 0.10
+    },
+    "trend_strict": {
+      "p_floor": 0.48,
+      "small_size": 0.25,
+      "normal_size": 0.50,
+      "high_conviction_size": 0.90,
+      "penalty_adx": 0.80,
+      "penalty_ema_gap": 0.85,
+      "penalty_atrp": 0.90,
+      "penalty_range_expansion": 0.92,
+      "min_size": 0.08
+    }
+  },
+  "strategy_overrides": {
+    "btc_trend": {
+      "profile": "trend_strict"
+    },
+    "btc_trend_loose": {
+      "profile": "open"
+    }
+  }
+}
