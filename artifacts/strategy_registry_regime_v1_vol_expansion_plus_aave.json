@@ -16,7 +16,11 @@
     "enabled": true,
     "base_weight": 0.9,
     "params": {
-      "adx_min": 12.0
+      "adx_min": 12.0,
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
     },
     "cluster_id": "majors",
     "cluster_cap": 0.3
@@ -27,7 +31,12 @@
     "engine": "btc_trend_signal",
     "enabled": true,
     "base_weight": 1.0,
-    "params": {},
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    },
     "cluster_id": "high_beta",
     "cluster_cap": 0.25
   },
@@ -39,7 +48,12 @@
     "base_weight": 0.8,
     "cluster_id": "infra",
     "cluster_cap": 0.2,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   },
   {
     "strategy_id": "xrp_trend",
@@ -49,7 +63,12 @@
     "base_weight": 0.7,
     "cluster_id": "liquid_alt",
     "cluster_cap": 0.2,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   },
   {
     "strategy_id": "eth_trend",
@@ -59,7 +78,12 @@
     "base_weight": 0.7,
     "cluster_id": "majors",
     "cluster_cap": 0.3,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   },
   {
     "strategy_id": "trx_trend",
@@ -69,7 +93,12 @@
     "base_weight": 0.7,
     "cluster_id": "payments",
     "cluster_cap": 0.2,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   },
   {
     "strategy_id": "aave_trend",
@@ -79,7 +108,12 @@
     "base_weight": 1.0,
     "cluster_id": "discovery",
     "cluster_cap": 0.25,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   },
   {
     "strategy_id": "dot_trend",
@@ -89,7 +123,12 @@
     "base_weight": 0.7,
     "cluster_id": "liquid_alt",
     "cluster_cap": 0.2,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   },
   {
     "strategy_id": "avax_trend",
@@ -99,6 +138,11 @@
     "base_weight": 0.8,
     "cluster_id": "high_beta",
     "cluster_cap": 0.25,
-    "params": {}
+    "params": {
+      "soft_adx_gate": true,
+      "soft_ema_gap_gate": true,
+      "strength_penalty_adx": 0.6,
+      "strength_penalty_ema_gap": 0.8
+    }
   }
 ]

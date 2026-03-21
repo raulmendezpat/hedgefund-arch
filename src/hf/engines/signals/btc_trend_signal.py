@@ -53,6 +53,13 @@ class BtcTrendSignalEngine(SignalEngine):
     require_ema_gap_min: bool = False
     ema_gap_min: float = 0.0015
 
+    # Research mode: do not hard-filter weak trend context at signal phase.
+    # Instead, emit side + weaker strength and expose context in meta.
+    soft_adx_gate: bool = False
+    soft_ema_gap_gate: bool = False
+    strength_penalty_adx: float = 0.60
+    strength_penalty_ema_gap: float = 0.80
+
     adx_key: str = "adx"
     ema_fast_key: str = "ema_fast"
     ema_slow_key: str = "ema_slow"
@@ -79,9 +86,7 @@ class BtcTrendSignalEngine(SignalEngine):
                 out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend_min", "reason": "missing_features"})
                 continue
 
-            if adx < float(self.adx_min):
-                out[sym] = Signal(symbol=sym, side="flat", strength=0.0, meta={"engine": "btc_trend_min", "reason": "adx_below_min", "adx": adx})
-                continue
+            _adx_below_min = float(adx) < float(self.adx_min)
 
             if ema_fast > ema_slow:
                 side = "long"
@@ -92,24 +97,39 @@ class BtcTrendSignalEngine(SignalEngine):
 
             strength = float(self.strength_base) if side != "flat" else 0.0
             ema_gap_pct = abs(float(ema_fast) / max(abs(float(ema_slow)), 1e-12) - 1.0)
+            _ema_gap_below_min = bool(self.require_ema_gap_min) and float(ema_gap_pct) < float(self.ema_gap_min)
 
-            if side != "flat" and bool(self.require_ema_gap_min):
-                if float(ema_gap_pct) < float(self.ema_gap_min):
-                    out[sym] = Signal(
-                        symbol=sym,
-                        side="flat",
-                        strength=0.0,
-                        meta={
-                            "engine": "btc_trend_min",
-                            "reason": "ema_gap_below_min",
-                            "adx": adx,
-                            "ema_fast": ema_fast,
-                            "ema_slow": ema_slow,
-                            "ema_gap_pct": float(ema_gap_pct),
-                            "ema_gap_min": float(self.ema_gap_min),
-                        },
-                    )
-                    continue
+            if _adx_below_min and not bool(self.soft_adx_gate):
+                out[sym] = Signal(
+                    symbol=sym,
+                    side="flat",
+                    strength=0.0,
+                    meta={"engine": "btc_trend_min", "reason": "adx_below_min", "adx": adx},
+                )
+                continue
+
+            if side != "flat" and _adx_below_min and bool(self.soft_adx_gate):
+                strength *= float(self.strength_penalty_adx)
+
+            if side != "flat" and _ema_gap_below_min and not bool(self.soft_ema_gap_gate):
+                out[sym] = Signal(
+                    symbol=sym,
+                    side="flat",
+                    strength=0.0,
+                    meta={
+                        "engine": "btc_trend_min",
+                        "reason": "ema_gap_below_min",
+                        "adx": adx,
+                        "ema_fast": ema_fast,
+                        "ema_slow": ema_slow,
+                        "ema_gap_pct": float(ema_gap_pct),
+                        "ema_gap_min": float(self.ema_gap_min),
+                    },
+                )
+                continue
+
+            if side != "flat" and _ema_gap_below_min and bool(self.soft_ema_gap_gate):
+                strength *= float(self.strength_penalty_ema_gap)
 
             if side != "flat" and bool(self.use_strength_tiers):
                 if float(adx) >= float(self.adx_tier_2) and float(ema_gap_pct) >= float(self.ema_gap_tier_2):
@@ -120,7 +140,7 @@ class BtcTrendSignalEngine(SignalEngine):
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
-                strength=strength,
+                strength=float(max(0.0, strength)),
                 meta={
                     "engine": "btc_trend_min",
                     "adx": adx,
@@ -131,6 +151,12 @@ class BtcTrendSignalEngine(SignalEngine):
                     "strength_base": float(self.strength_base),
                     "strength_step_1": float(self.strength_step_1),
                     "strength_step_2": float(self.strength_step_2),
+                    "soft_adx_gate": bool(self.soft_adx_gate),
+                    "soft_ema_gap_gate": bool(self.soft_ema_gap_gate),
+                    "adx_below_min": bool(_adx_below_min),
+                    "ema_gap_below_min": bool(_ema_gap_below_min),
+                    "strength_penalty_adx": float(self.strength_penalty_adx),
+                    "strength_penalty_ema_gap": float(self.strength_penalty_ema_gap),
                 },
             )
 
