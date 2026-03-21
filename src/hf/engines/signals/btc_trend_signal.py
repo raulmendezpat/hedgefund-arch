@@ -99,36 +99,12 @@ class BtcTrendSignalEngine(SignalEngine):
             ema_gap_pct = abs(float(ema_fast) / max(abs(float(ema_slow)), 1e-12) - 1.0)
             _ema_gap_below_min = bool(self.require_ema_gap_min) and float(ema_gap_pct) < float(self.ema_gap_min)
 
-            if _adx_below_min and not bool(self.soft_adx_gate):
-                out[sym] = Signal(
-                    symbol=sym,
-                    side="flat",
-                    strength=0.0,
-                    meta={"engine": "btc_trend_min", "reason": "adx_below_min", "adx": adx},
-                )
-                continue
-
-            if side != "flat" and _adx_below_min and bool(self.soft_adx_gate):
+            # Regime/context should not hard-reject at signal phase.
+            # We keep it as metadata + optional strength penalty.
+            if side != "flat" and _adx_below_min:
                 strength *= float(self.strength_penalty_adx)
 
-            if side != "flat" and _ema_gap_below_min and not bool(self.soft_ema_gap_gate):
-                out[sym] = Signal(
-                    symbol=sym,
-                    side="flat",
-                    strength=0.0,
-                    meta={
-                        "engine": "btc_trend_min",
-                        "reason": "ema_gap_below_min",
-                        "adx": adx,
-                        "ema_fast": ema_fast,
-                        "ema_slow": ema_slow,
-                        "ema_gap_pct": float(ema_gap_pct),
-                        "ema_gap_min": float(self.ema_gap_min),
-                    },
-                )
-                continue
-
-            if side != "flat" and _ema_gap_below_min and bool(self.soft_ema_gap_gate):
+            if side != "flat" and _ema_gap_below_min:
                 strength *= float(self.strength_penalty_ema_gap)
 
             if side != "flat" and bool(self.use_strength_tiers):
@@ -151,8 +127,7 @@ class BtcTrendSignalEngine(SignalEngine):
                     "strength_base": float(self.strength_base),
                     "strength_step_1": float(self.strength_step_1),
                     "strength_step_2": float(self.strength_step_2),
-                    "soft_adx_gate": bool(self.soft_adx_gate),
-                    "soft_ema_gap_gate": bool(self.soft_ema_gap_gate),
+                    "regime_as_metadata": True,
                     "adx_below_min": bool(_adx_below_min),
                     "ema_gap_below_min": bool(_ema_gap_below_min),
                     "strength_penalty_adx": float(self.strength_penalty_adx),
