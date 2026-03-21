@@ -11,7 +11,7 @@ import pandas as pd
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 from hf.engines.opportunity_book import RegistryOpportunityBook
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
-from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate
+from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher
 
 
 def load_registry(path: str) -> list[dict]:
@@ -132,6 +132,7 @@ def main() -> None:
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--target-exposure", type=float, default=0.07)
     ap.add_argument("--symbol-cap", type=float, default=0.50)
+    ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--policy-config", default="artifacts/policy_config_v1.json")
     ap.add_argument("--policy-profile", default="default")
     args = ap.parse_args()
@@ -160,7 +161,12 @@ def main() -> None:
         config=dict(policy_cfg or {}),
     )
     bridge = AllocationBridge()
-    allocator = Allocator(target_exposure=float(args.target_exposure), symbol_cap=float(args.symbol_cap))
+    allocator = Allocator(
+        target_exposure=float(args.target_exposure),
+        symbol_cap=float(args.symbol_cap),
+        profile=str(args.allocator_profile),
+    )
+    context_enricher = AssetContextEnricher()
 
     rows = []
     candidate_rows = []
@@ -202,8 +208,19 @@ def main() -> None:
                 )
             )
 
-        feature_rows = []
+        enriched_candidates = []
         for c in candidates:
+            enriched_candidates.append(
+                context_enricher.enrich_candidate(
+                    candidate=c,
+                    ts=ts,
+                    symbol_df=data_by_symbol[c.symbol],
+                    feature_map=feature_series_by_symbol[c.symbol],
+                )
+            )
+
+        feature_rows = []
+        for c in enriched_candidates:
             portfolio_context = {
                 "portfolio_regime": "research",
                 "portfolio_breadth": 0.0,
@@ -223,7 +240,7 @@ def main() -> None:
         scores = mm.predict_many(feature_rows)
         decisions = pm.decide_many(scores)
 
-        for c, s, d in zip(candidates, scores, decisions):
+        for c, s, d in zip(enriched_candidates, scores, decisions):
             sm = dict(getattr(c, "signal_meta", {}) or {})
             mm_meta = dict(getattr(s, "model_meta", {}) or {})
             pm_meta = dict(getattr(d, "policy_meta", {}) or {})
@@ -253,7 +270,7 @@ def main() -> None:
                 "range_expansion_low": pm_meta.get("range_expansion_low", mm_meta.get("range_expansion_low", False)),
             })
 
-        alloc_inputs = bridge.apply(candidates=candidates, decisions=decisions)
+        alloc_inputs = bridge.apply(candidates=enriched_candidates, decisions=decisions)
         alloc = allocator.allocate(candidates=alloc_inputs)
 
         weights = dict(alloc.weights or {})
