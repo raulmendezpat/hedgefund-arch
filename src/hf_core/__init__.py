@@ -7,3 +7,4 @@ from .allocation_bridge import AllocationBridge
 from .allocator import Allocation, Allocator
 
 from .context_enricher import AssetContextEnricher
+from .execution_projection import ProjectionResult, ProjectionFactory
