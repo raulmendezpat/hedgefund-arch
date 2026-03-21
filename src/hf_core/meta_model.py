@@ -8,7 +8,7 @@ class MetaModel:
         self,
         *,
         pwin_floor: float = 0.35,
-        pwin_cap: float = 0.75,
+        pwin_cap: float = 0.80,
         expected_return_floor: float = 0.0,
     ):
         self.pwin_floor = float(pwin_floor)
@@ -19,77 +19,83 @@ class MetaModel:
     def _clip(x: float, lo: float, hi: float) -> float:
         return max(lo, min(hi, float(x)))
 
-    @staticmethod
-    def _sgn_side_bonus(side: str) -> float:
-        side = str(side or "flat").lower()
-        if side == "long":
-            return 0.004
-        if side == "short":
-            return 0.002
-        return -0.020
-
     def _global_pwin(self, v: dict) -> float:
         base = float(v.get("meta_p_win", 0.50) or 0.50)
         sig = float(v.get("signal_strength", 0.0) or 0.0)
         adx = float(v.get("meta_adx", 0.0) or 0.0)
         ema_gap = float(v.get("meta_ema_gap_pct", 0.0) or 0.0)
+        side_align = float(v.get("ctx_side_backdrop_alignment", 0.0) or 0.0)
 
         p = base
         p += 0.030 * self._clip(sig, -1.0, 1.0)
         p += 0.010 * self._clip((adx - 18.0) / 20.0, -1.0, 1.0)
         p += 0.015 * self._clip(ema_gap / 0.01, 0.0, 1.0)
-        p += self._sgn_side_bonus(str(v.get("side", "flat")))
+        p += 0.025 * self._clip(side_align, -1.0, 1.0)
 
         return self._clip(p, self.pwin_floor, self.pwin_cap)
 
     def _context_bonus(self, v: dict) -> tuple[float, dict]:
         strategy_id = str(v.get("strategy_id", "") or "")
         side = str(v.get("side", "flat") or "flat").lower()
+        backdrop = str(v.get("ctx_backdrop", "neutral") or "neutral").lower()
+
+        adx_pct = float(v.get("ctx_adx_pct", 0.5) or 0.5)
+        atrp_pct = float(v.get("ctx_atrp_pct", 0.5) or 0.5)
+        rsi_pct = float(v.get("ctx_rsi_pct", 0.5) or 0.5)
+        range_exp_pct = float(v.get("ctx_range_expansion_pct", 0.5) or 0.5)
+        trend_align = float(v.get("ctx_trend_alignment_score", 0.0) or 0.0)
+        side_align = float(v.get("ctx_side_backdrop_alignment", 0.0) or 0.0)
+        ret_7d = float(v.get("ctx_ret_7d", 0.0) or 0.0)
+        ret_30d = float(v.get("ctx_ret_30d", 0.0) or 0.0)
+        slope_ema = float(v.get("ctx_slope_ema_fast_24h", 0.0) or 0.0)
 
         bonus = 0.0
 
         strategy_bonus_map = {
-            "dot_trend": 0.018,
-            "xrp_trend": 0.014,
+            "dot_trend": 0.016,
+            "xrp_trend": 0.012,
             "trx_trend": 0.010,
-            "eth_trend": 0.006,
-            "btc_trend": 0.004,
-            "btc_trend_loose": -0.004,
-            "link_trend": -0.003,
-            "aave_trend": -0.004,
-            "avax_trend": -0.003,
-            "bnb_trend": -0.001,
+            "eth_trend": 0.008,
+            "btc_trend": 0.006,
+            "btc_trend_loose": 0.002,
+            "link_trend": 0.004,
+            "aave_trend": 0.003,
+            "avax_trend": 0.004,
+            "bnb_trend": 0.005,
         }
         bonus += float(strategy_bonus_map.get(strategy_id, 0.0))
 
-        adx = float(v.get("meta_adx", 0.0) or 0.0)
-        atrp = float(v.get("meta_atrp", 0.0) or 0.0)
-        rsi = float(v.get("meta_rsi", 0.0) or 0.0)
-        bb_width = float(v.get("meta_bb_width", 0.0) or 0.0)
-        range_exp = float(v.get("meta_range_expansion", 0.0) or 0.0)
-        ema_gap = float(v.get("meta_ema_gap_pct", 0.0) or 0.0)
-        sig = float(v.get("signal_strength", 0.0) or 0.0)
-
-        bonus += 0.010 * self._clip((adx - 20.0) / 20.0, -1.0, 1.0)
-        bonus += 0.010 * self._clip((atrp - 0.008) / 0.020, -1.0, 1.0)
-        bonus += 0.008 * self._clip(range_exp / 1.5, 0.0, 1.0)
-        bonus += 0.012 * self._clip(ema_gap / 0.01, 0.0, 1.0)
-        bonus += 0.008 * self._clip(sig, -1.0, 1.0)
+        bonus += 0.020 * self._clip(side_align, -1.0, 1.0)
+        bonus += 0.010 * self._clip(trend_align, -1.0, 1.0)
+        bonus += 0.010 * self._clip((adx_pct - 0.5) / 0.5, -1.0, 1.0)
+        bonus += 0.010 * self._clip((range_exp_pct - 0.5) / 0.5, -1.0, 1.0)
+        bonus += 0.006 * self._clip(ret_7d / 0.08, -1.0, 1.0)
+        bonus += 0.008 * self._clip(ret_30d / 0.20, -1.0, 1.0)
+        bonus += 0.006 * self._clip(slope_ema / 0.03, -1.0, 1.0)
 
         if side == "long":
-            bonus += 0.004 * self._clip((60.0 - rsi) / 30.0, -1.0, 1.0)
+            bonus += 0.006 * self._clip((0.65 - rsi_pct) / 0.65, -1.0, 1.0)
+            if backdrop == "bullish":
+                bonus += 0.008
+            elif backdrop == "bearish":
+                bonus -= 0.010
         elif side == "short":
-            bonus += 0.004 * self._clip((rsi - 40.0) / 30.0, -1.0, 1.0)
+            bonus += 0.006 * self._clip((rsi_pct - 0.35) / 0.65, -1.0, 1.0)
+            if backdrop == "bearish":
+                bonus += 0.008
+            elif backdrop == "bullish":
+                bonus -= 0.010
+        else:
+            bonus -= 0.020
 
-        # penalize weak regime flags
         penalty = 0.0
-        penalty += 0.018 * float(v.get("flag_adx_below_min", 0.0) or 0.0)
+        penalty += 0.020 * float(v.get("flag_adx_below_min", 0.0) or 0.0)
         penalty += 0.012 * float(v.get("flag_ema_gap_below_min", 0.0) or 0.0)
         penalty += 0.010 * float(v.get("flag_atrp_low", 0.0) or 0.0)
         penalty += 0.010 * float(v.get("flag_adx_low", 0.0) or 0.0)
         penalty += 0.008 * float(v.get("flag_range_expansion_low", 0.0) or 0.0)
-        penalty += 0.008 * float(v.get("flag_long_non_directional_bar", 0.0) or 0.0)
-        penalty += 0.008 * float(v.get("flag_short_non_directional_bar", 0.0) or 0.0)
+        penalty += 0.006 * float(v.get("flag_long_non_directional_bar", 0.0) or 0.0)
+        penalty += 0.006 * float(v.get("flag_short_non_directional_bar", 0.0) or 0.0)
         penalty += 0.006 * float(v.get("flag_long_trend_misaligned", 0.0) or 0.0)
         penalty += 0.006 * float(v.get("flag_short_trend_misaligned", 0.0) or 0.0)
         penalty += 0.006 * float(v.get("flag_long_no_donchian_break", 0.0) or 0.0)
@@ -105,12 +111,16 @@ class MetaModel:
             float(bonus),
             {
                 "strategy_bonus": float(strategy_bonus_map.get(strategy_id, 0.0)),
-                "adx": float(adx),
-                "atrp": float(atrp),
-                "rsi": float(rsi),
-                "bb_width": float(bb_width),
-                "range_expansion": float(range_exp),
-                "ema_gap_pct": float(ema_gap),
+                "backdrop": backdrop,
+                "trend_alignment_score": float(trend_align),
+                "side_backdrop_alignment": float(side_align),
+                "adx_pct": float(adx_pct),
+                "atrp_pct": float(atrp_pct),
+                "rsi_pct": float(rsi_pct),
+                "range_expansion_pct": float(range_exp_pct),
+                "ret_7d": float(ret_7d),
+                "ret_30d": float(ret_30d),
+                "slope_ema_fast_24h": float(slope_ema),
                 "flag_penalty": float(penalty),
             },
         )
@@ -119,16 +129,21 @@ class MetaModel:
         post_ml = float(v.get("meta_post_ml_score", 0.0) or 0.0)
         comp = float(v.get("meta_competitive_score", 0.0) or 0.0)
         sig = float(v.get("signal_strength", 0.0) or 0.0)
-        adx = float(v.get("meta_adx", 0.0) or 0.0)
-        atrp = float(v.get("meta_atrp", 0.0) or 0.0)
-        ema_gap = float(v.get("meta_ema_gap_pct", 0.0) or 0.0)
+        side_align = float(v.get("ctx_side_backdrop_alignment", 0.0) or 0.0)
+        trend_align = float(v.get("ctx_trend_alignment_score", 0.0) or 0.0)
+        adx_pct = float(v.get("ctx_adx_pct", 0.5) or 0.5)
+        atrp_pct = float(v.get("ctx_atrp_pct", 0.5) or 0.5)
+        tp_mult = float(v.get("ctx_tp_mult", 1.0) or 1.0)
+        sl_mult = float(v.get("ctx_sl_mult", 1.0) or 1.0)
 
         er = max(post_ml, comp)
         er += 0.0005 * self._clip(sig, -1.0, 1.0)
-        er += 0.0015 * max(0.0, p_win - 0.50)
-        er += 0.0006 * self._clip((adx - 18.0) / 20.0, -1.0, 1.0)
-        er += 0.0006 * self._clip((atrp - 0.008) / 0.020, -1.0, 1.0)
-        er += 0.0008 * self._clip(ema_gap / 0.01, 0.0, 1.0)
+        er += 0.0018 * max(0.0, p_win - 0.50)
+        er += 0.0008 * self._clip(side_align, -1.0, 1.0)
+        er += 0.0005 * self._clip(trend_align, -1.0, 1.0)
+        er += 0.0005 * self._clip((adx_pct - 0.5) / 0.5, -1.0, 1.0)
+        er += 0.0004 * self._clip((atrp_pct - 0.5) / 0.5, -1.0, 1.0)
+        er += 0.0003 * self._clip(tp_mult - sl_mult, -1.0, 1.0)
 
         er -= 0.0005 * float(v.get("flag_adx_below_min", 0.0) or 0.0)
         er -= 0.0004 * float(v.get("flag_ema_gap_below_min", 0.0) or 0.0)
@@ -157,7 +172,7 @@ class MetaModel:
             expected_return=float(expected_return),
             score=float(score),
             model_meta={
-                "model_family": "contextual_v2",
+                "model_family": "contextual_v3_asset_backdrop",
                 "p_win_global": float(p_global),
                 "context_bonus": float(ctx_bonus),
                 **ctx_meta,
@@ -166,6 +181,11 @@ class MetaModel:
                 "atrp_low": bool(v.get("flag_atrp_low", 0.0)),
                 "adx_low": bool(v.get("flag_adx_low", 0.0)),
                 "range_expansion_low": bool(v.get("flag_range_expansion_low", 0.0)),
+                "expected_holding_bars": int(v.get("ctx_expected_holding_bars", 12.0) or 12.0),
+                "tp_mult": float(v.get("ctx_tp_mult", 1.0) or 1.0),
+                "sl_mult": float(v.get("ctx_sl_mult", 1.0) or 1.0),
+                "time_stop_bars": int(v.get("ctx_time_stop_bars", 12.0) or 12.0),
+                "exit_profile": str(v.get("ctx_exit_profile", "normal") or "normal"),
             },
         )
 

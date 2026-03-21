@@ -5,3 +5,5 @@ from .meta_model import MetaModel
 from .policy import PolicyDecision, PolicyModel
 from .allocation_bridge import AllocationBridge
 from .allocator import Allocation, Allocator
+
+from .context_enricher import AssetContextEnricher
