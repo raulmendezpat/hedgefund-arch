@@ -49,6 +49,26 @@ class VeryWeakContextRejectRule(PolicyRule):
 
 
 @dataclass
+class ExtremeConfidenceRejectRule(PolicyRule):
+    extreme_pwin_reject_threshold: float = 9.9
+    extreme_score_reject_threshold: float = 9.9
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+
+        if (
+            state.p_win >= float(self.extreme_pwin_reject_threshold)
+            or state.score >= float(self.extreme_score_reject_threshold)
+        ):
+            state.accept = False
+            state.size_mult = 0.0
+            state.band = "reject"
+            state.reason = "extreme_confidence_reject"
+        return state
+
+
+@dataclass
 class RegimePenaltyTagRule(PolicyRule):
     def apply(self, state: PolicyState) -> PolicyState:
         mm = dict(state.model_meta or {})
