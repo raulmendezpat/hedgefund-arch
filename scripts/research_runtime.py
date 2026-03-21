@@ -163,6 +163,7 @@ def main() -> None:
     allocator = Allocator(target_exposure=float(args.target_exposure), symbol_cap=float(args.symbol_cap))
 
     rows = []
+    candidate_rows = []
     equity = 1000.0
 
     for ts in common_ts:
@@ -221,6 +222,37 @@ def main() -> None:
 
         scores = mm.predict_many(feature_rows)
         decisions = pm.decide_many(scores)
+
+        for c, s, d in zip(candidates, scores, decisions):
+            sm = dict(getattr(c, "signal_meta", {}) or {})
+            mm_meta = dict(getattr(s, "model_meta", {}) or {})
+            pm_meta = dict(getattr(d, "policy_meta", {}) or {})
+            candidate_rows.append({
+                "ts": ts,
+                "symbol": c.symbol,
+                "strategy_id": c.strategy_id,
+                "side": c.side,
+                "signal_strength": c.signal_strength,
+                "base_weight": c.base_weight,
+                "p_win": getattr(s, "p_win", 0.0),
+                "expected_return": getattr(s, "expected_return", 0.0),
+                "score": getattr(s, "score", 0.0),
+                "accept": getattr(d, "accept", False),
+                "size_mult": getattr(d, "size_mult", 0.0),
+                "band": getattr(d, "band", ""),
+                "reason": getattr(d, "reason", ""),
+                "policy_score": getattr(d, "policy_score", 0.0),
+                "policy_profile": pm_meta.get("policy_profile", ""),
+                "adx": sm.get("adx", mm_meta.get("adx", 0.0)),
+                "atrp": sm.get("atrp", mm_meta.get("atrp", 0.0)),
+                "rsi": sm.get("rsi", mm_meta.get("rsi", 0.0)),
+                "adx_below_min": pm_meta.get("adx_below_min", mm_meta.get("adx_below_min", False)),
+                "ema_gap_below_min": pm_meta.get("ema_gap_below_min", mm_meta.get("ema_gap_below_min", False)),
+                "atrp_low": pm_meta.get("atrp_low", mm_meta.get("atrp_low", False)),
+                "adx_low": pm_meta.get("adx_low", mm_meta.get("adx_low", False)),
+                "range_expansion_low": pm_meta.get("range_expansion_low", mm_meta.get("range_expansion_low", False)),
+            })
+
         alloc_inputs = bridge.apply(candidates=candidates, decisions=decisions)
         alloc = allocator.allocate(candidates=alloc_inputs)
 
@@ -262,9 +294,11 @@ def main() -> None:
 
     out_df = pd.DataFrame(rows)
     out_csv = Path(f"results/research_runtime_{args.name}.csv")
+    out_candidates_csv = Path(f"results/research_runtime_candidates_{args.name}.csv")
     out_json = Path(f"results/research_runtime_metrics_{args.name}.json")
 
     out_df.to_csv(out_csv, index=False)
+    pd.DataFrame(candidate_rows).to_csv(out_candidates_csv, index=False)
 
     metrics = compute_metrics(out_df["port_ret"], out_df["equity"])
     metrics["rows"] = int(len(out_df))
@@ -279,6 +313,7 @@ def main() -> None:
     out_json.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
     print(f"saved: {out_csv}")
+    print(f"saved: {out_candidates_csv}")
     print(f"saved: {out_json}")
     print("\n=== METRICS ===")
     for k, v in metrics.items():
