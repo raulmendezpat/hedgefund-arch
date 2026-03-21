@@ -49,6 +49,17 @@ class SolTrendPullbackSignalEngine(SignalEngine):
 
     only_if_symbol_contains: str = "SOL"
 
+    # research: regime/context as metadata, not hard rejection
+    strength_penalty_adx: float = 0.70
+    strength_penalty_atrp: float = 0.70
+    strength_penalty_rsi: float = 0.85
+    strength_penalty_bb_width: float = 0.85
+    strength_penalty_range_expansion: float = 0.85
+    strength_penalty_directional_close: float = 0.90
+    strength_penalty_extension: float = 0.85
+    strength_penalty_trend_alignment: float = 0.85
+    strength_penalty_donchian: float = 0.85
+
     def _flat(self, sym: str, reason: str, **meta) -> Signal:
         return Signal(
             symbol=sym,

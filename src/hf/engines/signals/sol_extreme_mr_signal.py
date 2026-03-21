@@ -51,6 +51,17 @@ class SolExtremeMrSignalEngine(SignalEngine):
 
     only_if_symbol_contains: str = "SOL"
 
+    # research: regime/context as metadata, not hard rejection
+    strength_penalty_adx: float = 0.70
+    strength_penalty_atrp: float = 0.70
+    strength_penalty_rsi: float = 0.85
+    strength_penalty_bb_width: float = 0.85
+    strength_penalty_range_expansion: float = 0.85
+    strength_penalty_directional_close: float = 0.90
+    strength_penalty_extension: float = 0.85
+    strength_penalty_trend_alignment: float = 0.85
+    strength_penalty_donchian: float = 0.85
+
     def _flat(self, sym: str, reason: str, **meta) -> Signal:
         return Signal(
             symbol=sym,
@@ -119,6 +130,13 @@ class SolExtremeMrSignalEngine(SignalEngine):
             side_counts[side] = int(side_counts.get(side, 0)) + 1
             strength = 1.0 if side != "flat" else 0.0
 
+            if side != "flat" and bool(locals().get("atrp_low", False)):
+                strength *= float(self.strength_penalty_atrp)
+            if side != "flat" and bool(locals().get("adx_low", False)):
+                strength *= float(self.strength_penalty_adx)
+            if side != "flat" and bool(locals().get("range_expansion_low", False)):
+                strength *= float(self.strength_penalty_range_expansion)
+
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
@@ -130,6 +148,10 @@ class SolExtremeMrSignalEngine(SignalEngine):
                     "atrp": atrp,
                     "adx": adx,
                     "bb_low": bb_low,
+                    "regime_as_metadata": True,
+                    "atrp_low": bool(locals().get("atrp_low", False)),
+                    "adx_low": bool(locals().get("adx_low", False)),
+                    "range_expansion_low": bool(locals().get("range_expansion_low", False)),
                     "bb_up": bb_up,
                     "bb_width": bb_width,
                     "range_expansion": range_expansion,
