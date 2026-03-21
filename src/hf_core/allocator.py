@@ -53,32 +53,55 @@ class Allocator:
 
         intents: list[dict[str, Any]] = []
         symbol_weights = dict(ctx.symbol_weights or {})
+        deployable_rows = list(ctx.deployable_rows or [])
 
         if str(self.profile).lower() == "symbol_net":
-            for row in list(ctx.deployable_rows or []):
-                symbol = str(row.get("symbol", "") or "")
+            # repartir el peso final del símbolo entre intents del mismo símbolo,
+            # proporcional al signed_weight bruto absoluto de cada intent
+            rows_by_symbol: dict[str, list[dict[str, Any]]] = {}
+            for row in deployable_rows:
+                sym = str(row.get("symbol", "") or "")
+                rows_by_symbol.setdefault(sym, []).append(row)
+
+            for symbol, rows in rows_by_symbol.items():
                 if symbol not in symbol_weights:
                     continue
-                intents.append(
-                    {
-                        "symbol": symbol,
-                        "strategy_id": str(row.get("strategy_id", "") or ""),
-                        "side": str(row.get("side", "") or ""),
-                        "target_weight": float(symbol_weights.get(symbol, 0.0) or 0.0),
-                        "base_weight": float(row.get("base_weight", 0.0) or 0.0),
-                        "policy_score": float(row.get("policy_score", 0.0) or 0.0),
-                        "policy_band": str(row.get("policy_band", "") or ""),
-                        "policy_reason": str(row.get("policy_reason", "") or ""),
-                        "policy_size_mult": float(row.get("policy_size_mult", 1.0) or 1.0),
-                    }
-                )
+
+                final_symbol_weight = float(symbol_weights.get(symbol, 0.0) or 0.0)
+                gross_abs = sum(abs(float(r.get("signed_weight", 0.0) or 0.0)) for r in rows)
+
+                if gross_abs <= 0.0:
+                    continue
+
+                for row in rows:
+                    row_abs = abs(float(row.get("signed_weight", 0.0) or 0.0))
+                    alloc_share = row_abs / gross_abs
+                    intent_weight = final_symbol_weight * alloc_share
+
+                    intents.append(
+                        {
+                            "symbol": symbol,
+                            "strategy_id": str(row.get("strategy_id", "") or ""),
+                            "side": str(row.get("side", "") or ""),
+                            "target_weight": float(intent_weight),
+                            "symbol_target_weight": float(final_symbol_weight),
+                            "allocation_share_within_symbol": float(alloc_share),
+                            "base_weight": float(row.get("base_weight", 0.0) or 0.0),
+                            "signed_weight": float(row.get("signed_weight", 0.0) or 0.0),
+                            "policy_score": float(row.get("policy_score", 0.0) or 0.0),
+                            "policy_band": str(row.get("policy_band", "") or ""),
+                            "policy_reason": str(row.get("policy_reason", "") or ""),
+                            "policy_size_mult": float(row.get("policy_size_mult", 1.0) or 1.0),
+                        }
+                    )
         else:
-            for row in list(ctx.deployable_rows or []):
+            for row in deployable_rows:
                 symbol = str(row.get("symbol", "") or "")
                 side = str(row.get("side", "") or "").lower()
                 key = f"{symbol}::{side}"
                 if key not in symbol_weights:
                     continue
+
                 intents.append(
                     {
                         "symbol": symbol,
@@ -86,6 +109,7 @@ class Allocator:
                         "side": side,
                         "target_weight": float(symbol_weights.get(key, 0.0) or 0.0),
                         "base_weight": float(row.get("base_weight", 0.0) or 0.0),
+                        "signed_weight": float(row.get("signed_weight", 0.0) or 0.0),
                         "policy_score": float(row.get("policy_score", 0.0) or 0.0),
                         "policy_band": str(row.get("policy_band", "") or ""),
                         "policy_reason": str(row.get("policy_reason", "") or ""),
