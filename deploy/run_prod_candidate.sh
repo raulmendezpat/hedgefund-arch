@@ -31,7 +31,7 @@ if python scripts/hf_pipeline_alloc.py \
   --name prod_candidate_live \
   --start "$START_TS" \
   --signal-engine registry_portfolio \
-  --strategy-registry artifacts/strategy_registry_regime_v1_vol_expansion_plus_aave.json \
+  --strategy-registry artifacts/strategy_registry_v2.json \
   --opportunity-selection-mode competitive \
   --allocation-engine-mode multi_strategy \
   --allocator-blend-alpha 0.55 \
