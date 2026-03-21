@@ -134,7 +134,7 @@ def main() -> None:
     ap.add_argument("--symbol-cap", type=float, default=0.50)
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
-    ap.add_argument("--policy-config", default="artifacts/policy_config_v1.json")
+    ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     args = ap.parse_args()
 

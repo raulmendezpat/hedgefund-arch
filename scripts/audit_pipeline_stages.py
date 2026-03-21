@@ -142,7 +142,7 @@ def main() -> None:
     ap.add_argument("--strategy-registry", required=True)
     ap.add_argument("--exchange", default="binanceusdm")
     ap.add_argument("--cache-dir", default="data/cache")
-    ap.add_argument("--policy-config", default="artifacts/policy_config_v1.json")
+    ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     ap.add_argument("--target-exposure", type=float, default=0.07)
     ap.add_argument("--symbol-cap", type=float, default=0.50)
