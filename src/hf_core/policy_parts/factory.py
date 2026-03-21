@@ -8,6 +8,7 @@ from .rules import (
     FlatRejectRule,
     StrategySideDisableRule,
     VeryWeakContextRejectRule,
+    ExtremeConfidenceRejectRule,
     RegimePenaltyTagRule,
     BandSizingRule,
     RegimeAwareSizePenaltyRule,
@@ -52,6 +53,10 @@ class PolicyFactory:
                 rules=[
                     FlatRejectRule(),
                     StrategySideDisableRule(disabled_pairs=disabled_pairs),
+                    ExtremeConfidenceRejectRule(
+                        extreme_pwin_reject_threshold=float(cfg.get("extreme_pwin_reject_threshold", 9.9)),
+                        extreme_score_reject_threshold=float(cfg.get("extreme_score_reject_threshold", 9.9)),
+                    ),
                     *common_tail,
                 ]
             )
@@ -61,6 +66,10 @@ class PolicyFactory:
                 FlatRejectRule(),
                 StrategySideDisableRule(disabled_pairs=disabled_pairs),
                 VeryWeakContextRejectRule(p_floor=float(cfg.get("p_floor", 0.45))),
+                ExtremeConfidenceRejectRule(
+                    extreme_pwin_reject_threshold=float(cfg.get("extreme_pwin_reject_threshold", 9.9)),
+                    extreme_score_reject_threshold=float(cfg.get("extreme_score_reject_threshold", 9.9)),
+                ),
                 *common_tail,
             ]
         )

@@ -3,65 +3,83 @@
   "profiles": {
     "default": {
       "p_floor": 0.45,
-      "small_size": 0.25,
-      "normal_size": 0.45,
-      "high_conviction_size": 0.6,
+      "small_size": 0.2,
+      "normal_size": 0.35,
+      "high_conviction_size": 0.35,
       "penalty_adx": 0.85,
       "penalty_ema_gap": 0.9,
       "penalty_atrp": 0.9,
       "penalty_range_expansion": 0.92,
       "min_size": 0.1,
-      "long_size_bias": 0.7,
+      "long_size_bias": 0.6,
       "short_size_bias": 1.0,
-      "max_size_mult": 0.6,
+      "max_size_mult": 0.45,
       "disabled_strategy_sides": [
-        "dot_trend|long",
-        "link_trend|long",
         "aave_trend|long",
-        "xrp_trend|long",
-        "avax_trend|long"
-      ]
+        "avax_trend|long",
+        "bnb_trend|long",
+        "btc_trend_loose|long",
+        "btc_trend|long",
+        "dot_trend|long",
+        "eth_trend|long",
+        "link_trend|long",
+        "xrp_trend|long"
+      ],
+      "extreme_pwin_reject_threshold": 0.595,
+      "extreme_score_reject_threshold": 0.00017
     },
     "open": {
-      "small_size": 0.3,
-      "normal_size": 0.5,
-      "high_conviction_size": 0.6,
+      "small_size": 0.2,
+      "normal_size": 0.35,
+      "high_conviction_size": 0.35,
       "penalty_adx": 0.85,
       "penalty_ema_gap": 0.9,
       "penalty_atrp": 0.9,
       "penalty_range_expansion": 0.92,
       "min_size": 0.1,
-      "long_size_bias": 0.75,
+      "long_size_bias": 0.6,
       "short_size_bias": 1.0,
-      "max_size_mult": 0.6,
+      "max_size_mult": 0.45,
       "disabled_strategy_sides": [
-        "dot_trend|long",
-        "link_trend|long",
         "aave_trend|long",
-        "xrp_trend|long",
-        "avax_trend|long"
-      ]
+        "avax_trend|long",
+        "bnb_trend|long",
+        "btc_trend_loose|long",
+        "btc_trend|long",
+        "dot_trend|long",
+        "eth_trend|long",
+        "link_trend|long",
+        "xrp_trend|long"
+      ],
+      "extreme_pwin_reject_threshold": 0.595,
+      "extreme_score_reject_threshold": 0.00017
     },
     "trend_strict": {
       "p_floor": 0.48,
       "small_size": 0.2,
-      "normal_size": 0.4,
-      "high_conviction_size": 0.55,
+      "normal_size": 0.35,
+      "high_conviction_size": 0.35,
       "penalty_adx": 0.8,
       "penalty_ema_gap": 0.85,
       "penalty_atrp": 0.9,
       "penalty_range_expansion": 0.92,
       "min_size": 0.08,
-      "long_size_bias": 0.7,
+      "long_size_bias": 0.6,
       "short_size_bias": 1.0,
-      "max_size_mult": 0.55,
+      "max_size_mult": 0.45,
       "disabled_strategy_sides": [
-        "dot_trend|long",
-        "link_trend|long",
         "aave_trend|long",
-        "xrp_trend|long",
-        "avax_trend|long"
-      ]
+        "avax_trend|long",
+        "bnb_trend|long",
+        "btc_trend_loose|long",
+        "btc_trend|long",
+        "dot_trend|long",
+        "eth_trend|long",
+        "link_trend|long",
+        "xrp_trend|long"
+      ],
+      "extreme_pwin_reject_threshold": 0.595,
+      "extreme_score_reject_threshold": 0.00017
     }
   },
   "strategy_overrides": {
