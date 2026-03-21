@@ -22,3 +22,6 @@ secret.json
 artifacts/ml_strategy_ensemble_registry_v4*.joblib
 artifacts/ml_strategy_ensemble_registry_v4*_metrics.json
 artifacts/ml_thresholds_registry_v4*.json
+
+# local market data cache
+data/cache/
