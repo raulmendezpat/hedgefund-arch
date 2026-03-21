@@ -3,35 +3,65 @@
   "profiles": {
     "default": {
       "p_floor": 0.45,
-      "small_size": 0.35,
-      "normal_size": 0.60,
-      "high_conviction_size": 1.00,
+      "small_size": 0.25,
+      "normal_size": 0.45,
+      "high_conviction_size": 0.6,
       "penalty_adx": 0.85,
-      "penalty_ema_gap": 0.90,
-      "penalty_atrp": 0.90,
+      "penalty_ema_gap": 0.9,
+      "penalty_atrp": 0.9,
       "penalty_range_expansion": 0.92,
-      "min_size": 0.10
+      "min_size": 0.1,
+      "long_size_bias": 0.7,
+      "short_size_bias": 1.0,
+      "max_size_mult": 0.6,
+      "disabled_strategy_sides": [
+        "dot_trend|long",
+        "link_trend|long",
+        "aave_trend|long",
+        "xrp_trend|long",
+        "avax_trend|long"
+      ]
     },
     "open": {
-      "small_size": 0.35,
-      "normal_size": 0.60,
-      "high_conviction_size": 1.00,
+      "small_size": 0.3,
+      "normal_size": 0.5,
+      "high_conviction_size": 0.6,
       "penalty_adx": 0.85,
-      "penalty_ema_gap": 0.90,
-      "penalty_atrp": 0.90,
+      "penalty_ema_gap": 0.9,
+      "penalty_atrp": 0.9,
       "penalty_range_expansion": 0.92,
-      "min_size": 0.10
+      "min_size": 0.1,
+      "long_size_bias": 0.75,
+      "short_size_bias": 1.0,
+      "max_size_mult": 0.6,
+      "disabled_strategy_sides": [
+        "dot_trend|long",
+        "link_trend|long",
+        "aave_trend|long",
+        "xrp_trend|long",
+        "avax_trend|long"
+      ]
     },
     "trend_strict": {
       "p_floor": 0.48,
-      "small_size": 0.25,
-      "normal_size": 0.50,
-      "high_conviction_size": 0.90,
-      "penalty_adx": 0.80,
+      "small_size": 0.2,
+      "normal_size": 0.4,
+      "high_conviction_size": 0.55,
+      "penalty_adx": 0.8,
       "penalty_ema_gap": 0.85,
-      "penalty_atrp": 0.90,
+      "penalty_atrp": 0.9,
       "penalty_range_expansion": 0.92,
-      "min_size": 0.08
+      "min_size": 0.08,
+      "long_size_bias": 0.7,
+      "short_size_bias": 1.0,
+      "max_size_mult": 0.55,
+      "disabled_strategy_sides": [
+        "dot_trend|long",
+        "link_trend|long",
+        "aave_trend|long",
+        "xrp_trend|long",
+        "avax_trend|long"
+      ]
     }
   },
   "strategy_overrides": {

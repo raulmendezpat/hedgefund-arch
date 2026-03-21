@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .contracts import PolicyRule, PolicyState
 
@@ -13,6 +13,23 @@ class FlatRejectRule(PolicyRule):
             state.size_mult = 0.0
             state.band = "reject"
             state.reason = "flat_signal"
+        return state
+
+
+@dataclass
+class StrategySideDisableRule(PolicyRule):
+    disabled_pairs: set[str] = field(default_factory=set)
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+
+        key = f"{str(state.strategy_id)}|{str(state.side).lower()}"
+        if key in set(self.disabled_pairs or set()):
+            state.accept = False
+            state.size_mult = 0.0
+            state.band = "reject"
+            state.reason = "disabled_strategy_side"
         return state
 
 
@@ -60,9 +77,11 @@ class BandSizingRule(PolicyRule):
             band = "normal"
             size = float(self.normal_size)
 
+        # High conviction intentionally disabled for now until ranking is recalibrated.
+        # Strong-looking candidates were empirically underperforming.
         if state.p_win >= 0.60 or state.expected_return >= 0.003 or state.score >= 0.0003:
-            band = "high_conviction"
-            size = float(self.high_conviction_size)
+            band = "normal"
+            size = float(self.normal_size)
 
         state.band = band
         state.size_mult = size
@@ -94,6 +113,28 @@ class RegimeAwareSizePenaltyRule(PolicyRule):
         if bool(state.tags.get("range_expansion_low", False)):
             state.size_mult *= float(self.penalty_range_expansion)
 
+        # Temporary directional penalty until long-side alpha is recalibrated.
+        if str(state.side).lower() == "long":
+            state.size_mult *= 0.50
+
+        return state
+
+
+@dataclass
+class SideBiasSizeRule(PolicyRule):
+    long_size_bias: float = 1.0
+    short_size_bias: float = 1.0
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+
+        side = str(state.side).lower()
+        if side == "long":
+            state.size_mult *= float(self.long_size_bias)
+        elif side == "short":
+            state.size_mult *= float(self.short_size_bias)
+
         return state
 
 
@@ -105,4 +146,15 @@ class MinSizeFloorRule(PolicyRule):
         if not state.accept:
             return state
         state.size_mult = max(float(self.min_size), float(state.size_mult))
+        return state
+
+
+@dataclass
+class MaxSizeClampRule(PolicyRule):
+    max_size: float = 1.0
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+        state.size_mult = min(float(self.max_size), float(state.size_mult))
         return state
