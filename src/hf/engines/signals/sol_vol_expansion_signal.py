@@ -109,13 +109,9 @@ class SolVolExpansionSignalEngine(SignalEngine):
                     out[sym] = self._flat(sym, "range_expansion_low", range_expansion=range_expansion)
                     continue
 
-            if atrp < float(self.atrp_min):
-                out[sym] = self._flat(sym, "atrp_low")
-                continue
+            atrp_low = atrp < float(self.atrp_min)
 
-            if adx < float(self.adx_min):
-                out[sym] = self._flat(sym, "adx_low")
-                continue
+            adx_low = adx < float(self.adx_min)
 
             if close_v >= float(bb_up) * float(self.breakout_mult):
                 if bool(self.require_directional_close) and close_v <= open_v:
@@ -191,6 +187,13 @@ class SolVolExpansionSignalEngine(SignalEngine):
 
             strength = 1.0 if side != "flat" else 0.0
 
+            # soft regime penalties (no hard rejection)
+            if side != "flat":
+                if 'atrp_low' in locals() and atrp_low:
+                    strength *= 0.6
+                if 'adx_low' in locals() and adx_low:
+                    strength *= 0.7
+
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
@@ -203,6 +206,9 @@ class SolVolExpansionSignalEngine(SignalEngine):
                     "rsi": rsi,
                     "bb_up": bb_up,
                     "bb_low": bb_low,
+                    "atrp_low": bool(locals().get("atrp_low", False)),
+                    "adx_low": bool(locals().get("adx_low", False)),
+                    "regime_as_metadata": True,
                 },
             )
 
