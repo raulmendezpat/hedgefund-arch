@@ -14,6 +14,7 @@ from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
 from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher
 from hf_core.selection_stages import load_selection_policy_config, AssetGateStage, SelectionPipeline
 from hf_core.pwin_ml_multiwindow import PWinMLMultiWindow
+from hf_core.pwin_ml_by_side import PWinMLBySide
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
 
@@ -184,6 +185,7 @@ def main() -> None:
     fb = FeatureBuilder()
     mm = MetaModel()
     mm.pwin_ml = PWinMLMultiWindow("artifacts/pwin_ml_multiwindow_v1/pwin_ml_operational_registry.json")
+    mm.pwin_ml_by_side = PWinMLBySide("artifacts/pwin_ml_by_side_v1/pwin_ml_by_side_operational_registry.json")
 
     policy_cfg = {}
     if args.policy_config and Path(args.policy_config).exists():

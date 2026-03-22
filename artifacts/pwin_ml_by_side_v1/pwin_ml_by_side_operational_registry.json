@@ -1,0 +1,25 @@
+{
+  "source_registry": "artifacts/pwin_ml_by_side_v1/pwin_ml_by_side_registry.json",
+  "models": {
+    "BNB/USDT:USDT|short": {
+      "path": "artifacts/pwin_ml_by_side_v1/pwin_model_BNB_USDT_USDT_short.joblib",
+      "recommended_apply": true,
+      "model_type": "extratrees",
+      "accuracy": 0.6072013093289689,
+      "balanced_accuracy": 0.6042617715767591,
+      "roc_auc": 0.6666184444587325,
+      "brier": 0.2372732458725938,
+      "fallback_mode": "symbol"
+    },
+    "ETH/USDT:USDT|long": {
+      "path": "artifacts/pwin_ml_by_side_v1/pwin_model_ETH_USDT_USDT_long.joblib",
+      "recommended_apply": true,
+      "model_type": "mlp",
+      "accuracy": 0.6163522012578616,
+      "balanced_accuracy": 0.6511684336269972,
+      "roc_auc": 0.6818164849932806,
+      "brier": 0.24236987028142584,
+      "fallback_mode": "symbol"
+    }
+  }
+}
