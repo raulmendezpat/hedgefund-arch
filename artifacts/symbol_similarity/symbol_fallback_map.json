@@ -1,0 +1,44 @@
+{
+  "BNB/USDT:USDT": {
+    "fallback_symbol": "LINK/USDT:USDT",
+    "similarity_score": 0.6706412557085675,
+    "feature_similarity": 0.9999122229117017,
+    "pwin_corr": 0.5689504808423888,
+    "return_corr": null
+  },
+  "BTC/USDT:USDT": {
+    "fallback_symbol": "ETH/USDT:USDT",
+    "similarity_score": 0.7048871440886345,
+    "feature_similarity": 0.9996385474271187,
+    "pwin_corr": 0.6835595679169174,
+    "return_corr": null
+  },
+  "ETH/USDT:USDT": {
+    "fallback_symbol": "BTC/USDT:USDT",
+    "similarity_score": 0.7048871440886345,
+    "feature_similarity": 0.9996385474271186,
+    "pwin_corr": 0.6835595679169174,
+    "return_corr": null
+  },
+  "LINK/USDT:USDT": {
+    "fallback_symbol": "ETH/USDT:USDT",
+    "similarity_score": 0.6841847348635796,
+    "feature_similarity": 0.9997323329439552,
+    "pwin_corr": 0.6143952279720064,
+    "return_corr": null
+  },
+  "SOL/USDT:USDT": {
+    "fallback_symbol": "LINK/USDT:USDT",
+    "similarity_score": 0.5169283805022278,
+    "feature_similarity": 0.983068978086311,
+    "pwin_corr": 0.08464630486357431,
+    "return_corr": null
+  },
+  "XRP/USDT:USDT": {
+    "fallback_symbol": "LINK/USDT:USDT",
+    "similarity_score": 0.6731903301396145,
+    "feature_similarity": 0.9997727122402487,
+    "pwin_corr": 0.5776799133983004,
+    "return_corr": null
+  }
+}

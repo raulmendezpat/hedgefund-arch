@@ -1,0 +1,331 @@
+{
+  "horizon": "24h",
+  "candidates_csv": "results/research_runtime_candidates_diag_6m_meta_patch_1.csv",
+  "attribution_csv": "results/performance_attribution_diag_6m_meta_patch_1.csv",
+  "models": {
+    "AAVE/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_AAVE_USDT_USDT.joblib",
+      "recommended_apply": true,
+      "fallback_mode": "symbol",
+      "model_type": "logreg",
+      "accuracy": 0.5490196078431373,
+      "balanced_accuracy": 0.5577364825067734,
+      "roc_auc": 0.5797885498880904,
+      "brier": 0.2501096494431518,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.5490196078431373,
+          "balanced_accuracy": 0.5577364825067734,
+          "roc_auc": 0.5797885498880904,
+          "brier": 0.2501096494431518
+        },
+        "mlp": {
+          "accuracy": 0.5728900255754475,
+          "balanced_accuracy": 0.5778051007185769,
+          "roc_auc": 0.5786400047119802,
+          "brier": 0.24668332713762148
+        },
+        "hgb": {
+          "accuracy": 0.5294117647058824,
+          "balanced_accuracy": 0.5371878313111085,
+          "roc_auc": 0.5502149840970668,
+          "brier": 0.256621434804006
+        },
+        "extratrees": {
+          "accuracy": 0.5754475703324808,
+          "balanced_accuracy": 0.5787312993285427,
+          "roc_auc": 0.5699051713982801,
+          "brier": 0.2480345065219578
+        }
+      }
+    },
+    "AVAX/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_AVAX_USDT_USDT.joblib",
+      "recommended_apply": false,
+      "fallback_mode": "symbol",
+      "model_type": "hgb",
+      "accuracy": 0.5439045183290707,
+      "balanced_accuracy": 0.5390282409183462,
+      "roc_auc": 0.5536444654292206,
+      "brier": 0.2542928293208364,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.5242966751918159,
+          "balanced_accuracy": 0.5175421252987872,
+          "roc_auc": 0.5056186738277215,
+          "brier": 0.25001914890468413
+        },
+        "mlp": {
+          "accuracy": 0.5379369138959932,
+          "balanced_accuracy": 0.5248472865700711,
+          "roc_auc": 0.5297606751851742,
+          "brier": 0.2505846448957556
+        },
+        "hgb": {
+          "accuracy": 0.5439045183290707,
+          "balanced_accuracy": 0.5390282409183462,
+          "roc_auc": 0.5536444654292206,
+          "brier": 0.2542928293208364
+        },
+        "extratrees": {
+          "accuracy": 0.5447570332480819,
+          "balanced_accuracy": 0.5328252722282881,
+          "roc_auc": 0.5262475285507717,
+          "brier": 0.248883042380922
+        }
+      }
+    },
+    "BNB/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_BNB_USDT_USDT.joblib",
+      "recommended_apply": false,
+      "fallback_mode": "symbol",
+      "model_type": "hgb",
+      "accuracy": 0.4927536231884058,
+      "balanced_accuracy": 0.49399650959860386,
+      "roc_auc": 0.5042699243746365,
+      "brier": 0.264985801822367,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.4390451832907076,
+          "balanced_accuracy": 0.437412739965096,
+          "roc_auc": 0.4728504944735311,
+          "brier": 0.255162501533651
+        },
+        "mlp": {
+          "accuracy": 0.4620630861040068,
+          "balanced_accuracy": 0.4594415357766143,
+          "roc_auc": 0.48447643979057586,
+          "brier": 0.25681730684515863
+        },
+        "hgb": {
+          "accuracy": 0.4927536231884058,
+          "balanced_accuracy": 0.49399650959860386,
+          "roc_auc": 0.5042699243746365,
+          "brier": 0.264985801822367
+        },
+        "extratrees": {
+          "accuracy": 0.473998294970162,
+          "balanced_accuracy": 0.47436736474694585,
+          "roc_auc": 0.49026468877254215,
+          "brier": 0.2539397339173229
+        }
+      }
+    },
+    "BTC/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_BTC_USDT_USDT.joblib",
+      "recommended_apply": false,
+      "fallback_mode": "symbol",
+      "model_type": "extratrees",
+      "accuracy": 0.48294970161977835,
+      "balanced_accuracy": 0.4751197080291971,
+      "roc_auc": 0.4799872262773723,
+      "brier": 0.25671744937218316,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.4718670076726343,
+          "balanced_accuracy": 0.46764233576642333,
+          "roc_auc": 0.4753021897810219,
+          "brier": 0.2536127696869923
+        },
+        "mlp": {
+          "accuracy": 0.4697357203751066,
+          "balanced_accuracy": 0.4585605839416058,
+          "roc_auc": 0.47865547445255474,
+          "brier": 0.26610697443478776
+        },
+        "hgb": {
+          "accuracy": 0.49104859335038364,
+          "balanced_accuracy": 0.4873284671532847,
+          "roc_auc": 0.4679470802919708,
+          "brier": 0.28081438531162867
+        },
+        "extratrees": {
+          "accuracy": 0.48294970161977835,
+          "balanced_accuracy": 0.4751197080291971,
+          "roc_auc": 0.4799872262773723,
+          "brier": 0.25671744937218316
+        }
+      }
+    },
+    "DOT/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_DOT_USDT_USDT.joblib",
+      "recommended_apply": true,
+      "fallback_mode": "symbol",
+      "model_type": "mlp",
+      "accuracy": 0.5856777493606138,
+      "balanced_accuracy": 0.5910496957403651,
+      "roc_auc": 0.6154396850017898,
+      "brier": 0.2387649389257957,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.5686274509803921,
+          "balanced_accuracy": 0.5799695740365112,
+          "roc_auc": 0.595674740484429,
+          "brier": 0.2386752364828945
+        },
+        "mlp": {
+          "accuracy": 0.5856777493606138,
+          "balanced_accuracy": 0.5910496957403651,
+          "roc_auc": 0.6154396850017898,
+          "brier": 0.2387649389257957
+        },
+        "hgb": {
+          "accuracy": 0.5404944586530265,
+          "balanced_accuracy": 0.5350659229208925,
+          "roc_auc": 0.551451199140914,
+          "brier": 0.2564034053314165
+        },
+        "extratrees": {
+          "accuracy": 0.587382779198636,
+          "balanced_accuracy": 0.583316430020284,
+          "roc_auc": 0.6094141510559599,
+          "brier": 0.23712128301830523
+        }
+      }
+    },
+    "ETH/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_ETH_USDT_USDT.joblib",
+      "recommended_apply": true,
+      "fallback_mode": "symbol",
+      "model_type": "mlp",
+      "accuracy": 0.577152600170503,
+      "balanced_accuracy": 0.5805056690006738,
+      "roc_auc": 0.5844490668854188,
+      "brier": 0.24518046909391128,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.6035805626598465,
+          "balanced_accuracy": 0.6061582632642897,
+          "roc_auc": 0.5771775114991358,
+          "brier": 0.2466127745428871
+        },
+        "mlp": {
+          "accuracy": 0.577152600170503,
+          "balanced_accuracy": 0.5805056690006738,
+          "roc_auc": 0.5844490668854188,
+          "brier": 0.24518046909391128
+        },
+        "hgb": {
+          "accuracy": 0.5157715260017051,
+          "balanced_accuracy": 0.5147247531714176,
+          "roc_auc": 0.5466191076084728,
+          "brier": 0.25534597977006485
+        },
+        "extratrees": {
+          "accuracy": 0.5959079283887468,
+          "balanced_accuracy": 0.5883924647701637,
+          "roc_auc": 0.5675563237922245,
+          "brier": 0.2463472333726524
+        }
+      }
+    },
+    "LINK/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_LINK_USDT_USDT.joblib",
+      "recommended_apply": false,
+      "fallback_mode": "symbol",
+      "model_type": "logreg",
+      "accuracy": 0.5345268542199488,
+      "balanced_accuracy": 0.5164596273291926,
+      "roc_auc": 0.5497404506856303,
+      "brier": 0.2485051863319086,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.5345268542199488,
+          "balanced_accuracy": 0.5164596273291926,
+          "roc_auc": 0.5497404506856303,
+          "brier": 0.2485051863319086
+        },
+        "mlp": {
+          "accuracy": 0.566069906223359,
+          "balanced_accuracy": 0.5432712215320911,
+          "roc_auc": 0.5343925345815705,
+          "brier": 0.24721915665249286
+        },
+        "hgb": {
+          "accuracy": 0.5328218243819267,
+          "balanced_accuracy": 0.5143892339544514,
+          "roc_auc": 0.5077369700243046,
+          "brier": 0.2626707732325674
+        },
+        "extratrees": {
+          "accuracy": 0.5404944586530265,
+          "balanced_accuracy": 0.5277432712215321,
+          "roc_auc": 0.522876346505836,
+          "brier": 0.2495654017051228
+        }
+      }
+    },
+    "TRX/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_TRX_USDT_USDT.joblib",
+      "recommended_apply": false,
+      "fallback_mode": "symbol",
+      "model_type": "logreg",
+      "accuracy": 0.5362318840579711,
+      "balanced_accuracy": 0.5128671532846716,
+      "roc_auc": 0.5487649635036497,
+      "brier": 0.2517444768518535,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.5362318840579711,
+          "balanced_accuracy": 0.5128671532846716,
+          "roc_auc": 0.5487649635036497,
+          "brier": 0.2517444768518535
+        },
+        "mlp": {
+          "accuracy": 0.514919011082694,
+          "balanced_accuracy": 0.49882481751824814,
+          "roc_auc": 0.49893722627737225,
+          "brier": 0.2545761771301742
+        },
+        "hgb": {
+          "accuracy": 0.5294117647058824,
+          "balanced_accuracy": 0.5256890510948905,
+          "roc_auc": 0.5188934306569343,
+          "brier": 0.2571183688097857
+        },
+        "extratrees": {
+          "accuracy": 0.5200341005967605,
+          "balanced_accuracy": 0.5004773722627738,
+          "roc_auc": 0.5168934306569344,
+          "brier": 0.2514575163378762
+        }
+      }
+    },
+    "XRP/USDT:USDT": {
+      "path": "artifacts/pwin_ml/pwin_model_XRP_USDT_USDT.joblib",
+      "recommended_apply": true,
+      "fallback_mode": "symbol",
+      "model_type": "extratrees",
+      "accuracy": 0.5618073316283035,
+      "balanced_accuracy": 0.5677564975430702,
+      "roc_auc": 0.5751805695340715,
+      "brier": 0.24457762557610985,
+      "all_results": {
+        "logreg": {
+          "accuracy": 0.5515771526001705,
+          "balanced_accuracy": 0.569887810076372,
+          "roc_auc": 0.5540258125629034,
+          "brier": 0.2465313007220139
+        },
+        "mlp": {
+          "accuracy": 0.5575447570332481,
+          "balanced_accuracy": 0.5688769167012018,
+          "roc_auc": 0.5559351133739862,
+          "brier": 0.24843968158032984
+        },
+        "hgb": {
+          "accuracy": 0.5481670929241261,
+          "balanced_accuracy": 0.5431783198152862,
+          "roc_auc": 0.5688902374045349,
+          "brier": 0.25269558427223604
+        },
+        "extratrees": {
+          "accuracy": 0.5618073316283035,
+          "balanced_accuracy": 0.5677564975430702,
+          "roc_auc": 0.5751805695340715,
+          "brier": 0.24457762557610985
+        }
+      }
+    }
+  }
+}

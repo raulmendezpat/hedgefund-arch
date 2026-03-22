@@ -1,10 +1,11 @@
+from hf_core.allocator import Allocator
 from .contracts import OpportunityCandidate, FeatureRow, MetaScore
 from .signal_engine import SignalEngine
 from .features import FeatureBuilder
 from .meta_model import MetaModel
 from .policy import PolicyDecision, PolicyModel
 from .allocation_bridge import AllocationBridge
-from .allocator import Allocation, Allocator
+from .allocator import Allocator
 
 from .context_enricher import AssetContextEnricher
 from .execution_projection import ProjectionResult, ProjectionFactory
