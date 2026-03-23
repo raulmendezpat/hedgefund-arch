@@ -12,7 +12,7 @@ from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 from hf.engines.opportunity_book import RegistryOpportunityBook
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
 from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher
-from hf_core.selection_stages import load_selection_policy_config, AssetGateStage, SelectionPipeline
+from hf_core.selection_stages import load_selection_policy_config, AssetGateStage, BestPerSymbolStage, SelectionPipeline
 from hf_core.pwin_ml_multiwindow import PWinMLMultiWindow
 from hf_core.pwin_ml_by_side import PWinMLBySide
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
@@ -149,6 +149,7 @@ def main() -> None:
     selection_pipeline = SelectionPipeline(
         stages=[
             AssetGateStage(selection_cfg, profile=str(args.selection_policy_profile)),
+            BestPerSymbolStage(score_field="policy_score"),
         ],
         trace_path=f"results/selection_trace_{str(args.name)}.jsonl",
     )
@@ -285,17 +286,6 @@ def main() -> None:
             if bool(getattr(d, "accept", False))
         ]
 
-
-        # === collapse por símbolo: mantener mejor score ===
-        best_by_symbol = {}
-        for c, fr, s, d in accepted_pack:
-            sym = str(getattr(c, "symbol", "") or "")
-            score = float(getattr(s, "score", 0.0) or 0.0)
-            if sym not in best_by_symbol or score > float(getattr(best_by_symbol[sym][2], "score", 0.0) or 0.0):
-                best_by_symbol[sym] = (c, fr, s, d)
-
-        accepted_pack = list(best_by_symbol.values())
-
         enriched_candidates_scored = []
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
             sm0 = dict(getattr(c, "signal_meta", {}) or {})
@@ -313,6 +303,11 @@ def main() -> None:
             enriched_candidates_scored.append(c)
 
         enriched_candidates = enriched_candidates_scored
+
+        selected_candidates, selected_decisions, selection_meta = selection_pipeline.run(
+            candidates=enriched_candidates,
+            decisions=decisions,
+        )
 
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
             sm = dict(getattr(c, "signal_meta", {}) or {})
@@ -369,27 +364,10 @@ def main() -> None:
                 "btc_adx": float(_feature_map.get("btc_adx", 0.0) or 0.0),
             })
 
-        alloc_inputs = []
-        for c, fr, s, d in accepted_pack:
-            _sm = dict(getattr(c, "signal_meta", {}) or {})
-            alloc_inputs.append({
-                "symbol": str(getattr(c, "symbol", "") or ""),
-                "side": str(getattr(c, "side", "flat") or "flat"),
-                "score": float(getattr(s, "score", 0.0) or 0.0),
-                "p_win": float(getattr(s, "p_win", 0.5) or 0.5),
-                "expected_return": float(getattr(s, "expected_return", 0.0) or 0.0),
-                "base_weight": float(getattr(c, "base_weight", 1.0) or 1.0),
-                "meta": {
-                    **_sm,
-                    "score": float(getattr(s, "score", 0.0) or 0.0),
-                    "p_win": float(getattr(s, "p_win", 0.5) or 0.5),
-                    "expected_return": float(getattr(s, "expected_return", 0.0) or 0.0),
-                    "policy_score": float(getattr(d, "policy_score", 0.0) or 0.0),
-                    "policy_band": str(getattr(d, "band", "") or ""),
-                    "policy_reason": str(getattr(d, "reason", "") or ""),
-                    "policy_size_mult": float(getattr(d, "size_mult", 0.0) or 0.0),
-                },
-            })
+        alloc_inputs = bridge.to_allocator_inputs(
+            candidates=selected_candidates,
+            decisions=selected_decisions,
+        )
 
         alloc = allocator.allocate(candidates=alloc_inputs)
 
@@ -402,17 +380,18 @@ def main() -> None:
                 "ts": str(ts),
                 "n_candidates": int(len(enriched_candidates)),
                 "n_accepts": int(len(accepted_pack)),
+                "n_selected_after_pipeline": int(len(selected_candidates)),
                 "n_alloc_inputs": int(len(alloc_inputs)),
                 "n_weighted": int(sum(1 for _, v in weights.items() if abs(float(v or 0.0)) > 0.0)),
                 "gross_weight": float(_gross_weight),
-                "accepted_symbols": [str(getattr(c, "symbol", "") or "") for c, _, _, _ in accepted_pack],
+                "accepted_symbols": [str(getattr(c, "symbol", "") or "") for c in selected_candidates],
                 "accepted_scores": {
-                    str(getattr(c, "symbol", "") or ""): float(getattr(s, "score", 0.0) or 0.0)
-                    for c, _, s, _ in accepted_pack
+                    str(getattr(c, "symbol", "") or ""): float(dict(getattr(c, "signal_meta", {}) or {}).get("policy_score", 0.0) or 0.0)
+                    for c in selected_candidates
                 },
                 "accepted_pwins": {
-                    str(getattr(c, "symbol", "") or ""): float(getattr(s, "p_win", 0.0) or 0.0)
-                    for c, _, s, _ in accepted_pack
+                    str(getattr(c, "symbol", "") or ""): float(dict(getattr(c, "signal_meta", {}) or {}).get("p_win", 0.0) or 0.0)
+                    for c in selected_candidates
                 },
                 "weights": {str(k): float(v or 0.0) for k, v in weights.items()},
                 "raw_scores": dict(_alloc_meta.get("raw_scores", {}) or {}),

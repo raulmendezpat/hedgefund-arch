@@ -40,3 +40,39 @@ class AllocationBridge:
             )
 
         return out
+
+    def to_allocator_inputs(
+        self,
+        *,
+        candidates: list[OpportunityCandidate],
+        decisions: list[PolicyDecision],
+    ) -> list[dict]:
+        bridged = self.apply(candidates=candidates, decisions=decisions)
+
+        out: list[dict] = []
+        for c in bridged:
+            meta = dict(c.signal_meta or {})
+
+            policy_score = float(meta.get("policy_score", meta.get("score", 0.0)) or 0.0)
+            p_win = float(meta.get("p_win", meta.get("ml_p_win", 0.5)) or 0.5)
+            expected_return = float(meta.get("expected_return", 0.0) or 0.0)
+
+            out.append(
+                {
+                    "symbol": str(c.symbol),
+                    "side": str(c.side),
+                    "score": float(policy_score),
+                    "p_win": float(p_win),
+                    "expected_return": float(expected_return),
+                    "base_weight": float(c.base_weight),
+                    "meta": {
+                        **meta,
+                        "score": float(policy_score),
+                        "policy_score": float(policy_score),
+                        "p_win": float(p_win),
+                        "expected_return": float(expected_return),
+                    },
+                }
+            )
+
+        return out
