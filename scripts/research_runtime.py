@@ -12,7 +12,7 @@ from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 from hf.engines.opportunity_book import RegistryOpportunityBook
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
 from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher
-from hf_core.selection_stages import load_selection_policy_config, AssetGateStage, BestPerSymbolStage, SelectionPipeline
+from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
 from hf_core.pwin_ml_multiwindow import PWinMLMultiWindow
 from hf_core.pwin_ml_by_side import PWinMLBySide
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
@@ -146,11 +146,9 @@ def main() -> None:
     args = ap.parse_args()
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
-    selection_pipeline = SelectionPipeline(
-        stages=[
-            AssetGateStage(selection_cfg, profile=str(args.selection_policy_profile)),
-            BestPerSymbolStage(score_field="policy_score"),
-        ],
+    selection_pipeline = SelectionPipelineFactory.build(
+        config=selection_cfg,
+        profile=str(args.selection_policy_profile),
         trace_path=f"results/selection_trace_{str(args.name)}.jsonl",
     )
 
@@ -299,6 +297,12 @@ def main() -> None:
             sm0["policy_reason"] = str(getattr(d, "reason", "") or "")
             sm0["policy_size_mult"] = float(getattr(d, "size_mult", 0.0) or 0.0)
             sm0["accept"] = bool(getattr(d, "accept", False))
+            sm0["portfolio_regime"] = portfolio_context.get("portfolio_regime")
+            sm0["portfolio_breadth"] = portfolio_context.get("portfolio_breadth")
+            sm0["portfolio_avg_pwin"] = portfolio_context.get("portfolio_avg_pwin")
+            sm0["portfolio_avg_atrp"] = portfolio_context.get("portfolio_avg_atrp")
+            sm0["portfolio_avg_strength"] = portfolio_context.get("portfolio_avg_strength")
+            sm0["portfolio_conviction"] = portfolio_context.get("portfolio_conviction")
             c.signal_meta = sm0
             enriched_candidates_scored.append(c)
 

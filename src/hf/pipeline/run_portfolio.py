@@ -933,6 +933,51 @@ def run(
             _selected_opps = select_opportunities(_last_opps, mode=str(opportunity_selection_mode)) if _last_opps else []
             selected_opps_for_alloc = list(_selected_opps)
 
+            try:
+                from hf_core.selection_engine import compute_enhanced_score, apply_cross_sectional_ranking
+
+                if selected_opps_for_alloc:
+                    _sel_rows = []
+                    for _opp in list(selected_opps_for_alloc):
+                        _meta = dict(getattr(_opp, "meta", {}) or {})
+                        _sel_rows.append({
+                            "symbol": str(getattr(_opp, "symbol", "")),
+                            "strategy_id": str(getattr(_opp, "strategy_id", "")),
+                            "side": str(getattr(_opp, "side", "flat")),
+                            "strength": float(getattr(_opp, "strength", 0.0) or 0.0),
+                            "p_win": float(_meta.get("p_win", 0.0) or 0.0),
+                            "base_weight": float(_meta.get("base_weight", 0.0) or 0.0),
+                            "competitive_score": float(_meta.get("competitive_score", 0.0) or 0.0),
+                            "post_ml_score": float(_meta.get("post_ml_score", 0.0) or 0.0),
+                        })
+
+                    _sel_df = pd.DataFrame(_sel_rows)
+                    if not _sel_df.empty:
+                        _sel_df = compute_enhanced_score(_sel_df)
+                        _sel_df = apply_cross_sectional_ranking(_sel_df, top_pct=0.20)
+
+                        _keep_keys = {
+                            (
+                                str(r["symbol"]),
+                                str(r["strategy_id"]),
+                                str(r["side"]),
+                                round(float(r["strength"]), 10),
+                            )
+                            for _, r in _sel_df[_sel_df["accept_ranked"] == True].iterrows()
+                        }
+
+                        selected_opps_for_alloc = [
+                            _opp for _opp in list(selected_opps_for_alloc)
+                            if (
+                                str(getattr(_opp, "symbol", "")),
+                                str(getattr(_opp, "strategy_id", "")),
+                                str(getattr(_opp, "side", "flat")),
+                                round(float(getattr(_opp, "strength", 0.0) or 0.0), 10),
+                            ) in _keep_keys
+                        ]
+            except Exception as e:
+                print("WARNING selection_engine:", e)
+
             _rebuilt_signals = {}
             for _opp in _selected_opps:
                 _rebuilt_signals[str(_opp.symbol)] = Signal(

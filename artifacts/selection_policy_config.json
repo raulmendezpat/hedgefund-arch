@@ -1,0 +1,30 @@
+{
+  "default_profile": "research",
+  "profiles": {
+    "research": {
+      "asset_gate": {
+        "min_pwin_strong": 0.8,
+        "min_pwin_contextual": 0.7,
+        "min_policy_score": 1e-06,
+        "min_pwin_rank": 0.7,
+        "min_postml_rank": 0.6,
+        "min_competitive_rank": 0.55
+      },
+      "asset_rank": {
+        "top_k_per_symbol": 1
+      },
+      "universe_gate": {
+        "min_global_score_rank": 0.65
+      },
+      "universe_rank": {
+        "top_frac": 0.35,
+        "min_keep": 1
+      },
+      "trace": {
+        "enabled": true
+      }
+    }
+  },
+  "asset_overrides": {},
+  "asset_side_overrides": {}
+}

@@ -20,12 +20,19 @@ class Allocator:
         self.profile = str(profile)
         self.projection_profile = str(projection_profile)
 
+        score_mode = "policy_first" if self.profile in {"symbol_net", "policy_first", "snapshot_v2"} else "pwin_expected_return"
+
         self.engine = build_snapshot_allocator(
             target_exposure=self.target_exposure,
             symbol_cap=self.symbol_cap,
-            min_pwin=0.57,
+            min_pwin=0.0 if score_mode == "policy_first" else 0.55,
             temperature=0.05,
             use_expected_return=True,
+            score_mode=score_mode,
+            min_policy_score=0.0,
+            p0=0.50,
+            pwin_scale=2.0,
+            er_scale=500.0,
         )
 
     def _to_candidate(self, item) -> AllocationCandidate | None:

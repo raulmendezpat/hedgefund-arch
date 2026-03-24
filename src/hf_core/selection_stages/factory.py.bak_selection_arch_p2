@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+from .pipeline import SelectionPipeline
+from .stage_asset_gate import AssetGateStage
+from .stage_alpha_selection import AlphaSelectionStage
+from .stage_best_per_symbol import BestPerSymbolStage
+
+
+class SelectionPipelineFactory:
+    @staticmethod
+    def build(*, config: dict, profile: str, trace_path: str) -> SelectionPipeline:
+        return SelectionPipeline(
+            stages=[
+                AssetGateStage(config, profile=str(profile)),
+                AlphaSelectionStage(config, profile=str(profile)),
+                BestPerSymbolStage(score_field="policy_score"),
+            ],
+            trace_path=str(trace_path),
+        )

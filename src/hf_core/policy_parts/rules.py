@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import exp
 
 from .contracts import PolicyRule, PolicyState
 
@@ -178,3 +179,190 @@ class MaxSizeClampRule(PolicyRule):
             return state
         state.size_mult = min(float(self.max_size), float(state.size_mult))
         return state
+
+
+def _clip(x: float, lo: float, hi: float) -> float:
+    return max(float(lo), min(float(hi), float(x)))
+
+
+def _sigmoid(x: float) -> float:
+    if x >= 0:
+        z = exp(-float(x))
+        return 1.0 / (1.0 + z)
+    z = exp(float(x))
+    return z / (1.0 + z)
+
+
+@dataclass
+class AlphaConfidenceTagRule(PolicyRule):
+    conf_overconfidence_w: float = 1.75
+    conf_shrink_w: float = 1.25
+    conf_min: float = 0.05
+    conf_max: float = 1.0
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        mm = dict(state.model_meta or {})
+        overconf = float(mm.get("overconfidence_penalty", 0.0) or 0.0)
+        shrink_weight = float(mm.get("shrink_weight", 0.0) or 0.0)
+
+        conf = 1.0 / (
+            1.0
+            + float(self.conf_overconfidence_w) * max(0.0, overconf)
+            + float(self.conf_shrink_w) * max(0.0, shrink_weight)
+        )
+        conf = _clip(conf, float(self.conf_min), float(self.conf_max))
+        state.tags["alpha_conf"] = float(conf)
+        return state
+
+
+@dataclass
+class AlphaEdgeTagRule(PolicyRule):
+    win_proxy: float = 0.015
+    loss_proxy: float = 0.010
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        p_final = float(state.p_win)
+        win_proxy = max(1e-9, float(self.win_proxy))
+        loss_proxy = max(1e-9, float(self.loss_proxy))
+
+        mu = float(p_final * win_proxy - (1.0 - p_final) * loss_proxy)
+        b = float(win_proxy / loss_proxy)
+        kelly = float(p_final - (1.0 - p_final) / max(b, 1e-9))
+
+        state.tags["alpha_mu"] = float(mu)
+        state.tags["alpha_b"] = float(b)
+        state.tags["alpha_kelly"] = float(kelly)
+        return state
+
+
+@dataclass
+class AlphaProbabilityAdjustTagRule(PolicyRule):
+    p0: float = 0.52
+    kp: float = 10.0
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        p_adj = float(_sigmoid(float(self.kp) * (float(state.p_win) - float(self.p0))))
+        state.tags["alpha_p_adj"] = float(p_adj)
+        return state
+
+
+@dataclass
+class AlphaRescoreFromTagsRule(PolicyRule):
+    raw_score_weight: float = 0.35
+    alpha_score_weight: float = 0.65
+    score_ref: float = 0.00008
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+
+        raw_score = max(0.0, float(state.score))
+        conf = float(state.tags.get("alpha_conf", 1.0) or 1.0)
+        mu = float(state.tags.get("alpha_mu", 0.0) or 0.0)
+        kelly = float(state.tags.get("alpha_kelly", 0.0) or 0.0)
+        p_adj = float(state.tags.get("alpha_p_adj", 0.0) or 0.0)
+
+        alpha_core = float(max(0.0, mu) * max(0.0, kelly) * conf * p_adj)
+        rescored = float(
+            float(self.raw_score_weight) * raw_score
+            + float(self.alpha_score_weight) * alpha_core
+        )
+
+        score_ref = max(1e-9, float(self.score_ref))
+        score_ratio = _clip(rescored / score_ref, 0.0, 4.0)
+
+        state.tags["raw_score_pre_alpha"] = float(raw_score)
+        state.tags["alpha_core_score"] = float(alpha_core)
+        state.tags["alpha_score_ratio"] = float(score_ratio)
+        state.score = float(rescored)
+
+        if state.reason == "init":
+            state.reason = "alpha_rescored"
+
+        return state
+
+
+@dataclass
+class AlphaKillRule(PolicyRule):
+    kill_pwin_floor: float = 0.47
+    kill_conf_floor: float = 0.32
+    require_positive_expected_return: bool = True
+    apply_only_in_defensive_longs: bool = True
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+
+        mm = dict(state.model_meta or {})
+        regime = str(mm.get("regime", "unknown") or "unknown").lower()
+        side = str(state.side).lower()
+
+        apply_gate = True
+        if bool(self.apply_only_in_defensive_longs):
+            apply_gate = (regime == "defensive" and side == "long")
+
+        if not apply_gate:
+            state.tags["alpha_gate_applied"] = False
+            return state
+
+        p_final = float(state.p_win)
+        conf = float(state.tags.get("alpha_conf", 1.0) or 1.0)
+        exp_ret = float(state.expected_return)
+
+        kill = False
+        if bool(self.require_positive_expected_return) and exp_ret <= 0.0:
+            kill = True
+        if p_final < float(self.kill_pwin_floor):
+            kill = True
+        if conf < float(self.kill_conf_floor):
+            kill = True
+
+        state.tags["alpha_gate_applied"] = True
+        state.tags["alpha_gate_regime"] = str(regime)
+        state.tags["alpha_gate_side"] = str(side)
+        state.tags["alpha_kill_candidate"] = bool(kill)
+
+        if kill:
+            state.accept = False
+            state.size_mult = 0.0
+            state.band = "reject"
+            state.reason = "alpha_kill"
+
+        return state
+
+
+@dataclass
+class AlphaSizeBlendRule(PolicyRule):
+    score_ratio_floor: float = 0.0
+    score_ratio_cap: float = 4.0
+    size_min: float = 0.25
+    size_max: float = 1.35
+    base_add: float = 0.35
+    linear_w: float = 0.45
+    sqrt_w: float = 0.20
+
+    def apply(self, state: PolicyState) -> PolicyState:
+        if not state.accept:
+            return state
+
+        score_ratio = float(state.tags.get("alpha_score_ratio", 0.0) or 0.0)
+        score_ratio = _clip(
+            score_ratio,
+            float(self.score_ratio_floor),
+            float(self.score_ratio_cap),
+        )
+
+        alpha_mult = float(
+            _clip(
+                float(self.base_add)
+                + float(self.linear_w) * score_ratio
+                + float(self.sqrt_w) * (score_ratio ** 0.5),
+                float(self.size_min),
+                float(self.size_max),
+            )
+        )
+
+        state.tags["alpha_size_mult"] = float(alpha_mult)
+        state.size_mult *= alpha_mult
+        return state
+

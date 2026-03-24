@@ -5,6 +5,15 @@ import pandas as pd
 from .contracts import SelectionContext
 
 
+def _safe_float(x, default: float = 0.0) -> float:
+    try:
+        if x is None:
+            return float(default)
+        return float(x)
+    except Exception:
+        return float(default)
+
+
 class BestPerSymbolStage:
     def __init__(self, score_field: str = "policy_score"):
         self.score_field = str(score_field or "policy_score")
@@ -21,6 +30,13 @@ class BestPerSymbolStage:
             if int(r.idx) not in keep_set:
                 continue
 
+            selection_meta = getattr(r, "selection_meta", None)
+            if not isinstance(selection_meta, dict):
+                selection_meta = {}
+
+            alpha_meta = dict(selection_meta.get("alpha_selection", {}) or {})
+            alpha_score = _safe_float(alpha_meta.get("score", 0.0), 0.0)
+
             rows.append(
                 {
                     "idx": int(r.idx),
@@ -29,6 +45,7 @@ class BestPerSymbolStage:
                     "strategy_id": str(r.strategy_id),
                     "side": str(r.side),
                     "policy_score": float(r.policy_score),
+                    "alpha_score": float(alpha_score),
                     "p_win": float(r.p_win),
                     "post_ml_score": float(r.post_ml_score),
                     "competitive_score": float(r.competitive_score),

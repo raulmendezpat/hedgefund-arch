@@ -52,6 +52,8 @@ class AssetGateStage:
             rcfg = resolve_profile_config(self.cfg, symbol=symbol, side=side, profile=self.profile)
             ag = dict(rcfg.get("asset_gate", {}) or {})
 
+            gate_mode = str(ag.get("mode", "strict") or "strict").lower()
+
             g["pwin_rank"] = _pct_rank(g["p_win"])
             g["postml_rank"] = _pct_rank(g["post_ml_score"])
             g["competitive_rank"] = _pct_rank(g["competitive_score"])
@@ -97,7 +99,14 @@ class AssetGateStage:
                 })
 
         out = pd.concat(keep_parts, ignore_index=False)
-        ctx.selected_idx = out.loc[out["stage_asset_gate_pass"].eq(True), "idx"].astype(int).tolist()
+
+        # modo observe_only: no filtrar, solo observar
+        if gate_mode in {"observe_only", "bypass", "off"}:
+            ctx.selected_idx = out["idx"].astype(int).tolist()
+        else:
+            ctx.selected_idx = out.loc[out["stage_asset_gate_pass"].eq(True), "idx"].astype(int).tolist()
+
         ctx.trace_rows.extend(trace_rows)
         ctx.meta["asset_gate_kept"] = int(len(ctx.selected_idx))
+        ctx.meta["asset_gate_mode"] = str(gate_mode)
         return ctx

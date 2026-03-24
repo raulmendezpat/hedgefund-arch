@@ -1,4 +1,8 @@
-from .config import load_selection_policy_config, resolve_profile_config
-from .stage_asset_gate import AssetGateStage
+from .config import load_selection_policy_config
 from .pipeline import SelectionPipeline
+from .factory import SelectionPipelineFactory
+from .stage_asset_gate import AssetGateStage
+from .stage_alpha_selection import AlphaSelectionStage
 from .stage_best_per_symbol import BestPerSymbolStage
+from .stage_contextual_eligibility import ContextualEligibilityStage
+from .stage_strategy_regime_eligibility import StrategyRegimeEligibilityStage

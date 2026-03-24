@@ -17,12 +17,14 @@ class SelectionRow:
     signal_strength: float
     base_weight: float
     p_win: float
+    expected_return: float
     post_ml_score: float
     competitive_score: float
     policy_score: float
     policy_band: str
     policy_reason: str
     policy_size_mult: float
+    selection_meta: dict[str, Any]
     accept_in: bool
     meta: dict[str, Any] = field(default_factory=dict)
 

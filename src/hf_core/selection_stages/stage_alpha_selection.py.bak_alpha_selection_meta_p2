@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from .contracts import SelectionContext
+
+
+class AlphaSelectionStage:
+    def __init__(self, cfg: dict | None = None, profile: str = "research"):
+        self.cfg = dict(cfg or {})
+        self.profile = str(profile or "research")
+
+    def _profile_cfg(self) -> dict:
+        profiles = self.cfg.get("profiles", {})
+        prof = profiles.get(self.profile, {}) if isinstance(profiles, dict) else {}
+        return dict(prof or {})
+
+    def apply(self, ctx: SelectionContext) -> SelectionContext:
+        if not ctx.rows:
+            ctx.selected_idx = []
+            return ctx
+
+        cfg = self._profile_cfg()
+
+        min_policy_score = float(cfg.get("alpha_selection_min_policy_score", 0.0))
+        min_p_win = float(cfg.get("alpha_selection_min_p_win", 0.0))
+        min_expected_return = float(cfg.get("alpha_selection_min_expected_return", 0.0))
+        min_size_mult = float(cfg.get("alpha_selection_min_size_mult", 0.0))
+        require_accept = bool(cfg.get("alpha_selection_require_accept", True))
+
+        current = set(int(x) for x in list(ctx.selected_idx or []))
+        kept = []
+        trace_rows = []
+
+        for r in ctx.rows:
+            idx = int(r.idx)
+            if idx not in current:
+                continue
+
+            accept = bool(getattr(r, "accept_in", False))
+            policy_score = float(getattr(r, "policy_score", 0.0) or 0.0)
+            p_win = float(getattr(r, "p_win", 0.0) or 0.0)
+            expected_return = float(getattr(r, "expected_return", 0.0) or 0.0)
+            policy_size_mult = float(getattr(r, "policy_size_mult", 0.0) or 0.0)
+
+            reasons = []
+            keep = True
+
+            if require_accept and not accept:
+                keep = False
+                reasons.append("accept_false")
+            if policy_score < min_policy_score:
+                keep = False
+                reasons.append("policy_score_below_min")
+            if p_win < min_p_win:
+                keep = False
+                reasons.append("p_win_below_min")
+            if expected_return < min_expected_return:
+                keep = False
+                reasons.append("expected_return_below_min")
+            if policy_size_mult < min_size_mult:
+                keep = False
+                reasons.append("policy_size_mult_below_min")
+
+            if keep:
+                kept.append(idx)
+
+            trace_rows.append(
+                {
+                    "stage": "alpha_selection",
+                    "idx": idx,
+                    "ts": int(r.ts),
+                    "symbol": str(r.symbol),
+                    "strategy_id": str(r.strategy_id),
+                    "side": str(r.side),
+                    "accept": bool(accept),
+                    "policy_score": float(policy_score),
+                    "p_win": float(p_win),
+                    "expected_return": float(expected_return),
+                    "policy_size_mult": float(policy_size_mult),
+                    "kept": bool(keep),
+                    "reasons": list(reasons),
+                }
+            )
+
+        ctx.selected_idx = kept
+        ctx.trace_rows.extend(trace_rows)
+        ctx.meta["alpha_selection_kept"] = int(len(kept))
+        return ctx

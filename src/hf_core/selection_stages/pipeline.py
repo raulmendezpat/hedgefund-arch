@@ -34,6 +34,7 @@ class SelectionPipeline:
                     signal_strength=float(getattr(c, "signal_strength", meta.get("strength", 0.0)) or 0.0),
                     base_weight=float(getattr(c, "base_weight", meta.get("base_weight", 0.0)) or 0.0),
                     p_win=float(meta.get("p_win", meta.get("ml_p_win", 0.0)) or 0.0),
+                    expected_return=float(meta.get("expected_return", 0.0) or 0.0),
                     post_ml_score=float(meta.get("post_ml_score", 0.0) or 0.0),
                     competitive_score=float(meta.get("competitive_score", 0.0) or 0.0),
                     policy_score=float(meta.get("policy_score", meta.get("score", 0.0)) or 0.0),
@@ -41,6 +42,7 @@ class SelectionPipeline:
                     policy_reason=str(meta.get("policy_reason", meta.get("reason", "")) or ""),
                     policy_size_mult=float(meta.get("policy_size_mult", meta.get("size_mult", 0.0)) or 0.0),
                     accept_in=bool(meta.get("accept", True)),
+                    selection_meta={},
                     meta=meta,
                 )
             )
@@ -80,6 +82,7 @@ class SelectionPipeline:
                     signal_strength=float(getattr(c, "signal_strength", 0.0) or 0.0),
                     base_weight=float(getattr(c, "base_weight", 0.0) or 0.0),
                     p_win=float(meta.get("p_win", 0.0) or 0.0),
+                    expected_return=float(meta.get("expected_return", 0.0) or 0.0),
                     post_ml_score=float(meta.get("post_ml_score", 0.0) or 0.0),
                     competitive_score=float(meta.get("competitive_score", 0.0) or 0.0),
                     policy_score=float(getattr(d, "policy_score", 0.0) or 0.0),
@@ -87,6 +90,7 @@ class SelectionPipeline:
                     policy_reason=str(getattr(d, "reason", "") or ""),
                     policy_size_mult=float(getattr(d, "size_mult", 0.0) or 0.0),
                     accept_in=bool(getattr(d, "accept", False)),
+                    selection_meta={},
                     meta=meta,
                 )
             )
