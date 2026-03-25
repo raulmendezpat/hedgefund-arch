@@ -11,12 +11,13 @@ import pandas as pd
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 from hf.engines.opportunity_book import RegistryOpportunityBook
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
-from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher
+from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher, LegacyAllocationEngine, ResearchAllocationRouter, build_legacy_allocation_config_from_args, build_legacy_allocation_engine
 from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
 from hf_core.pwin_ml_multiwindow import PWinMLMultiWindow
 from hf_core.pwin_ml_by_side import PWinMLBySide
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
+from hf_core.legacy_score_projector import LegacyScoreProjector
 
 
 def load_registry(path: str) -> list[dict]:
@@ -37,20 +38,24 @@ def extract_symbols(rows: list[dict]) -> list[str]:
     return out
 
 
-def load_symbol_df(symbol: str, start: str, exchange: str, cache_dir: str) -> pd.DataFrame:
+def load_symbol_df(symbol: str, start: str, end: str | None, exchange: str, cache_dir: str) -> pd.DataFrame:
+    end_ms = dt_to_ms_utc(end) if end else None
+
     df = fetch_ohlcv_ccxt(
         symbol=symbol,
         timeframe="1h",
         start_ms=dt_to_ms_utc(start),
-        end_ms=None,
+        end_ms=end_ms,
         exchange_id=exchange,
         cache_dir=cache_dir,
         use_cache=True,
-        refresh_if_no_end=True,
+        refresh_if_no_end=bool(end is None),
     ).copy()
 
     df["ts"] = pd.to_datetime(pd.to_numeric(df["timestamp"], errors="coerce"), unit="ms", utc=True, errors="coerce")
     df = df[df["ts"] >= pd.Timestamp(start, tz="UTC")].copy()
+    if end:
+        df = df[df["ts"] <= pd.Timestamp(end, tz="UTC")].copy()
     df = df.set_index("ts").sort_index()
     return df
 
@@ -261,6 +266,7 @@ def build_selection_stage_summary(trace_path: str | Path) -> pd.DataFrame:
     return summary
 
 
+
 def compute_metrics(port_ret: pd.Series, equity: pd.Series) -> dict:
     ret = pd.to_numeric(port_ret, errors="coerce").fillna(0.0)
     eq = pd.to_numeric(equity, errors="coerce").ffill().fillna(1000.0)
@@ -290,6 +296,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
     ap.add_argument("--start", required=True)
+    ap.add_argument("--end", default=None)
     ap.add_argument("--strategy-registry", required=True)
     ap.add_argument("--exchange", default="binanceusdm")
     ap.add_argument("--cache-dir", default="data/cache")
@@ -297,6 +304,25 @@ def main() -> None:
     ap.add_argument("--symbol-cap", type=float, default=0.50)
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
+    ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "legacy_multi_strategy"])
+    ap.add_argument("--legacy-score-power", type=float, default=1.0)
+    ap.add_argument("--legacy-min-score", type=float, default=1e-12)
+    ap.add_argument("--legacy-symbol-score-agg", default="sum", choices=["sum", "max"])
+    ap.add_argument("--legacy-normalize-total", action="store_true")
+    ap.add_argument("--legacy-switch-hysteresis", type=float, default=0.10)
+    ap.add_argument("--legacy-min-switch-bars", type=int, default=6)
+    ap.add_argument("--legacy-rebalance-deadband", type=float, default=0.03)
+    ap.add_argument("--legacy-weight-blend-alpha", type=float, default=0.55)
+    ap.add_argument("--legacy-allocator-smoothing-alpha", type=float, default=0.0)
+    ap.add_argument("--legacy-allocator-smoothing-snap-eps", type=float, default=0.0)
+    ap.add_argument("--legacy-portfolio-regime-defensive-scale", type=float, default=1.0)
+    ap.add_argument("--legacy-portfolio-regime-defensive-conviction-k", type=float, default=0.0)
+    ap.add_argument("--legacy-portfolio-regime-aggressive-scale", type=float, default=1.0)
+    ap.add_argument("--legacy-portfolio-breadth-high-risk", type=int, default=0)
+    ap.add_argument("--legacy-portfolio-pwin-high-risk", type=float, default=0.0)
+    ap.add_argument("--legacy-portfolio-high-risk-scale", type=float, default=1.0)
+    ap.add_argument("--legacy-strategy-side-post-ml-weight-rules", default="")
+    ap.add_argument("--legacy-allocator-max-step-per-bar", type=float, default=1.0)
     ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     ap.add_argument("--selection-policy-config", default="artifacts/selection_policy_config.json")
@@ -316,7 +342,7 @@ def main() -> None:
     registry_rows = load_registry(args.strategy_registry)
     symbols = extract_symbols(registry_rows)
 
-    data_by_symbol = {sym: load_symbol_df(sym, args.start, args.exchange, args.cache_dir) for sym in symbols}
+    data_by_symbol = {sym: load_symbol_df(sym, args.start, args.end, args.exchange, args.cache_dir) for sym in symbols}
     feature_series_by_symbol = {sym: build_feature_map(df, sym) for sym, df in data_by_symbol.items()}
 
     enriched_feature_frames = {}
@@ -360,14 +386,31 @@ def main() -> None:
         profile=str(args.allocator_profile),
         projection_profile=str(args.projection_profile),
     )
+    legacy_score_projector = LegacyScoreProjector(
+        use_policy_scaled_base_weight=False,
+        inject_post_ml_competitive_score=True,
+    )
+    legacy_allocation_config = build_legacy_allocation_config_from_args(args)
+    legacy_allocation_engine = build_legacy_allocation_engine(
+        config=legacy_allocation_config,
+    )
+    allocation_router = ResearchAllocationRouter(
+        snapshot_allocator=allocator,
+        legacy_allocation_engine=legacy_allocation_engine,
+    )
     context_enricher = AssetContextEnricher()
 
     rows = []
     candidate_rows = []
     equity = 1000.0
+    prev_alloc = None
     alloc_trace_path = Path(f"results/allocation_trace_{str(args.name)}.jsonl")
     if alloc_trace_path.exists():
         alloc_trace_path.unlink()
+
+    alloc_input_trace_path = Path(f"results/allocation_inputs_trace_{str(args.name)}.jsonl")
+    if alloc_input_trace_path.exists():
+        alloc_input_trace_path.unlink()
 
     for ts in common_ts:
         candles = {}
@@ -423,7 +466,7 @@ def main() -> None:
             _c = seed_candidate_meta(_c)
             enriched_candidates.append(_c)
 
-        portfolio_context = build_portfolio_context(enriched_candidates)
+        portfolio_context = build_portfolio_context(enriched_candidates, score_mode="early")
 
         feature_rows = []
         for c in enriched_candidates:
@@ -443,14 +486,53 @@ def main() -> None:
             if bool(getattr(d, "accept", False))
         ]
 
+        opp_index = {}
+        for _opp in opps:
+            _key = (
+                str(getattr(_opp, "symbol", "") or ""),
+                str(getattr(_opp, "strategy_id", "") or ""),
+                str(getattr(_opp, "side", "") or ""),
+            )
+            opp_index[_key] = _opp
+
         enriched_candidates_scored = []
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
             sm0 = dict(getattr(c, "signal_meta", {}) or {})
             sm0["p_win"] = float(getattr(s, "p_win", 0.0) or 0.0)
             sm0["expected_return"] = float(getattr(s, "expected_return", 0.0) or 0.0)
             sm0["score"] = float(getattr(s, "score", 0.0) or 0.0)
-            sm0["post_ml_score"] = float(sm0.get("meta_post_ml_score", sm0.get("post_ml_score", 0.0)) or 0.0)
-            sm0["competitive_score"] = float(sm0.get("meta_competitive_score", sm0.get("competitive_score", 0.0)) or 0.0)
+
+            _key = (
+                str(getattr(c, "symbol", "") or ""),
+                str(getattr(c, "strategy_id", "") or ""),
+                str(getattr(c, "side", "") or ""),
+            )
+            _opp = opp_index.get(_key)
+
+            _competitive_score = float(sm0.get("meta_competitive_score", sm0.get("competitive_score", 0.0)) or 0.0)
+            _post_ml_score = float(sm0.get("meta_post_ml_score", sm0.get("post_ml_score", 0.0)) or 0.0)
+
+            if _opp is not None:
+                try:
+                    _opp.meta = dict(getattr(_opp, "meta", {}) or {})
+                    _opp.meta.update(sm0)
+                    _competitive_score = float(compute_competitive_score(_opp))
+                except Exception:
+                    pass
+
+                try:
+                    _opp.meta = dict(getattr(_opp, "meta", {}) or {})
+                    _opp.meta.update(sm0)
+                    _opp.meta["competitive_score"] = float(_competitive_score)
+                    _opp.meta["post_ml_score"] = float(_competitive_score) * float(sm0.get("p_win", 0.0) or 0.0)
+                    _post_ml_score = float(compute_post_ml_competitive_score(_opp))
+                except Exception:
+                    pass
+
+            sm0["competitive_score"] = float(_competitive_score)
+            sm0["post_ml_score"] = float(_post_ml_score)
+            sm0["meta_competitive_score"] = float(_competitive_score)
+            sm0["meta_post_ml_score"] = float(_post_ml_score)
             sm0["policy_score"] = float(getattr(d, "policy_score", getattr(s, "score", 0.0)) or 0.0)
             sm0["policy_band"] = str(getattr(d, "band", "") or "")
             sm0["policy_reason"] = str(getattr(d, "reason", "") or "")
@@ -471,6 +553,9 @@ def main() -> None:
             candidates=enriched_candidates,
             decisions=decisions,
         )
+
+        selected_candidates = legacy_score_projector.enrich_many(selected_candidates)
+        allocation_portfolio_context = build_portfolio_context(selected_candidates, score_mode="allocation")
 
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
             sm = dict(getattr(c, "signal_meta", {}) or {})
@@ -532,13 +617,53 @@ def main() -> None:
             decisions=selected_decisions,
         )
 
-        alloc = allocator.allocate(candidates=alloc_inputs)
+        alloc = allocation_router.allocate(
+            mode=str(args.allocator_mode),
+            candles=candles,
+            selected_candidates=selected_candidates,
+            alloc_inputs=alloc_inputs,
+            prev_allocation=prev_alloc,
+            portfolio_context=allocation_portfolio_context,
+        )
+
+        prev_alloc = alloc
+        _alloc_meta = dict(getattr(alloc, "meta", {}) or {})
+
+        try:
+            _alloc_input_trace_row = {
+                "ts": str(ts),
+                "n_selected_after_pipeline": int(len(selected_candidates)),
+                "selected_candidates": [
+                    {
+                        "symbol": str(getattr(c, "symbol", "") or ""),
+                        "strategy_id": str(getattr(c, "strategy_id", "") or ""),
+                        "side": str(getattr(c, "side", "") or ""),
+                        "signal_strength": float(getattr(c, "signal_strength", 0.0) or 0.0),
+                        "base_weight": float(getattr(c, "base_weight", 0.0) or 0.0),
+                        "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
+                    }
+                    for c in selected_candidates
+                ],
+                "alloc_inputs": list(alloc_inputs or []),
+                "legacy_opportunities": list(_alloc_meta.get("legacy_opportunities", []) or []),
+                "allocation_mode": str(_alloc_meta.get("allocation_mode", "") or ""),
+                "legacy_allocation_config": dict(_alloc_meta.get("legacy_allocation_config", {}) or {}),
+                "allocation_portfolio_regime": allocation_portfolio_context.get("portfolio_regime"),
+                "allocation_portfolio_breadth": allocation_portfolio_context.get("portfolio_breadth"),
+                "allocation_portfolio_avg_pwin": allocation_portfolio_context.get("portfolio_avg_pwin"),
+                "allocation_portfolio_avg_atrp": allocation_portfolio_context.get("portfolio_avg_atrp"),
+                "allocation_portfolio_avg_strength": allocation_portfolio_context.get("portfolio_avg_strength"),
+                "allocation_portfolio_conviction": allocation_portfolio_context.get("portfolio_conviction"),
+            }
+            with alloc_input_trace_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(_alloc_input_trace_row) + "\n")
+        except Exception:
+            pass
 
         weights = dict(alloc.weights or {})
         _gross_weight = float(sum(abs(float(v or 0.0)) for v in weights.values()))
 
         try:
-            _alloc_meta = dict(getattr(alloc, "meta", {}) or {})
             _trace_row = {
                 "ts": str(ts),
                 "n_candidates": int(len(enriched_candidates)),
@@ -561,6 +686,38 @@ def main() -> None:
                 "base_weights": dict(_alloc_meta.get("base_weights", {}) or {}),
                 "capped_weights": dict(_alloc_meta.get("capped_weights", {}) or {}),
                 "selected_meta": dict(_alloc_meta.get("selected_meta", {}) or {}),
+                "strategy_weights": dict(_alloc_meta.get("strategy_weights", {}) or {}),
+                "symbol_scores": dict(_alloc_meta.get("symbol_scores", {}) or {}),
+                "symbol_budget": dict(_alloc_meta.get("symbol_budget", {}) or {}),
+                "gross_exposure_pre_target": float(_alloc_meta.get("gross_exposure_pre_target", 0.0) or 0.0),
+                "gross_exposure_post_target": float(_alloc_meta.get("gross_exposure_post_target", 0.0) or 0.0),
+                "target_exposure": float(_alloc_meta.get("target_exposure", 0.0) or 0.0),
+                "target_exposure_scale": float(_alloc_meta.get("target_exposure_scale", 0.0) or 0.0),
+                "allocator_hysteresis": dict(_alloc_meta.get("allocator_hysteresis", {}) or {}),
+                "legacy_stage_weights": dict(_alloc_meta.get("legacy_stage_weights", {}) or {}),
+                "legacy_stage_gross_exposure": dict(_alloc_meta.get("legacy_stage_gross_exposure", {}) or {}),
+                "legacy_stage_order": list(_alloc_meta.get("legacy_stage_order", []) or []),
+                "portfolio_regime": _alloc_meta.get("portfolio_regime", ""),
+                "allocation_portfolio_regime": allocation_portfolio_context.get("portfolio_regime"),
+                "allocation_portfolio_breadth": allocation_portfolio_context.get("portfolio_breadth"),
+                "allocation_portfolio_avg_pwin": allocation_portfolio_context.get("portfolio_avg_pwin"),
+                "allocation_portfolio_avg_atrp": allocation_portfolio_context.get("portfolio_avg_atrp"),
+                "allocation_portfolio_avg_strength": allocation_portfolio_context.get("portfolio_avg_strength"),
+                "allocation_portfolio_conviction": allocation_portfolio_context.get("portfolio_conviction"),
+                "portfolio_conviction": float(_alloc_meta.get("portfolio_conviction", 0.0) or 0.0),
+                "portfolio_conviction_upstream": float(_alloc_meta.get("portfolio_conviction_upstream", 0.0) or 0.0),
+                "portfolio_regime_scaler_conviction": float(_alloc_meta.get("portfolio_regime_scaler_conviction", 0.0) or 0.0),
+                "portfolio_breadth": float(_alloc_meta.get("portfolio_breadth", 0.0) or 0.0),
+                "portfolio_avg_pwin": float(_alloc_meta.get("portfolio_avg_pwin", 0.0) or 0.0),
+                "portfolio_avg_strength": float(_alloc_meta.get("portfolio_avg_strength", 0.0) or 0.0),
+                "portfolio_regime_scaler_breadth_score": float(_alloc_meta.get("portfolio_regime_scaler_breadth_score", 0.0) or 0.0),
+                "portfolio_regime_scaler_pwin_score": float(_alloc_meta.get("portfolio_regime_scaler_pwin_score", 0.0) or 0.0),
+                "portfolio_regime_scaler_strength_score": float(_alloc_meta.get("portfolio_regime_scaler_strength_score", 0.0) or 0.0),
+                "portfolio_context_seen_by_regime_scaler": dict(_alloc_meta.get("portfolio_context_seen_by_regime_scaler", {}) or {}),
+                "portfolio_regime_scale": float(_alloc_meta.get("portfolio_regime_scale", 0.0) or 0.0),
+                "postprocess_smoothing_applied": bool(_alloc_meta.get("postprocess_smoothing_applied", False)),
+                "postprocess_smoothing_alpha": float(_alloc_meta.get("postprocess_smoothing_alpha", 0.0) or 0.0),
+                "postprocess_smoothing_snap_eps": float(_alloc_meta.get("postprocess_smoothing_snap_eps", 0.0) or 0.0),
             }
             with alloc_trace_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(_trace_row) + "\n")

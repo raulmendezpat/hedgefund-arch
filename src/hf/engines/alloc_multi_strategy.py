@@ -283,18 +283,29 @@ class MultiStrategyAllocator:
                 hysteresis_meta["deadband_applied"] = True
                 hysteresis_meta["deadband_symbols"] = deadband_symbols
 
+        gross_exposure_pre_target = float(sum(abs(float(v or 0.0)) for v in weights_by_symbol.values()))
+        target_exposure_scale = 1.0
+
         target_exposure = float(getattr(self, "target_exposure", 0.0) or 0.0)
         if target_exposure > 0.0:
             gross_exposure = float(sum(abs(float(v or 0.0)) for v in weights_by_symbol.values()))
             if gross_exposure > 0.0 and gross_exposure < target_exposure:
                 scale = float(target_exposure) / gross_exposure
+                target_exposure_scale = float(scale)
                 weights_by_symbol = {
                     k: float(max(-self.symbol_cap, min(self.symbol_cap, float(v or 0.0) * scale)))
                     for k, v in weights_by_symbol.items()
                 }
-                scaled_total = sum(weights_by_symbol.values())
+                strategy_weights = {
+                    k: float(v or 0.0) * scale
+                    for k, v in strategy_weights.items()
+                }
+                scaled_total = sum(abs(float(v or 0.0)) for v in weights_by_symbol.values())
                 if self.normalize_total and scaled_total > 1:
                     weights_by_symbol = {k: v / scaled_total for k, v in weights_by_symbol.items()}
+                    strategy_weights = {k: v / scaled_total for k, v in strategy_weights.items()}
+
+        gross_exposure_post_target = float(sum(abs(float(v or 0.0)) for v in weights_by_symbol.values()))
 
         total = sum(weights_by_symbol.values())
 
@@ -307,7 +318,12 @@ class MultiStrategyAllocator:
             meta={
                 "case": "multi_strategy",
                 "strategy_weights": strategy_weights,
-                "symbol_budget": symbol_budget,
+                "symbol_scores": {str(k): float(v or 0.0) for k, v in symbol_scores.items()},
+                "symbol_budget": {str(k): float(v or 0.0) for k, v in symbol_budget.items()},
+                "gross_exposure_pre_target": float(gross_exposure_pre_target),
+                "gross_exposure_post_target": float(gross_exposure_post_target),
+                "target_exposure": float(getattr(self, "target_exposure", 0.0) or 0.0),
+                "target_exposure_scale": float(target_exposure_scale),
                 "allocator_hysteresis": hysteresis_meta,
             },
         )

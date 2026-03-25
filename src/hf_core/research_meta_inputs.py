@@ -46,7 +46,11 @@ def seed_candidate_meta(candidate: OpportunityCandidate) -> OpportunityCandidate
     return candidate
 
 
-def build_portfolio_context(candidates: list[OpportunityCandidate]) -> dict[str, float | str]:
+def build_portfolio_context(
+    candidates: list[OpportunityCandidate],
+    *,
+    score_mode: str = "early",
+) -> dict[str, float | str]:
     active = [c for c in (candidates or []) if str(getattr(c, "side", "flat") or "flat").lower() in {"long", "short"}]
 
     if not active:
@@ -75,7 +79,10 @@ def build_portfolio_context(candidates: list[OpportunityCandidate]) -> dict[str,
         elif side == "short":
             n_short += 1
 
-        pwin_vals.append(_f(meta.get("meta_p_win", meta.get("p_win", 0.50)), 0.50))
+        if str(score_mode) == "allocation":
+            pwin_vals.append(_f(meta.get("post_ml_score", meta.get("p_win", 0.0)), 0.0))
+        else:
+            pwin_vals.append(_f(meta.get("meta_p_win", meta.get("p_win", 0.50)), 0.50))
         atrp_vals.append(_f(meta.get("atrp", 0.0), 0.0))
         strength_vals.append(abs(_f(getattr(c, "signal_strength", 0.0), 0.0)))
 
