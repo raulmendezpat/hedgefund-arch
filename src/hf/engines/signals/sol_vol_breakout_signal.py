@@ -99,49 +99,24 @@ class SolVolBreakoutSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            if atrp < float(self.atrp_min) or atrp > float(self.atrp_max):
-                reason = "atrp_out_of_range"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, atrp=atrp)
-                continue
-
-            if adx < float(self.adx_min):
-                reason = "adx_below_min"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, adx=adx)
-                continue
-
-            if range_expansion < float(self.range_expansion_min):
-                reason = "no_vol_expansion"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, range_expansion=range_expansion)
-                continue
+            atrp_out_of_range = (atrp < float(self.atrp_min)) or (atrp > float(self.atrp_max))
+            adx_below_min = adx < float(self.adx_min)
+            no_vol_expansion = range_expansion < float(self.range_expansion_min)
 
             close_v = float(getattr(c, "close", 0.0))
             up_level = float(donchian_high) * (1.0 + float(self.confirm_close_buffer))
             dn_level = float(donchian_low) * (1.0 - float(self.confirm_close_buffer))
 
             if close_v > up_level:
-                if self.require_trend_alignment and not (float(ema_fast) > float(ema_slow)):
-                    side = "flat"
-                    reason = "trend_filter_block_long"
-                    breakout_ref = None
-                else:
-                    side = "long"
-                    reason = "long_breakout"
-                    breakout_ref = float(donchian_high)
+                trend_filter_block_long = bool(self.require_trend_alignment) and not (float(ema_fast) > float(ema_slow))
+                side = "long"
+                reason = "long_breakout"
+                breakout_ref = float(donchian_high)
             elif close_v < dn_level:
-                if self.require_trend_alignment and not (float(ema_fast) < float(ema_slow)):
-                    side = "flat"
-                    reason = "trend_filter_block_short"
-                    breakout_ref = None
-                else:
-                    side = "short"
-                    reason = "short_breakout"
-                    breakout_ref = float(donchian_low)
+                trend_filter_block_short = bool(self.require_trend_alignment) and not (float(ema_fast) < float(ema_slow))
+                side = "short"
+                reason = "short_breakout"
+                breakout_ref = float(donchian_low)
             else:
                 side = "flat"
                 reason = "no_setup"
@@ -157,6 +132,15 @@ class SolVolBreakoutSignalEngine(SignalEngine):
                 vol_boost = max(0.0, float(range_expansion) - float(self.range_expansion_min))
                 strength = min(2.0, 1.0 + breakout_distance * 20.0 + adx_boost + vol_boost)
 
+                if atrp_out_of_range:
+                    strength *= float(self.strength_penalty_atrp)
+                if adx_below_min:
+                    strength *= float(self.strength_penalty_adx)
+                if no_vol_expansion:
+                    strength *= float(self.strength_penalty_range_expansion)
+                if locals().get("trend_filter_block_long", False) or locals().get("trend_filter_block_short", False):
+                    strength *= float(self.strength_penalty_trend_alignment)
+
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
@@ -171,6 +155,11 @@ class SolVolBreakoutSignalEngine(SignalEngine):
                     "range_expansion": range_expansion,
                     "ema_fast": ema_fast,
                     "ema_slow": ema_slow,
+                    "atrp_out_of_range": bool(locals().get("atrp_out_of_range", False)),
+                    "adx_below_min": bool(locals().get("adx_below_min", False)),
+                    "no_vol_expansion": bool(locals().get("no_vol_expansion", False)),
+                    "trend_filter_block_long": bool(locals().get("trend_filter_block_long", False)),
+                    "trend_filter_block_short": bool(locals().get("trend_filter_block_short", False)),
                     "breakout_lookback": int(self.breakout_lookback),
                     "confirm_close_buffer": float(self.confirm_close_buffer),
                     "require_trend_alignment": bool(self.require_trend_alignment),

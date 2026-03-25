@@ -95,26 +95,9 @@ class SolBbrsiSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            if atrp < float(self.atrp_min) or atrp > float(self.atrp_max):
-                reason = "atrp_out_of_range"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, atrp=atrp)
-                continue
-
-            if bb_width < float(self.bb_width_min) or bb_width > float(self.bb_width_max):
-                reason = "bb_width_out_of_range"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, bb_width=bb_width)
-                continue
-
-            if adx >= float(self.adx_hard):
-                reason = "adx_trend_regime"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, adx=adx)
-                continue
+            atrp_out_of_range = (atrp < float(self.atrp_min)) or (atrp > float(self.atrp_max))
+            bb_width_out_of_range = (bb_width < float(self.bb_width_min)) or (bb_width > float(self.bb_width_max))
+            adx_trend_regime = adx >= float(self.adx_hard)
 
             close_v = float(getattr(c, "close", 0.0))
 
@@ -131,12 +114,12 @@ class SolBbrsiSignalEngine(SignalEngine):
             side_counts[side] = int(side_counts.get(side, 0)) + 1
             strength = 1.0 if side != "flat" else 0.0
 
-            if side != "flat" and bool(locals().get("atrp_low", False)):
+            if side != "flat" and bool(locals().get("atrp_out_of_range", False)):
                 strength *= float(self.strength_penalty_atrp)
-            if side != "flat" and bool(locals().get("adx_low", False)):
+            if side != "flat" and bool(locals().get("bb_width_out_of_range", False)):
+                strength *= float(self.strength_penalty_bb_width)
+            if side != "flat" and bool(locals().get("adx_trend_regime", False)):
                 strength *= float(self.strength_penalty_adx)
-            if side != "flat" and bool(locals().get("range_expansion_low", False)):
-                strength *= float(self.strength_penalty_range_expansion)
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
@@ -149,9 +132,9 @@ class SolBbrsiSignalEngine(SignalEngine):
                     "rsi": rsi,
                     "bb_low": bb_low,
                     "regime_as_metadata": True,
-                    "atrp_low": bool(locals().get("atrp_low", False)),
-                    "adx_low": bool(locals().get("adx_low", False)),
-                    "range_expansion_low": bool(locals().get("range_expansion_low", False)),
+                    "atrp_out_of_range": bool(locals().get("atrp_out_of_range", False)),
+                    "bb_width_out_of_range": bool(locals().get("bb_width_out_of_range", False)),
+                    "adx_trend_regime": bool(locals().get("adx_trend_regime", False)),
                     "bb_up": bb_up,
                     "bb_mid": bb_mid,
                     "bb_width": bb_width,

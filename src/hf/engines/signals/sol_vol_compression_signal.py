@@ -88,19 +88,8 @@ class SolVolCompressionSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            if bb_width > float(self.bb_width_max):
-                reason = "bb_width_too_high"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, bb_width=bb_width)
-                continue
-
-            if adx > float(self.adx_max):
-                reason = "adx_too_high"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, adx=adx)
-                continue
+            bb_width_too_high = bb_width > float(self.bb_width_max)
+            adx_too_high = adx > float(self.adx_max)
 
             if close_v >= float(bb_up) * float(self.breakout_confirm_mult):
                 side = "long"
@@ -115,6 +104,10 @@ class SolVolCompressionSignalEngine(SignalEngine):
             side_counts[side] = int(side_counts.get(side, 0)) + 1
             strength = 1.0 if side != "flat" else 0.0
 
+            if side != "flat" and bool(locals().get("bb_width_too_high", False)):
+                strength *= float(self.strength_penalty_bb_width)
+            if side != "flat" and bool(locals().get("adx_too_high", False)):
+                strength *= float(self.strength_penalty_adx)
             if side != "flat" and bool(locals().get("atrp_low", False)):
                 strength *= float(self.strength_penalty_atrp)
             if side != "flat" and bool(locals().get("adx_low", False)):
@@ -134,6 +127,8 @@ class SolVolCompressionSignalEngine(SignalEngine):
                     "bb_up": bb_up,
                     "bb_low": bb_low,
                     "regime_as_metadata": True,
+                    "bb_width_too_high": bool(locals().get("bb_width_too_high", False)),
+                    "adx_too_high": bool(locals().get("adx_too_high", False)),
                     "atrp_low": bool(locals().get("atrp_low", False)),
                     "adx_low": bool(locals().get("adx_low", False)),
                     "range_expansion_low": bool(locals().get("range_expansion_low", False)),

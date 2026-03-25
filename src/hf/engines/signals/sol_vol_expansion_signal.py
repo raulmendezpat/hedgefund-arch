@@ -114,69 +114,49 @@ class SolVolExpansionSignalEngine(SignalEngine):
             adx_low = adx < float(self.adx_min)
 
             if close_v >= float(bb_up) * float(self.breakout_mult):
-                if bool(self.require_directional_close) and close_v <= open_v:
-                    out[sym] = self._flat(sym, "long_non_directional_bar", atrp=atrp, adx=adx, rsi=rsi, bb_up=bb_up, bb_low=bb_low)
-                    continue
-                if bool(self.require_trend_alignment):
-                    if ema_fast is None or ema_slow is None:
-                        out[sym] = self._flat(sym, "missing_trend_alignment_long", atrp=atrp, adx=adx, rsi=rsi)
-                        continue
-                    if not (float(ema_fast) > float(ema_slow) and close_v > float(ema_fast)):
-                        out[sym] = self._flat(sym, "long_trend_misaligned", atrp=atrp, adx=adx, rsi=rsi, ema_fast=ema_fast, ema_slow=ema_slow)
-                        continue
-                if bool(self.require_donchian_break):
-                    if donchian_high is None:
-                        out[sym] = self._flat(sym, "missing_donchian_long", atrp=atrp, adx=adx, rsi=rsi)
-                        continue
-                    if close_v <= float(donchian_high) * (1.0 + float(self.breakout_confirm_buffer)):
-                        out[sym] = self._flat(sym, "long_no_donchian_break", atrp=atrp, adx=adx, rsi=rsi, donchian_high=donchian_high)
-                        continue
-                if bool(self.use_rsi_exhaustion_guard):
-                    if rsi is None:
-                        out[sym] = self._flat(sym, "missing_rsi_long_guard", atrp=atrp, adx=adx, bb_up=bb_up, bb_low=bb_low)
-                        continue
-                    if float(rsi) > float(self.rsi_long_max):
-                        out[sym] = self._flat(sym, "long_rsi_exhausted", atrp=atrp, adx=adx, rsi=rsi, bb_up=bb_up, bb_low=bb_low)
-                        continue
-                if bool(self.use_extension_guard):
-                    ext = max(0.0, (close_v / max(float(bb_up), 1e-12)) - 1.0)
-                    if ext > float(self.max_breakout_extension_pct):
-                        out[sym] = self._flat(sym, "long_overextended", atrp=atrp, adx=adx, rsi=rsi, bb_up=bb_up, bb_low=bb_low, extension_pct=ext)
-                        continue
+                long_non_directional_bar = bool(self.require_directional_close) and close_v <= open_v
+                missing_trend_alignment_long = bool(self.require_trend_alignment) and (ema_fast is None or ema_slow is None)
+                long_trend_misaligned = (
+                    bool(self.require_trend_alignment)
+                    and (ema_fast is not None)
+                    and (ema_slow is not None)
+                    and not (float(ema_fast) > float(ema_slow) and close_v > float(ema_fast))
+                )
+
+                missing_donchian_long = bool(self.require_donchian_break) and (donchian_high is None)
+                long_no_donchian_break = (
+                    bool(self.require_donchian_break)
+                    and (donchian_high is not None)
+                    and (close_v <= float(donchian_high) * (1.0 + float(self.breakout_confirm_buffer)))
+                )
+                missing_rsi_long_guard = bool(self.use_rsi_exhaustion_guard) and (rsi is None)
+                long_rsi_exhausted = bool(self.use_rsi_exhaustion_guard) and (rsi is not None) and (float(rsi) > float(self.rsi_long_max))
+                long_extension_pct = max(0.0, (close_v / max(float(bb_up), 1e-12)) - 1.0)
+                long_overextended = bool(self.use_extension_guard) and (long_extension_pct > float(self.max_breakout_extension_pct))
 
                 side = "long"
                 reason = "vol_expansion_breakout_long"
 
             elif close_v <= float(bb_low) * float(self.breakdown_mult):
-                if bool(self.require_directional_close) and close_v >= open_v:
-                    out[sym] = self._flat(sym, "short_non_directional_bar", atrp=atrp, adx=adx, rsi=rsi, bb_up=bb_up, bb_low=bb_low)
-                    continue
-                if bool(self.require_trend_alignment):
-                    if ema_fast is None or ema_slow is None:
-                        out[sym] = self._flat(sym, "missing_trend_alignment_short", atrp=atrp, adx=adx, rsi=rsi)
-                        continue
-                    if not (float(ema_fast) < float(ema_slow) and close_v < float(ema_fast)):
-                        out[sym] = self._flat(sym, "short_trend_misaligned", atrp=atrp, adx=adx, rsi=rsi, ema_fast=ema_fast, ema_slow=ema_slow)
-                        continue
-                if bool(self.require_donchian_break):
-                    if donchian_low is None:
-                        out[sym] = self._flat(sym, "missing_donchian_short", atrp=atrp, adx=adx, rsi=rsi)
-                        continue
-                    if close_v >= float(donchian_low) * (1.0 - float(self.breakout_confirm_buffer)):
-                        out[sym] = self._flat(sym, "short_no_donchian_break", atrp=atrp, adx=adx, rsi=rsi, donchian_low=donchian_low)
-                        continue
-                if bool(self.use_rsi_exhaustion_guard):
-                    if rsi is None:
-                        out[sym] = self._flat(sym, "missing_rsi_short_guard", atrp=atrp, adx=adx, bb_up=bb_up, bb_low=bb_low)
-                        continue
-                    if float(rsi) < float(self.rsi_short_min):
-                        out[sym] = self._flat(sym, "short_rsi_exhausted", atrp=atrp, adx=adx, rsi=rsi, bb_up=bb_up, bb_low=bb_low)
-                        continue
-                if bool(self.use_extension_guard):
-                    ext = max(0.0, 1.0 - (close_v / max(float(bb_low), 1e-12)))
-                    if ext > float(self.max_breakdown_extension_pct):
-                        out[sym] = self._flat(sym, "short_overextended", atrp=atrp, adx=adx, rsi=rsi, bb_up=bb_up, bb_low=bb_low, extension_pct=ext)
-                        continue
+                short_non_directional_bar = bool(self.require_directional_close) and close_v >= open_v
+                missing_trend_alignment_short = bool(self.require_trend_alignment) and (ema_fast is None or ema_slow is None)
+                short_trend_misaligned = (
+                    bool(self.require_trend_alignment)
+                    and (ema_fast is not None)
+                    and (ema_slow is not None)
+                    and not (float(ema_fast) < float(ema_slow) and close_v < float(ema_fast))
+                )
+
+                missing_donchian_short = bool(self.require_donchian_break) and (donchian_low is None)
+                short_no_donchian_break = (
+                    bool(self.require_donchian_break)
+                    and (donchian_low is not None)
+                    and (close_v >= float(donchian_low) * (1.0 - float(self.breakout_confirm_buffer)))
+                )
+                missing_rsi_short_guard = bool(self.use_rsi_exhaustion_guard) and (rsi is None)
+                short_rsi_exhausted = bool(self.use_rsi_exhaustion_guard) and (rsi is not None) and (float(rsi) < float(self.rsi_short_min))
+                short_extension_pct = max(0.0, 1.0 - (close_v / max(float(bb_low), 1e-12)))
+                short_overextended = bool(self.use_extension_guard) and (short_extension_pct > float(self.max_breakdown_extension_pct))
 
                 side = "short"
                 reason = "vol_expansion_breakout_short"
@@ -201,13 +181,38 @@ class SolVolExpansionSignalEngine(SignalEngine):
                 meta={
                     "engine": "sol_vol_expansion",
                     "reason": reason,
+                    "open": open_v,
+                    "close": close_v,
                     "atrp": atrp,
                     "adx": adx,
                     "rsi": rsi,
                     "bb_up": bb_up,
                     "bb_low": bb_low,
+                    "ema_fast": ema_fast,
+                    "ema_slow": ema_slow,
+                    "donchian_high": donchian_high,
+                    "donchian_low": donchian_low,
+                    "range_expansion": range_expansion,
                     "atrp_low": bool(locals().get("atrp_low", False)),
                     "adx_low": bool(locals().get("adx_low", False)),
+                    "long_non_directional_bar": bool(locals().get("long_non_directional_bar", False)),
+                    "short_non_directional_bar": bool(locals().get("short_non_directional_bar", False)),
+                    "missing_trend_alignment_long": bool(locals().get("missing_trend_alignment_long", False)),
+                    "missing_trend_alignment_short": bool(locals().get("missing_trend_alignment_short", False)),
+                    "long_trend_misaligned": bool(locals().get("long_trend_misaligned", False)),
+                    "short_trend_misaligned": bool(locals().get("short_trend_misaligned", False)),
+                    "missing_donchian_long": bool(locals().get("missing_donchian_long", False)),
+                    "missing_donchian_short": bool(locals().get("missing_donchian_short", False)),
+                    "long_no_donchian_break": bool(locals().get("long_no_donchian_break", False)),
+                    "short_no_donchian_break": bool(locals().get("short_no_donchian_break", False)),
+                    "missing_rsi_long_guard": bool(locals().get("missing_rsi_long_guard", False)),
+                    "missing_rsi_short_guard": bool(locals().get("missing_rsi_short_guard", False)),
+                    "long_rsi_exhausted": bool(locals().get("long_rsi_exhausted", False)),
+                    "short_rsi_exhausted": bool(locals().get("short_rsi_exhausted", False)),
+                    "long_extension_pct": float(locals().get("long_extension_pct", 0.0)),
+                    "short_extension_pct": float(locals().get("short_extension_pct", 0.0)),
+                    "long_overextended": bool(locals().get("long_overextended", False)),
+                    "short_overextended": bool(locals().get("short_overextended", False)),
                     "regime_as_metadata": True,
                 },
             )

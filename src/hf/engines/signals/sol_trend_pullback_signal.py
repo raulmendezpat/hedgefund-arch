@@ -101,33 +101,11 @@ class SolTrendPullbackSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            if atrp < float(self.atrp_min) or atrp > float(self.atrp_max):
-                reason = "atrp_out_of_range"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, atrp=atrp)
-                continue
-
-            if self.require_adx and float(adx) < float(self.adx_min):
-                reason = "adx_below_min"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, adx=adx)
-                continue
+            atrp_out_of_range = (atrp < float(self.atrp_min)) or (atrp > float(self.atrp_max))
+            adx_below_min = bool(self.require_adx) and (float(adx) < float(self.adx_min))
 
             ema_pullback_dist = abs(close_v - float(ema_fast)) / max(abs(close_v), 1e-12)
-            if ema_pullback_dist > float(self.ema_pullback_max):
-                reason = "too_far_from_ema_fast"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(
-                    sym,
-                    reason,
-                    ema_pullback_dist=ema_pullback_dist,
-                    ema_fast=ema_fast,
-                    close=close_v,
-                )
-                continue
+            too_far_from_ema_fast = ema_pullback_dist > float(self.ema_pullback_max)
 
             trend_up = float(ema_fast) > float(ema_slow)
             trend_down = float(ema_fast) < float(ema_slow)
@@ -166,6 +144,13 @@ class SolTrendPullbackSignalEngine(SignalEngine):
 
                 strength = min(2.0, 0.75 + 0.60 * pullback_score + 0.40 * trend_score + 0.25 * rsi_score + adx_boost)
 
+                if atrp_out_of_range:
+                    strength *= float(self.strength_penalty_atrp)
+                if adx_below_min:
+                    strength *= float(self.strength_penalty_adx)
+                if too_far_from_ema_fast:
+                    strength *= float(self.strength_penalty_extension)
+
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
@@ -179,6 +164,9 @@ class SolTrendPullbackSignalEngine(SignalEngine):
                     "ema_fast": ema_fast,
                     "ema_slow": ema_slow,
                     "ema_pullback_dist": float(ema_pullback_dist),
+                    "atrp_out_of_range": bool(atrp_out_of_range),
+                    "adx_below_min": bool(adx_below_min),
+                    "too_far_from_ema_fast": bool(too_far_from_ema_fast),
                     "require_adx": bool(self.require_adx),
                     "adx_min": float(self.adx_min),
                     "rsi_long_min": float(self.rsi_long_min),

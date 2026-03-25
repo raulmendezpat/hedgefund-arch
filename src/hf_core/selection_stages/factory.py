@@ -4,6 +4,7 @@ from typing import Any
 
 from .pipeline import SelectionPipeline
 from .stage_asset_gate import AssetGateStage
+from .stage_market_guard import MarketGuardStage
 from .stage_alpha_selection import AlphaSelectionStage
 from .stage_best_per_symbol import BestPerSymbolStage
 from .stage_contextual_eligibility import ContextualEligibilityStage
@@ -13,6 +14,7 @@ from .stage_strategy_regime_eligibility import StrategyRegimeEligibilityStage
 class SelectionPipelineFactory:
     STAGE_REGISTRY = {
         "asset_gate": AssetGateStage,
+        "market_guard": MarketGuardStage,
         "contextual_eligibility": ContextualEligibilityStage,
         "strategy_regime_eligibility": StrategyRegimeEligibilityStage,
         "alpha_selection": AlphaSelectionStage,
@@ -21,8 +23,11 @@ class SelectionPipelineFactory:
 
     DEFAULT_STAGE_SPECS = [
         {"name": "asset_gate"},
+        {"name": "market_guard"},
+        {"name": "contextual_eligibility"},
+        {"name": "strategy_regime_eligibility"},
         {"name": "alpha_selection"},
-        {"name": "best_per_symbol", "kwargs": {"score_field": "policy_score"}},
+        {"name": "best_per_symbol", "kwargs": {"score_field": "alpha_score"}},
     ]
 
     @classmethod

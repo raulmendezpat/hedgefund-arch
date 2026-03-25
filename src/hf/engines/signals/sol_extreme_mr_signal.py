@@ -101,19 +101,10 @@ class SolExtremeMrSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            if atrp < float(self.atrp_min) or atrp > float(self.atrp_max):
-                reason = "atrp_out_of_range"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, atrp=atrp)
-                continue
-
-            if adx > float(self.adx_max):
-                reason = "adx_too_high"
-                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
-                side_counts["flat"] += 1
-                out[sym] = self._flat(sym, reason, adx=adx)
-                continue
+            atrp_out_of_range = (atrp < float(self.atrp_min)) or (atrp > float(self.atrp_max))
+            adx_too_high = adx > float(self.adx_max)
+            bb_width_below_min = bb_width < float(self.bb_width_min)
+            range_expansion_below_min = range_expansion < float(self.range_expansion_min)
 
 
 
@@ -130,11 +121,13 @@ class SolExtremeMrSignalEngine(SignalEngine):
             side_counts[side] = int(side_counts.get(side, 0)) + 1
             strength = 1.0 if side != "flat" else 0.0
 
-            if side != "flat" and bool(locals().get("atrp_low", False)):
+            if side != "flat" and bool(locals().get("atrp_out_of_range", False)):
                 strength *= float(self.strength_penalty_atrp)
-            if side != "flat" and bool(locals().get("adx_low", False)):
+            if side != "flat" and bool(locals().get("adx_too_high", False)):
                 strength *= float(self.strength_penalty_adx)
-            if side != "flat" and bool(locals().get("range_expansion_low", False)):
+            if side != "flat" and bool(locals().get("bb_width_below_min", False)):
+                strength *= float(self.strength_penalty_bb_width)
+            if side != "flat" and bool(locals().get("range_expansion_below_min", False)):
                 strength *= float(self.strength_penalty_range_expansion)
 
             out[sym] = Signal(
@@ -149,9 +142,10 @@ class SolExtremeMrSignalEngine(SignalEngine):
                     "adx": adx,
                     "bb_low": bb_low,
                     "regime_as_metadata": True,
-                    "atrp_low": bool(locals().get("atrp_low", False)),
-                    "adx_low": bool(locals().get("adx_low", False)),
-                    "range_expansion_low": bool(locals().get("range_expansion_low", False)),
+                    "atrp_out_of_range": bool(locals().get("atrp_out_of_range", False)),
+                    "adx_too_high": bool(locals().get("adx_too_high", False)),
+                    "bb_width_below_min": bool(locals().get("bb_width_below_min", False)),
+                    "range_expansion_below_min": bool(locals().get("range_expansion_below_min", False)),
                     "bb_up": bb_up,
                     "bb_width": bb_width,
                     "range_expansion": range_expansion,
