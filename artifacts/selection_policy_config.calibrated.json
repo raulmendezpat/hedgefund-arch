@@ -305,7 +305,7 @@
   "asset_side_strategy_overrides": {
     "SOL/USDT:USDT::long::sol_trend_pullback": {
       "market_guard": {
-        "mode": "observe_only",
+        "mode": "strict",
         "allowed_sides": [
           "long"
         ],
@@ -326,7 +326,7 @@
     },
     "SOL/USDT:USDT::short::sol_trend_pullback": {
       "market_guard": {
-        "mode": "observe_only",
+        "mode": "strict",
         "allowed_sides": [
           "short"
         ],
@@ -347,7 +347,7 @@
     },
     "BTC/USDT:USDT::short::btc_trend": {
       "market_guard": {
-        "mode": "observe_only",
+        "mode": "strict",
         "allowed_sides": [
           "short"
         ],
@@ -358,7 +358,7 @@
     },
     "BTC/USDT:USDT::short::btc_trend_loose": {
       "market_guard": {
-        "mode": "observe_only",
+        "mode": "strict",
         "allowed_sides": [
           "short"
         ],
