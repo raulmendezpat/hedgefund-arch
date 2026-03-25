@@ -73,7 +73,7 @@ def monthly_returns_from_runtime_csv(path: Path) -> pd.DataFrame:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-name", default="contextual_policy_v1")
-    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry_v2.json")
+    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json")
     ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     ap.add_argument("--exchange", default="binanceusdm")

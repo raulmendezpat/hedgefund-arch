@@ -49,7 +49,14 @@ class AssetGateStage:
 
         for (symbol, side), g in df.groupby(["symbol", "side"], sort=False):
             g = g.copy()
-            rcfg = resolve_profile_config(self.cfg, symbol=symbol, side=side, profile=self.profile)
+            strategy_id = str(g["strategy_id"].iloc[0]) if "strategy_id" in g.columns and len(g) else ""
+            rcfg = resolve_profile_config(
+                self.cfg,
+                symbol=symbol,
+                side=side,
+                profile=self.profile,
+                strategy_id=strategy_id,
+            )
             ag = dict(rcfg.get("asset_gate", {}) or {})
 
             gate_mode = str(ag.get("mode", "strict") or "strict").lower()

@@ -103,6 +103,164 @@ def compute_common_ts(data_by_symbol: dict[str, pd.DataFrame]) -> list[pd.Timest
     return sorted(common or [])
 
 
+
+
+def build_selection_reason_summary(trace_path: str | Path) -> pd.DataFrame:
+    path = Path(trace_path)
+    if not path.exists():
+        return pd.DataFrame()
+
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+
+    if not rows:
+        return pd.DataFrame()
+
+    expanded = []
+    for row in rows:
+        stage = str(row.get("stage", "") or "")
+        symbol = str(row.get("symbol", "") or "")
+        side = str(row.get("side", "") or "")
+        strategy_id = str(row.get("strategy_id", "") or "")
+
+        reasons = row.get("reasons", [])
+        if isinstance(reasons, str):
+            reasons = [reasons] if reasons else []
+        elif not isinstance(reasons, list):
+            reasons = []
+
+        if not reasons:
+            expanded.append({
+                "stage": stage,
+                "symbol": symbol,
+                "side": side,
+                "strategy_id": strategy_id,
+                "reason": "",
+                "count": 1,
+            })
+            continue
+
+        for reason in reasons:
+            expanded.append({
+                "stage": stage,
+                "symbol": symbol,
+                "side": side,
+                "strategy_id": strategy_id,
+                "reason": str(reason or ""),
+                "count": 1,
+            })
+
+    if not expanded:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(expanded)
+    summary = (
+        df.groupby(["stage", "symbol", "side", "strategy_id", "reason"], dropna=False)["count"]
+        .sum()
+        .reset_index()
+        .sort_values(["stage", "count", "symbol", "side", "strategy_id", "reason"], ascending=[True, False, True, True, True, True])
+    )
+    return summary
+
+
+def build_selection_stage_summary(trace_path: str | Path) -> pd.DataFrame:
+    path = Path(trace_path)
+    if not path.exists():
+        return pd.DataFrame()
+
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    for col in ["stage", "symbol", "side", "strategy_id"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    def _bool_int(series_name: str) -> pd.Series:
+        if series_name not in df.columns:
+            return pd.Series([0] * len(df), index=df.index, dtype=int)
+        s = df[series_name]
+        if s.dtype == bool:
+            return s.astype(int)
+        return s.fillna(False).astype(bool).astype(int)
+
+    df["pass_true"] = _bool_int("pass")
+    df["pass_false"] = 1 - df["pass_true"]
+    df["passed_true"] = _bool_int("passed")
+    df["passed_false"] = 1 - df["passed_true"]
+    df["kept_true"] = _bool_int("kept")
+    df["kept_false"] = 1 - df["kept_true"]
+    df["winner_true"] = _bool_int("winner")
+    df["winner_false"] = 1 - df["winner_true"]
+
+    if "contextual_penalty" in df.columns:
+        df["contextual_penalty_nonzero"] = pd.to_numeric(df["contextual_penalty"], errors="coerce").fillna(0.0).ne(0.0).astype(int)
+        df["contextual_penalty_mean"] = pd.to_numeric(df["contextual_penalty"], errors="coerce").fillna(0.0)
+    else:
+        df["contextual_penalty_nonzero"] = 0
+        df["contextual_penalty_mean"] = 0.0
+
+    if "regime_penalty" in df.columns:
+        df["regime_penalty_nonzero"] = pd.to_numeric(df["regime_penalty"], errors="coerce").fillna(0.0).ne(0.0).astype(int)
+        df["regime_penalty_mean"] = pd.to_numeric(df["regime_penalty"], errors="coerce").fillna(0.0)
+    else:
+        df["regime_penalty_nonzero"] = 0
+        df["regime_penalty_mean"] = 0.0
+
+    for score_col in ["p_win", "policy_score", "contextual_score", "regime_score_mult", "alpha_score"]:
+        if score_col not in df.columns:
+            df[score_col] = np.nan
+        else:
+            df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
+
+    group_cols = ["stage", "symbol", "side", "strategy_id"]
+    summary = (
+        df.groupby(group_cols, dropna=False)
+        .agg(
+            rows=("stage", "size"),
+            pass_true=("pass_true", "sum"),
+            pass_false=("pass_false", "sum"),
+            passed_true=("passed_true", "sum"),
+            passed_false=("passed_false", "sum"),
+            kept_true=("kept_true", "sum"),
+            kept_false=("kept_false", "sum"),
+            winner_true=("winner_true", "sum"),
+            winner_false=("winner_false", "sum"),
+            contextual_penalty_nonzero=("contextual_penalty_nonzero", "sum"),
+            regime_penalty_nonzero=("regime_penalty_nonzero", "sum"),
+            contextual_penalty_mean=("contextual_penalty_mean", "mean"),
+            regime_penalty_mean=("regime_penalty_mean", "mean"),
+            p_win_mean=("p_win", "mean"),
+            policy_score_mean=("policy_score", "mean"),
+            contextual_score_mean=("contextual_score", "mean"),
+            regime_score_mult_mean=("regime_score_mult", "mean"),
+            alpha_score_mean=("alpha_score", "mean"),
+        )
+        .reset_index()
+        .sort_values(["stage", "rows", "symbol", "side", "strategy_id"], ascending=[True, False, True, True, True])
+    )
+    return summary
+
+
 def compute_metrics(port_ret: pd.Series, equity: pd.Series) -> dict:
     ret = pd.to_numeric(port_ret, errors="coerce").fillna(0.0)
     eq = pd.to_numeric(equity, errors="coerce").ffill().fillna(1000.0)
@@ -146,10 +304,11 @@ def main() -> None:
     args = ap.parse_args()
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
+    selection_trace_path = Path(f"results/selection_trace_{str(args.name)}.jsonl")
     selection_pipeline = SelectionPipelineFactory.build(
         config=selection_cfg,
         profile=str(args.selection_policy_profile),
-        trace_path=f"results/selection_trace_{str(args.name)}.jsonl",
+        trace_path=str(selection_trace_path),
     )
 
     t0 = time.perf_counter()
@@ -446,6 +605,19 @@ def main() -> None:
     out_df = pd.DataFrame(rows)
     out_csv = Path(f"results/research_runtime_{args.name}.csv")
     out_candidates_csv = Path(f"results/research_runtime_candidates_{args.name}.csv")
+
+    selection_summary_df = build_selection_stage_summary(selection_trace_path)
+    if not selection_summary_df.empty:
+        selection_summary_path = Path(f"results/selection_stage_summary_{args.name}.csv")
+        selection_summary_df.to_csv(selection_summary_path, index=False)
+        print(f"saved: {selection_summary_path}")
+
+    selection_reason_df = build_selection_reason_summary(selection_trace_path)
+    if not selection_reason_df.empty:
+        selection_reason_path = Path(f"results/selection_reason_summary_{args.name}.csv")
+        selection_reason_df.to_csv(selection_reason_path, index=False)
+        print(f"saved: {selection_reason_path}")
+
     out_json = Path(f"results/research_runtime_metrics_{args.name}.json")
 
     out_df.to_csv(out_csv, index=False)

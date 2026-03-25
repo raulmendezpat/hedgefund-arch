@@ -2,6 +2,7 @@ from .config import load_selection_policy_config
 from .pipeline import SelectionPipeline
 from .factory import SelectionPipelineFactory
 from .stage_asset_gate import AssetGateStage
+from .stage_market_guard import MarketGuardStage
 from .stage_alpha_selection import AlphaSelectionStage
 from .stage_best_per_symbol import BestPerSymbolStage
 from .stage_contextual_eligibility import ContextualEligibilityStage

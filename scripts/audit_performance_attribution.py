@@ -74,7 +74,7 @@ def load_symbol_close_map(symbol: str, start: str, exchange: str, cache_dir: str
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
-    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry_v2.json")
+    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json")
     ap.add_argument("--start", default="2025-09-07 00:00:00")
     ap.add_argument("--exchange", default="binanceusdm")
     ap.add_argument("--cache-dir", default="data/cache")

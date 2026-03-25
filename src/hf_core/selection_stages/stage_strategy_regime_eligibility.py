@@ -135,6 +135,7 @@ class StrategyRegimeEligibilityStage:
                 symbol=str(r.symbol),
                 side=str(r.side),
                 profile=self.profile,
+                strategy_id=str(getattr(r, "strategy_id", "") or ""),
             )
             scfg = dict(rcfg.get("strategy_regime_eligibility", {}) or {})
             mode = str(scfg.get("mode", "observe_only") or "observe_only").lower()

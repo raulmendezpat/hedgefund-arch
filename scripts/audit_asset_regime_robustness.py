@@ -191,7 +191,7 @@ def robust_leaderboard(df: pd.DataFrame, key_cols: list[str]) -> pd.DataFrame:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-prefix", required=True, help="Ej: meta_patch_1")
-    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry_v2.json")
+    ap.add_argument("--strategy-registry", default="artifacts/strategy_registry.json")
     ap.add_argument("--exchange", default="binanceusdm")
     ap.add_argument("--cache-dir", default="data/cache")
     args = ap.parse_args()

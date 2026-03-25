@@ -164,6 +164,13 @@ class AssetContextEnricher:
             sl_mult = 1.1
 
         meta.update({
+            "close": float(close_now),
+            "ema_fast": float(ema_fast),
+            "ema_slow": float(ema_slow),
+            "adx": float(adx),
+            "atrp": float(atrp),
+            "rsi": float(rsi),
+            "bb_width": float(bb_width),
             "ctx_close_vs_ema_slow": float(close_vs_ema_slow),
             "ctx_ema_fast_vs_ema_slow": float(ema_fast_vs_ema_slow),
             "ctx_ret_24h": float(ret_24h),

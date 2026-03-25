@@ -25,13 +25,28 @@ def resolve_profile_config(
     symbol: str,
     side: str,
     profile: str | None = None,
+    strategy_id: str | None = None,
 ) -> dict[str, Any]:
     profile_name = str(profile or cfg.get("default_profile", "research"))
+    strategy_name = str(strategy_id or "")
+
     base = dict((cfg.get("profiles", {}) or {}).get(profile_name, {}) or {})
 
     asset_over = dict((cfg.get("asset_overrides", {}) or {}).get(symbol, {}) or {})
     asset_side_over = dict((cfg.get("asset_side_overrides", {}) or {}).get(f"{symbol}::{side}", {}) or {})
 
+    strategy_over = {}
+    asset_strategy_over = {}
+    asset_side_strategy_over = {}
+
+    if strategy_name:
+        strategy_over = dict((cfg.get("strategy_overrides", {}) or {}).get(strategy_name, {}) or {})
+        asset_strategy_over = dict((cfg.get("asset_strategy_overrides", {}) or {}).get(f"{symbol}::{strategy_name}", {}) or {})
+        asset_side_strategy_over = dict((cfg.get("asset_side_strategy_overrides", {}) or {}).get(f"{symbol}::{side}::{strategy_name}", {}) or {})
+
     merged = _deep_merge(base, asset_over)
     merged = _deep_merge(merged, asset_side_over)
+    merged = _deep_merge(merged, strategy_over)
+    merged = _deep_merge(merged, asset_strategy_over)
+    merged = _deep_merge(merged, asset_side_strategy_over)
     return merged

@@ -4,7 +4,7 @@ import pandas as pd
 
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 
-REGISTRY = "artifacts/strategy_registry_v2.json"
+REGISTRY = "artifacts/strategy_registry.json"
 EXCHANGE = "binanceusdm"
 CACHE_DIR = "data/cache"
 
