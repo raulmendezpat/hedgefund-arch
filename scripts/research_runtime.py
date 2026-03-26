@@ -387,6 +387,131 @@ def _f(x, default=0.0) -> float:
         return float(default)
 
 
+
+def _clip01(x: float) -> float:
+    try:
+        x = float(x)
+    except Exception:
+        x = 0.0
+    if x < 0.0:
+        return 0.0
+    if x > 1.0:
+        return 1.0
+    return float(x)
+
+
+def _sigmoid(x: float) -> float:
+    import math
+    try:
+        x = float(x)
+    except Exception:
+        x = 0.0
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def _safe_meta_float(meta: dict, key: str, default: float = 0.0) -> float:
+    try:
+        if not isinstance(meta, dict):
+            return float(default)
+        v = meta.get(key, default)
+        if v is None:
+            return float(default)
+        return float(v)
+    except Exception:
+        return float(default)
+
+
+def _compute_pwin_math_v1(meta: dict) -> float:
+    policy_score = _safe_meta_float(meta, "policy_score", _safe_meta_float(meta, "score", 0.0))
+    score = _safe_meta_float(meta, "score", 0.0)
+    expected_return = _safe_meta_float(meta, "expected_return", 0.0)
+    signal_strength = _safe_meta_float(meta, "strength", _safe_meta_float(meta, "signal_strength", 0.0))
+    competitive_score = _safe_meta_float(meta, "competitive_score", 0.0)
+    post_ml_score = _safe_meta_float(meta, "post_ml_score", 0.0)
+    portfolio_conviction = _safe_meta_float(meta, "portfolio_conviction", 0.0)
+
+    adx = _safe_meta_float(meta, "adx", 0.0)
+    atrp = _safe_meta_float(meta, "atrp", 0.0)
+    rsi = _safe_meta_float(meta, "rsi", 50.0)
+    ema_gap = abs(_safe_meta_float(meta, "ema_gap_fast_slow", _safe_meta_float(meta, "ema_gap_pct", 0.0)))
+    dist_fast = abs(_safe_meta_float(meta, "dist_close_ema_fast", 0.0))
+
+    policy_norm = _clip01(policy_score / 0.00025)
+    score_norm = _clip01(score / 0.00006)
+    er_norm = _clip01(expected_return / 0.0010)
+    signal_norm = _clip01(signal_strength / 2.0)
+    comp_norm = _clip01(competitive_score)
+    postml_norm = _clip01(post_ml_score)
+
+    adx_low_bonus = _clip01((adx - 14.0) / 10.0) * 0.15
+    adx_high_bonus = _clip01((adx - 35.0) / 15.0) * 0.25
+    adx_mid_penalty = _clip01(1.0 - abs(adx - 30.0) / 6.0) * 0.35
+
+    atrp_good_bonus = _clip01((0.0082 - atrp) / 0.0045) * 0.30
+    atrp_mid_penalty = _clip01((atrp - 0.0083) / 0.0020) * 0.35
+    atrp_high_penalty = _clip01((atrp - 0.0105) / 0.0040) * 0.45
+
+    ema_gap_bonus = _clip01(ema_gap / 0.0060) * 0.15
+    ema_gap_penalty = _clip01((0.0015 - ema_gap) / 0.0015) * 0.20
+    dist_penalty = _clip01((dist_fast - 0.010) / 0.020) * 0.20
+
+    rsi_extreme_penalty = (
+        _clip01((25.0 - rsi) / 25.0) * 0.12
+        + _clip01((rsi - 75.0) / 25.0) * 0.12
+    )
+
+    port_conv_bonus = _clip01((portfolio_conviction - 0.55) / 0.20) * 0.10
+
+    edge = (
+        0.22 * policy_norm
+        + 0.16 * score_norm
+        + 0.14 * er_norm
+        + 0.08 * signal_norm
+        + 0.06 * comp_norm
+        + 0.04 * postml_norm
+        + adx_low_bonus
+        + adx_high_bonus
+        + atrp_good_bonus
+        + ema_gap_bonus
+        + port_conv_bonus
+        - adx_mid_penalty
+        - atrp_mid_penalty
+        - atrp_high_penalty
+        - ema_gap_penalty
+        - dist_penalty
+        - rsi_extreme_penalty
+    )
+
+    p = 0.50 + 0.10 * (_sigmoid((edge - 0.18) * 8.0) - 0.5) * 2.0
+    if p < 0.45:
+        p = 0.45
+    if p > 0.65:
+        p = 0.65
+    return float(p)
+
+
+def _resolve_pwin(meta: dict, mode: str) -> tuple[float, float, float]:
+    p_ml = _safe_meta_float(meta, "p_win", _safe_meta_float(meta, "ml_p_win", 0.5))
+    if p_ml <= 0.0:
+        p_ml = 0.5
+    p_math = _compute_pwin_math_v1(meta)
+    p_hybrid = 0.35 * float(p_ml) + 0.65 * float(p_math)
+
+    mode = str(mode or "ml").lower()
+    if mode == "math_v1":
+        p_final = p_math
+    elif mode == "hybrid_v1":
+        p_final = p_hybrid
+    else:
+        p_final = p_ml
+
+    if p_final < 0.0:
+        p_final = 0.0
+    if p_final > 1.0:
+        p_final = 1.0
+
+    return float(p_ml), float(p_math), float(p_hybrid if p_hybrid <= 1.0 else 1.0)
+
 def load_exit_registry(path: str) -> dict:
     p = Path(path)
     if not p.exists():
@@ -528,6 +653,7 @@ def main() -> None:
     ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     ap.add_argument("--selection-policy-config", default="artifacts/selection_policy_config.json")
+    ap.add_argument("--pwin-mode", choices=["ml", "math_v1", "hybrid_v1"], default="ml")
     ap.add_argument("--selection-policy-profile", default="research")
     args = ap.parse_args()
 
@@ -712,6 +838,44 @@ def main() -> None:
             )
 
         scores = mm.predict_many(feature_rows)
+
+        for c, s in zip(enriched_candidates, scores):
+            _sm_pre = dict(getattr(c, "signal_meta", {}) or {})
+            _sm_pre["expected_return_ml"] = float(getattr(s, "expected_return", 0.0) or 0.0)
+            _sm_pre["p_win_ml"] = float(getattr(s, "p_win", 0.0) or 0.0)
+
+            _p_ml, _p_math, _p_hybrid = _resolve_pwin(_sm_pre, args.pwin_mode)
+
+            if str(args.pwin_mode) == "math_v1":
+                _p_final = float(_p_math)
+            elif str(args.pwin_mode) == "hybrid_v1":
+                _p_final = float(_p_hybrid)
+            else:
+                _p_final = float(_p_ml)
+
+            try:
+                s.p_win = float(_p_final)
+            except Exception:
+                pass
+
+            try:
+                s.expected_return = float(_recompute_expected_return(_sm_pre, float(_p_final)))
+            except Exception:
+                pass
+
+            try:
+                s.score = float(max(0.0, float(_p_final) - 0.5) ** 0.90) * float(max(0.0, getattr(s, "expected_return", 0.0) or 0.0))
+            except Exception:
+                pass
+
+            _sm_pre["p_win"] = float(_p_final)
+            _sm_pre["p_win_math_v1"] = float(_p_math)
+            _sm_pre["p_win_hybrid_v1"] = float(_p_hybrid)
+            _sm_pre["p_win_mode"] = str(args.pwin_mode)
+            _sm_pre["expected_return"] = float(getattr(s, "expected_return", 0.0) or 0.0)
+            _sm_pre["score"] = float(getattr(s, "score", 0.0) or 0.0)
+            c.signal_meta = _sm_pre
+
         decisions = pm.decide_many(scores)
 
         accepted_pack = [
@@ -732,8 +896,21 @@ def main() -> None:
         enriched_candidates_scored = []
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
             sm0 = dict(getattr(c, "signal_meta", {}) or {})
-            sm0["p_win"] = float(getattr(s, "p_win", 0.0) or 0.0)
             sm0["expected_return"] = float(getattr(s, "expected_return", 0.0) or 0.0)
+            sm0["p_win"] = float(getattr(s, "p_win", 0.0) or 0.0)
+
+            _p_ml, _p_math, _p_hybrid = _resolve_pwin(sm0, args.pwin_mode)
+            sm0["p_win_ml"] = float(_p_ml)
+            sm0["p_win_math_v1"] = float(_p_math)
+            sm0["p_win_hybrid_v1"] = float(_p_hybrid)
+            sm0["p_win_mode"] = str(args.pwin_mode)
+
+            if str(args.pwin_mode) == "math_v1":
+                sm0["p_win"] = float(_p_math)
+            elif str(args.pwin_mode) == "hybrid_v1":
+                sm0["p_win"] = float(_p_hybrid)
+            else:
+                sm0["p_win"] = float(_p_ml)
             sm0["score"] = float(getattr(s, "score", 0.0) or 0.0)
 
             _key = (
@@ -818,9 +995,9 @@ def main() -> None:
                 "side": c.side,
                 "signal_strength": c.signal_strength,
                 "base_weight": c.base_weight,
-                "p_win": getattr(s, "p_win", 0.0),
-                "expected_return": getattr(s, "expected_return", 0.0),
-                "score": getattr(s, "score", 0.0),
+                "p_win": sm.get("p_win", getattr(s, "p_win", 0.0)),
+                "expected_return": sm.get("expected_return", getattr(s, "expected_return", 0.0)),
+                "score": sm.get("score", getattr(s, "score", 0.0)),
                 "accept": getattr(d, "accept", False),
                 "size_mult": getattr(d, "size_mult", 0.0),
                 "band": getattr(d, "band", ""),
