@@ -11,13 +11,123 @@ import pandas as pd
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 from hf.engines.opportunity_book import RegistryOpportunityBook
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
-from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher, LegacyAllocationEngine, ResearchAllocationRouter, build_legacy_allocation_config_from_args, build_legacy_allocation_engine
+from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher, AllocationEngine, ResearchAllocationRouter, build_allocation_config_from_args, build_allocation_engine
 from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
 from hf_core.pwin_ml_multiwindow import PWinMLMultiWindow
 from hf_core.pwin_ml_by_side import PWinMLBySide
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
-from hf_core.legacy_score_projector import LegacyScoreProjector
+from hf_core.trade_lifecycle import TradeLifecycleEngine
+
+from hf_core.score_projector import ScoreProjector
+
+
+def _resolve_competitive_rank_score(candidate) -> float:
+    sm = dict(getattr(candidate, "signal_meta", {}) or {})
+    try:
+        return float(
+            sm.get(
+                "post_ml_competitive_score",
+                sm.get(
+                    "meta_post_ml_competitive_score",
+                    sm.get(
+                        "post_ml_score",
+                        sm.get(
+                            "meta_post_ml_score",
+                            sm.get("competitive_score", sm.get("meta_competitive_score", 0.0)),
+                        ),
+                    ),
+                ),
+            ) or 0.0
+        )
+    except Exception:
+        return 0.0
+
+
+def _apply_best_per_symbol_competition(
+    candidates,
+    decisions,
+):
+    pairs = list(zip(list(candidates or []), list(decisions or [])))
+    if not pairs:
+        return [], [], {
+            "enabled": True,
+            "mode": "best_per_symbol",
+            "kept_count": 0,
+            "dropped_count": 0,
+            "kept": [],
+            "dropped": [],
+        }
+
+    ranked_rows = []
+    for idx, (c, d) in enumerate(pairs):
+        score = _resolve_competitive_rank_score(c)
+        sm = dict(getattr(c, "signal_meta", {}) or {})
+        ranked_rows.append(
+            {
+                "idx": int(idx),
+                "candidate": c,
+                "decision": d,
+                "symbol": str(getattr(c, "symbol", "") or ""),
+                "strategy_id": str(getattr(c, "strategy_id", "") or ""),
+                "side": str(getattr(c, "side", "") or ""),
+                "score": float(score),
+                "p_win": float(sm.get("p_win", 0.0) or 0.0),
+                "competitive_score": float(
+                    sm.get("competitive_score", sm.get("meta_competitive_score", 0.0)) or 0.0
+                ),
+                "post_ml_competitive_score": float(score),
+            }
+        )
+
+    best_by_symbol = {}
+    for row in ranked_rows:
+        sym = str(row["symbol"])
+        prev = best_by_symbol.get(sym)
+        if prev is None or (
+            row["score"], row["p_win"], row["competitive_score"], -row["idx"]
+        ) > (
+            prev["score"], prev["p_win"], prev["competitive_score"], -prev["idx"]
+        ):
+            best_by_symbol[sym] = row
+
+    kept_idx = {int(v["idx"]) for v in best_by_symbol.values()}
+    kept = []
+    dropped = []
+
+    for row in ranked_rows:
+        target = kept if int(row["idx"]) in kept_idx else dropped
+        target.append(
+            {
+                "symbol": str(row["symbol"]),
+                "strategy_id": str(row["strategy_id"]),
+                "side": str(row["side"]),
+                "p_win": float(row["p_win"]),
+                "competitive_score": float(row["competitive_score"]),
+                "post_ml_competitive_score": float(row["post_ml_competitive_score"]),
+            }
+        )
+
+    kept_candidates = []
+    kept_decisions = []
+    for idx, (c, d) in enumerate(pairs):
+        if idx in kept_idx:
+            sm = dict(getattr(c, "signal_meta", {}) or {})
+            sm["best_per_symbol_kept"] = True
+            sm["best_per_symbol_rank_score"] = float(_resolve_competitive_rank_score(c))
+            c.signal_meta = sm
+            kept_candidates.append(c)
+            kept_decisions.append(d)
+
+    meta = {
+        "enabled": True,
+        "mode": "best_per_symbol",
+        "kept_count": int(len(kept)),
+        "dropped_count": int(len(dropped)),
+        "kept": kept,
+        "dropped": dropped,
+    }
+    return kept_candidates, kept_decisions, meta
 
 
 def load_registry(path: str) -> list[dict]:
@@ -267,6 +377,97 @@ def build_selection_stage_summary(trace_path: str | Path) -> pd.DataFrame:
 
 
 
+
+def _f(x, default=0.0) -> float:
+    try:
+        if x is None:
+            return float(default)
+        return float(x)
+    except Exception:
+        return float(default)
+
+
+def load_exit_registry(path: str) -> dict:
+    p = Path(path)
+    if not p.exists():
+        return {}
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def resolve_exit_policy(exit_cfg: dict, strategy_id: str) -> dict:
+    strategy_id = str(strategy_id or "")
+    strategy_map = dict((exit_cfg or {}).get("strategies", {}) or {})
+    if strategy_id in strategy_map:
+        return dict(strategy_map.get(strategy_id, {}) or {})
+    return dict((exit_cfg or {}).get("default", {}) or {})
+
+
+def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str) -> dict:
+    selected_candidates = list(selected_candidates or [])
+    weights = dict(weights or {})
+    signal_side = ""
+    regime_on = True
+
+    for c in selected_candidates:
+        if str(getattr(c, "symbol", "") or "") != str(symbol):
+            continue
+        signal_side = str(getattr(c, "side", "") or "").lower()
+        sm = dict(getattr(c, "signal_meta", {}) or {})
+        if "regime_as_metadata" in sm:
+            regime_on = bool(sm.get("regime_as_metadata", True))
+        elif "portfolio_regime" in sm:
+            regime_on = str(sm.get("portfolio_regime", "normal") or "normal").lower() != "off"
+        break
+
+    return {
+        "target_weight": float(weights.get(symbol, 0.0) or 0.0),
+        "signal_side": str(signal_side),
+        "regime_on": bool(regime_on),
+        "context_source": "research_runtime_shadow",
+    }
+
+
+def _build_lifecycle_metrics(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
+    equity = pd.to_numeric(equity_df.get("equity", pd.Series(dtype=float)), errors="coerce").dropna()
+
+    if equity.empty:
+        equity_start = 0.0
+        equity_final = 0.0
+        total_return_pct = 0.0
+        sharpe_annual = 0.0
+        max_drawdown_pct = 0.0
+        vol_annual = 0.0
+    else:
+        equity_start = float(equity.iloc[0])
+        equity_final = float(equity.iloc[-1])
+        total_return_pct = ((equity_final / equity_start) - 1.0) * 100.0 if equity_start != 0.0 else 0.0
+        rets = equity.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+        sharpe_annual = float((rets.mean() / rets.std(ddof=0)) * np.sqrt(24 * 365)) if len(rets) and float(rets.std(ddof=0)) > 0 else 0.0
+        peak = equity.cummax()
+        dd = (equity / peak.replace(0.0, np.nan)) - 1.0
+        dd = dd.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        max_drawdown_pct = float(dd.min() * 100.0)
+        vol_annual = float(rets.std(ddof=0) * np.sqrt(24 * 365)) if len(rets) else 0.0
+
+    trade_count = int(len(trades_df))
+    if trade_count > 0 and "pnl" in trades_df.columns:
+        pnl = pd.to_numeric(trades_df["pnl"], errors="coerce").fillna(0.0)
+        win_rate_pct = float((pnl.gt(0).sum() / max(1, len(pnl))) * 100.0)
+    else:
+        win_rate_pct = 0.0
+
+    return {
+        "equity_start": float(equity_start),
+        "equity_final": float(equity_final),
+        "total_return_pct": float(total_return_pct),
+        "sharpe_annual": float(sharpe_annual),
+        "max_drawdown_pct": float(max_drawdown_pct),
+        "vol_annual": float(vol_annual),
+        "trade_count": int(trade_count),
+        "win_rate_pct": float(win_rate_pct),
+    }
+
+
 def compute_metrics(port_ret: pd.Series, equity: pd.Series) -> dict:
     ret = pd.to_numeric(port_ret, errors="coerce").fillna(0.0)
     eq = pd.to_numeric(equity, errors="coerce").ffill().fillna(1000.0)
@@ -305,6 +506,7 @@ def main() -> None:
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
     ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "legacy_multi_strategy"])
+    ap.add_argument("--legacy-competition-mode", default="off", choices=["off", "best_per_symbol", "top1_global", "top2_global"])
     ap.add_argument("--legacy-score-power", type=float, default=1.0)
     ap.add_argument("--legacy-min-score", type=float, default=1e-12)
     ap.add_argument("--legacy-symbol-score-agg", default="sum", choices=["sum", "max"])
@@ -375,6 +577,14 @@ def main() -> None:
     if args.policy_config and Path(args.policy_config).exists():
         policy_cfg = json.loads(Path(args.policy_config).read_text(encoding="utf-8"))
 
+    disabled_strategy_side_pairs = set()
+    for _raw in list((policy_cfg or {}).get("disabled_strategy_sides", []) or []):
+        _item = str(_raw or "").strip()
+        if not _item or "|" not in _item:
+            continue
+        _sid, _side = _item.split("|", 1)
+        disabled_strategy_side_pairs.add((str(_sid).strip().lower(), str(_side).strip().lower()))
+
     pm = PolicyModel(
         profile=str(args.policy_profile),
         config=dict(policy_cfg or {}),
@@ -386,17 +596,17 @@ def main() -> None:
         profile=str(args.allocator_profile),
         projection_profile=str(args.projection_profile),
     )
-    legacy_score_projector = LegacyScoreProjector(
+    score_projector = ScoreProjector(
         use_policy_scaled_base_weight=False,
         inject_post_ml_competitive_score=True,
     )
-    legacy_allocation_config = build_legacy_allocation_config_from_args(args)
-    legacy_allocation_engine = build_legacy_allocation_engine(
-        config=legacy_allocation_config,
+    allocation_config = build_allocation_config_from_args(args)
+    allocation_engine = build_allocation_engine(
+        config=allocation_config,
     )
     allocation_router = ResearchAllocationRouter(
         snapshot_allocator=allocator,
-        legacy_allocation_engine=legacy_allocation_engine,
+        legacy_allocation_engine=allocation_engine,
     )
     context_enricher = AssetContextEnricher()
 
@@ -404,6 +614,17 @@ def main() -> None:
     candidate_rows = []
     equity = 1000.0
     prev_alloc = None
+
+    lifecycle_engine = TradeLifecycleEngine(
+        maker_fee=0.0002,
+        taker_fee=0.0006,
+        cooldown_after_close_bars=2,
+    )
+    lifecycle_exit_cfg = load_exit_registry("artifacts/exit_policy_registry.json")
+    lifecycle_balance = 1000.0
+    lifecycle_equity_rows = []
+    lifecycle_open_rows = []
+    lifecycle_event_rows = []
     alloc_trace_path = Path(f"results/allocation_trace_{str(args.name)}.jsonl")
     if alloc_trace_path.exists():
         alloc_trace_path.unlink()
@@ -456,6 +677,7 @@ def main() -> None:
             )
 
         enriched_candidates = []
+        disabled_candidates = []
         for c in candidates:
             _c = context_enricher.enrich_candidate(
                 candidate=c,
@@ -464,6 +686,18 @@ def main() -> None:
                 feature_map=feature_series_by_symbol[c.symbol],
             )
             _c = seed_candidate_meta(_c)
+
+            _sid_now = str(getattr(_c, "strategy_id", "") or "").lower()
+            _side_now = str(getattr(_c, "side", "flat") or "flat").lower()
+            if (_sid_now, _side_now) in disabled_strategy_side_pairs:
+                _sm = dict(getattr(_c, "signal_meta", {}) or {})
+                _sm["reason"] = "disabled_strategy_side"
+                _sm["disabled_strategy_side"] = f"{_sid_now}|{_side_now}"
+                _sm["disabled_strategy_side_applied"] = True
+                _c.signal_meta = _sm
+                disabled_candidates.append(_c)
+                continue
+
             enriched_candidates.append(_c)
 
         portfolio_context = build_portfolio_context(enriched_candidates, score_mode="early")
@@ -531,8 +765,10 @@ def main() -> None:
 
             sm0["competitive_score"] = float(_competitive_score)
             sm0["post_ml_score"] = float(_post_ml_score)
+            sm0["post_ml_competitive_score"] = float(_post_ml_score)
             sm0["meta_competitive_score"] = float(_competitive_score)
             sm0["meta_post_ml_score"] = float(_post_ml_score)
+            sm0["meta_post_ml_competitive_score"] = float(_post_ml_score)
             sm0["policy_score"] = float(getattr(d, "policy_score", getattr(s, "score", 0.0)) or 0.0)
             sm0["policy_band"] = str(getattr(d, "band", "") or "")
             sm0["policy_reason"] = str(getattr(d, "reason", "") or "")
@@ -554,8 +790,15 @@ def main() -> None:
             decisions=decisions,
         )
 
-        selected_candidates = legacy_score_projector.enrich_many(selected_candidates)
+        selected_candidates, selected_decisions, global_competition_meta = _apply_best_per_symbol_competition(
+            selected_candidates,
+            selected_decisions,
+        )
+
+        selected_candidates = score_projector.enrich_many(selected_candidates)
         allocation_portfolio_context = build_portfolio_context(selected_candidates, score_mode="allocation")
+        selection_meta["disabled_strategy_side_filtered"] = int(len(disabled_candidates))
+        selection_meta["global_competition"] = dict(global_competition_meta or {})
 
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
             sm = dict(getattr(c, "signal_meta", {}) or {})
@@ -633,6 +876,8 @@ def main() -> None:
             _alloc_input_trace_row = {
                 "ts": str(ts),
                 "n_selected_after_pipeline": int(len(selected_candidates)),
+                "selection_meta": dict(selection_meta or {}),
+                "global_competition": dict((selection_meta or {}).get("global_competition", {}) or {}),
                 "selected_candidates": [
                     {
                         "symbol": str(getattr(c, "symbol", "") or ""),
@@ -646,6 +891,16 @@ def main() -> None:
                 ],
                 "alloc_inputs": list(alloc_inputs or []),
                 "legacy_opportunities": list(_alloc_meta.get("legacy_opportunities", []) or []),
+                "legacy_opportunities_pre_competition": list(_alloc_meta.get("legacy_opportunities_pre_competition", []) or []),
+                "legacy_pre_allocator_trace": dict(_alloc_meta.get("legacy_pre_allocator_trace", {}) or {}),
+                "legacy_competition_summary": dict(_alloc_meta.get("legacy_competition_summary", {}) or {}),
+                "weights": {str(k): float(v or 0.0) for k, v in dict(getattr(alloc, "weights", {}) or {}).items()},
+                "legacy_stage_weights": dict(_alloc_meta.get("legacy_stage_weights", {}) or {}),
+                "legacy_stage_gross_exposure": dict(_alloc_meta.get("legacy_stage_gross_exposure", {}) or {}),
+                "raw_scores": dict(_alloc_meta.get("raw_scores", {}) or {}),
+                "base_weights": dict(_alloc_meta.get("base_weights", {}) or {}),
+                "capped_weights": dict(_alloc_meta.get("capped_weights", {}) or {}),
+                "selected_meta": dict(_alloc_meta.get("selected_meta", {}) or {}),
                 "allocation_mode": str(_alloc_meta.get("allocation_mode", "") or ""),
                 "legacy_allocation_config": dict(_alloc_meta.get("legacy_allocation_config", {}) or {}),
                 "allocation_portfolio_regime": allocation_portfolio_context.get("portfolio_regime"),
@@ -662,6 +917,181 @@ def main() -> None:
 
         weights = dict(alloc.weights or {})
         _gross_weight = float(sum(abs(float(v or 0.0)) for v in weights.values()))
+
+        lifecycle_engine.decrement_cooldowns()
+
+        # shadow exits first
+        for sym in symbols:
+            pos = lifecycle_engine.get_open_position(sym)
+            if pos is None:
+                continue
+
+            df = data_by_symbol[sym]
+            i = df.index.get_loc(ts)
+            if i <= 0:
+                continue
+
+            current_bar = dict(df.iloc[i].to_dict())
+            current_bar["timestamp"] = int(pd.to_numeric(df.iloc[i]["timestamp"], errors="coerce"))
+
+            prev_raw = df.iloc[i - 1]
+            prev_bar = dict(prev_raw.to_dict())
+            prev_bar["timestamp"] = int(pd.to_numeric(prev_raw["timestamp"], errors="coerce"))
+
+            for feat_name, feat_series in feature_series_by_symbol[sym].items():
+                try:
+                    prev_bar[feat_name] = float(feat_series.iloc[i - 1])
+                except Exception:
+                    pass
+                try:
+                    current_bar[feat_name] = float(feat_series.iloc[i])
+                except Exception:
+                    pass
+
+            exit_context = _resolve_shadow_exit_context(selected_candidates, weights, sym)
+            strat_cfg = resolve_exit_policy(lifecycle_exit_cfg, pos.strategy_id)
+
+            decision = lifecycle_engine.evaluate_exit(
+                symbol=sym,
+                prev_bar=prev_bar,
+                current_bar=current_bar,
+                exit_policy_cfg=strat_cfg,
+                context=exit_context,
+                exit_ts=int(current_bar["timestamp"]),
+            )
+
+            if str(decision.action).lower() == "close":
+                rec = lifecycle_engine.trade_log[-1]
+                lifecycle_balance += float(rec.pnl)
+                lifecycle_event_rows.append(
+                    {
+                        "ts": str(ts),
+                        "symbol": sym,
+                        "strategy_id": pos.strategy_id,
+                        "event": "exit",
+                        "side": pos.side,
+                        "exit_reason": rec.exit_reason,
+                        "entry_px": rec.entry_px,
+                        "exit_px": rec.exit_px,
+                        "qty": rec.qty,
+                        "pnl": rec.pnl,
+                        "bars_held": rec.bars_held,
+                    }
+                )
+
+        # shadow entries second
+        opened_symbols = set()
+        for c in selected_candidates:
+            sym = str(getattr(c, "symbol", "") or "")
+            strategy_id = str(getattr(c, "strategy_id", "") or "")
+            if sym in opened_symbols:
+                continue
+            if not lifecycle_engine.can_open(sym):
+                continue
+
+            target_weight = float(weights.get(sym, 0.0) or 0.0)
+            if abs(target_weight) <= 1e-12:
+                continue
+
+            side = "long" if target_weight > 0 else "short"
+            df = data_by_symbol[sym]
+            i = df.index.get_loc(ts)
+            if i <= 0:
+                continue
+
+            prev_raw = df.iloc[i - 1]
+            entry_px = _f(prev_raw.get("close"), 0.0)
+
+            prev_feats = {}
+            for feat_name, feat_series in feature_series_by_symbol[sym].items():
+                if (i - 1) >= 0:
+                    try:
+                        prev_feats[feat_name] = float(feat_series.iloc[i - 1])
+                    except Exception:
+                        pass
+
+            atr = _f(prev_feats.get("atr"), 0.0)
+            adx = _f(prev_feats.get("adx"), float("nan"))
+            atrp = _f(prev_feats.get("atrp"), float("nan"))
+
+            if entry_px <= 0.0 or atr <= 0.0:
+                continue
+
+            notional_frac = min(max(abs(target_weight), 0.01), 0.30)
+            notional = lifecycle_balance * notional_frac
+            qty = notional / entry_px
+            fee = notional * lifecycle_engine.maker_fee
+            lifecycle_balance -= fee
+
+            lifecycle_engine.open_position(
+                symbol=sym,
+                strategy_id=strategy_id,
+                side=side,
+                entry_ts=int(pd.to_numeric(df.iloc[i]["timestamp"], errors="coerce")),
+                entry_px=float(entry_px),
+                qty=float(qty),
+                entry_atr=float(atr),
+                entry_adx=float(adx),
+                entry_atrp=float(atrp),
+                entry_strength=_f(getattr(c, "signal_strength", 0.0), 0.0),
+                entry_reason="shadow_allocator_target_weight",
+                entry_meta={
+                    "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
+                    "cooldown_after_close_bars": 2,
+                    "trace_target_weight": float(target_weight),
+                    "entry_notional_frac": float(notional_frac),
+                },
+            )
+
+            opened_symbols.add(sym)
+            lifecycle_event_rows.append(
+                {
+                    "ts": str(ts),
+                    "symbol": sym,
+                    "strategy_id": strategy_id,
+                    "event": "entry",
+                    "side": side,
+                    "entry_px": float(entry_px),
+                    "qty": float(qty),
+                    "target_weight": float(target_weight),
+                    "notional_frac": float(notional_frac),
+                }
+            )
+
+        lifecycle_mtm = 0.0
+        for sym, pos in list(lifecycle_engine.open_positions.items()):
+            df = data_by_symbol[sym]
+            i = df.index.get_loc(ts)
+            px = _f(df.iloc[i].get("close"), pos.entry_px)
+
+            if str(pos.side).lower() == "long":
+                lifecycle_mtm += (px - pos.entry_px) * pos.qty
+            elif str(pos.side).lower() == "short":
+                lifecycle_mtm += (pos.entry_px - px) * pos.qty
+
+            lifecycle_open_rows.append(
+                {
+                    "ts": str(ts),
+                    "symbol": pos.symbol,
+                    "strategy_id": pos.strategy_id,
+                    "side": pos.side,
+                    "entry_ts": int(pos.entry_ts),
+                    "entry_px": float(pos.entry_px),
+                    "qty": float(pos.qty),
+                    "bars_held": int(pos.bars_held),
+                    "trail_stop": None if pos.trail_stop is None else float(pos.trail_stop),
+                    "breakeven_armed": bool(pos.breakeven_armed),
+                }
+            )
+
+        lifecycle_equity_rows.append(
+            {
+                "ts": str(ts),
+                "equity": float(lifecycle_balance + lifecycle_mtm),
+                "balance": float(lifecycle_balance),
+                "open_positions": int(len(lifecycle_engine.open_positions)),
+            }
+        )
 
         try:
             _trace_row = {
@@ -697,6 +1127,12 @@ def main() -> None:
                 "legacy_stage_weights": dict(_alloc_meta.get("legacy_stage_weights", {}) or {}),
                 "legacy_stage_gross_exposure": dict(_alloc_meta.get("legacy_stage_gross_exposure", {}) or {}),
                 "legacy_stage_order": list(_alloc_meta.get("legacy_stage_order", []) or []),
+                "legacy_prev_weights_signed": dict(_alloc_meta.get("legacy_prev_weights_signed", {}) or {}),
+                "legacy_prev_weights_abs_for_allocator": dict(_alloc_meta.get("legacy_prev_weights_abs_for_allocator", {}) or {}),
+                "legacy_opportunities": list(_alloc_meta.get("legacy_opportunities", []) or []),
+                "legacy_opportunities_pre_competition": list(_alloc_meta.get("legacy_opportunities_pre_competition", []) or []),
+                "legacy_pre_allocator_trace": dict(_alloc_meta.get("legacy_pre_allocator_trace", {}) or {}),
+                "legacy_competition_summary": dict(_alloc_meta.get("legacy_competition_summary", {}) or {}),
                 "portfolio_regime": _alloc_meta.get("portfolio_regime", ""),
                 "allocation_portfolio_regime": allocation_portfolio_context.get("portfolio_regime"),
                 "allocation_portfolio_breadth": allocation_portfolio_context.get("portfolio_breadth"),
@@ -736,14 +1172,26 @@ def main() -> None:
 
             df = data_by_symbol[sym]
             i = df.index.get_loc(ts)
-            if i > 0:
-                prev_close = float(df.iloc[i - 1]["close"])
+
+            if i < len(df) - 1:
                 cur_close = float(df.iloc[i]["close"])
-                if prev_close != 0:
-                    ret = cur_close / prev_close - 1.0
+                next_close = float(df.iloc[i + 1]["close"])
+                if cur_close != 0:
+                    ret = next_close / cur_close - 1.0
                     port_ret += w * ret
 
         equity *= (1.0 + port_ret)
+
+        lifecycle_equity_now = float(lifecycle_balance + lifecycle_mtm)
+        if lifecycle_equity_rows:
+            lifecycle_equity_prev = float(lifecycle_equity_rows[-1]["equity"])
+        else:
+            lifecycle_equity_prev = 1000.0
+
+        lifecycle_port_ret = (
+            (lifecycle_equity_now / lifecycle_equity_prev) - 1.0
+            if lifecycle_equity_prev != 0.0 else 0.0
+        )
 
         rows.append({
             "ts": ts,
@@ -753,8 +1201,10 @@ def main() -> None:
             "n_accepts": int(sum(1 for d in decisions if bool(d.accept))),
             "gross_weight": gross_weight,
             "active_symbols": active_symbols,
-            "port_ret": port_ret,
-            "equity": equity,
+            "port_ret_simple": port_ret,
+            "equity_simple": equity,
+            "port_ret": lifecycle_port_ret,
+            "equity": lifecycle_equity_now,
         })
 
     t_run = time.perf_counter()
@@ -779,8 +1229,50 @@ def main() -> None:
 
     out_df.to_csv(out_csv, index=False)
     pd.DataFrame(candidate_rows).to_csv(out_candidates_csv, index=False)
+    lifecycle_trades_df = pd.DataFrame([{
+        "symbol": t.symbol,
+        "strategy_id": t.strategy_id,
+        "side": t.side,
+        "entry_ts": t.entry_ts,
+        "exit_ts": t.exit_ts,
+        "entry_px": t.entry_px,
+        "exit_px": t.exit_px,
+        "qty": t.qty,
+        "pnl": t.pnl,
+        "exit_reason": t.exit_reason,
+        "fee": t.fee,
+        "bars_held": t.bars_held,
+        "entry_adx": t.entry_adx,
+        "entry_atrp": t.entry_atrp,
+        "entry_atr": t.entry_atr,
+    } for t in lifecycle_engine.trade_log])
+    lifecycle_equity_df = pd.DataFrame(lifecycle_equity_rows)
+    lifecycle_open_df = pd.DataFrame(lifecycle_open_rows)
+    lifecycle_events_df = pd.DataFrame(lifecycle_event_rows)
 
-    metrics = compute_metrics(out_df["port_ret"], out_df["equity"])
+    lifecycle_trades_csv = Path(f"results/research_runtime_lifecycle_trades_{args.name}.csv")
+    lifecycle_equity_csv = Path(f"results/research_runtime_lifecycle_equity_{args.name}.csv")
+    lifecycle_open_csv = Path(f"results/research_runtime_lifecycle_open_positions_{args.name}.csv")
+    lifecycle_events_csv = Path(f"results/research_runtime_lifecycle_events_{args.name}.csv")
+    lifecycle_metrics_json = Path(f"results/research_runtime_lifecycle_metrics_{args.name}.json")
+
+    lifecycle_trades_df.to_csv(lifecycle_trades_csv, index=False)
+    lifecycle_equity_df.to_csv(lifecycle_equity_csv, index=False)
+    lifecycle_open_df.to_csv(lifecycle_open_csv, index=False)
+    lifecycle_events_df.to_csv(lifecycle_events_csv, index=False)
+
+    lifecycle_metrics = _build_lifecycle_metrics(lifecycle_trades_df, lifecycle_equity_df)
+    lifecycle_metrics_json.write_text(json.dumps(lifecycle_metrics, indent=2), encoding="utf-8")
+
+    print(f"saved: {lifecycle_trades_csv}")
+    print(f"saved: {lifecycle_equity_csv}")
+    print(f"saved: {lifecycle_open_csv}")
+    print(f"saved: {lifecycle_events_csv}")
+    print(f"saved: {lifecycle_metrics_json}")
+
+
+
+    metrics = dict(lifecycle_metrics or {})
     metrics["rows"] = int(len(out_df))
     metrics["load_seconds"] = float(t_load - t0)
     metrics["run_seconds"] = float(t_run - t_load)

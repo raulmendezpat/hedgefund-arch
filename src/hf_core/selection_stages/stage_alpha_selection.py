@@ -52,6 +52,8 @@ class AlphaSelectionStage:
         p_win: float,
         expected_return: float,
         policy_size_mult: float,
+        post_ml_score: float,
+        competitive_score: float,
         contextual_score: float,
         contextual_penalty: float,
         regime_score_mult: float,
@@ -65,17 +67,41 @@ class AlphaSelectionStage:
         score_floor = _safe_float(cfg.get("alpha_selection_score_floor", 0.0), 0.0)
         score_cap = _safe_float(cfg.get("alpha_selection_score_cap", 1.0), 1.0)
 
-        w_policy_score = _safe_float(weights.get("policy_score", 0.20), 0.20)
+        w_policy_score = _safe_float(weights.get("policy_score", 0.10), 0.10)
         w_p_win = _safe_float(weights.get("p_win", 0.20), 0.20)
-        w_expected_return = _safe_float(weights.get("expected_return", 0.10), 0.10)
-        w_policy_size_mult = _safe_float(weights.get("policy_size_mult", 0.10), 0.10)
-        w_contextual_score = _safe_float(weights.get("contextual_score", 0.20), 0.20)
-        w_regime_score_mult = _safe_float(weights.get("regime_score_mult", 0.20), 0.20)
+        w_expected_return = _safe_float(weights.get("expected_return", 0.15), 0.15)
+        w_policy_size_mult = _safe_float(weights.get("policy_size_mult", 0.05), 0.05)
+        w_post_ml_score = _safe_float(weights.get("post_ml_score", 0.25), 0.25)
+        w_competitive_score = _safe_float(weights.get("competitive_score", 0.10), 0.10)
+        w_contextual_score = _safe_float(weights.get("contextual_score", 0.10), 0.10)
+        w_regime_score_mult = _safe_float(weights.get("regime_score_mult", 0.05), 0.05)
 
-        policy_score_norm = _clamp(policy_score)
-        p_win_norm = _clamp(p_win)
+        weight_sum = (
+            w_policy_score
+            + w_p_win
+            + w_expected_return
+            + w_policy_size_mult
+            + w_post_ml_score
+            + w_competitive_score
+            + w_contextual_score
+            + w_regime_score_mult
+        )
+        if weight_sum > 0:
+            w_policy_score /= weight_sum
+            w_p_win /= weight_sum
+            w_expected_return /= weight_sum
+            w_policy_size_mult /= weight_sum
+            w_post_ml_score /= weight_sum
+            w_competitive_score /= weight_sum
+            w_contextual_score /= weight_sum
+            w_regime_score_mult /= weight_sum
+
+        policy_score_norm = _clamp(policy_score / max(1e-9, 0.00025))
+        p_win_norm = _clamp((p_win - 0.50) / 0.10)
         expected_return_norm = _clamp(expected_return / expected_return_scale) if expected_return_scale > 0 else _clamp(expected_return)
         size_mult_norm = _clamp(policy_size_mult / size_mult_scale) if size_mult_scale > 0 else _clamp(policy_size_mult)
+        post_ml_norm = _clamp(post_ml_score)
+        competitive_norm = _clamp(competitive_score)
         contextual_norm = _clamp(contextual_score)
         regime_norm = _clamp(regime_score_mult)
 
@@ -84,6 +110,8 @@ class AlphaSelectionStage:
             + w_p_win * p_win_norm
             + w_expected_return * expected_return_norm
             + w_policy_size_mult * size_mult_norm
+            + w_post_ml_score * post_ml_norm
+            + w_competitive_score * competitive_norm
             + w_contextual_score * contextual_norm
             + w_regime_score_mult * regime_norm
         )
@@ -120,6 +148,8 @@ class AlphaSelectionStage:
             p_win = float(getattr(r, "p_win", 0.0) or 0.0)
             expected_return = float(getattr(r, "expected_return", 0.0) or 0.0)
             policy_size_mult = float(getattr(r, "policy_size_mult", 0.0) or 0.0)
+            post_ml_score = float(getattr(r, "post_ml_score", 0.0) or 0.0)
+            competitive_score = float(getattr(r, "competitive_score", 0.0) or 0.0)
 
             selection_meta = getattr(r, "selection_meta", None)
             if not isinstance(selection_meta, dict):
@@ -139,6 +169,8 @@ class AlphaSelectionStage:
                 p_win=p_win,
                 expected_return=expected_return,
                 policy_size_mult=policy_size_mult,
+                post_ml_score=post_ml_score,
+                competitive_score=competitive_score,
                 contextual_score=contextual_score,
                 contextual_penalty=contextual_penalty,
                 regime_score_mult=regime_score_mult,
@@ -185,6 +217,8 @@ class AlphaSelectionStage:
                         "p_win": float(p_win),
                         "expected_return": float(expected_return),
                         "policy_size_mult": float(policy_size_mult),
+                        "post_ml_score": float(post_ml_score),
+                        "competitive_score": float(competitive_score),
                         "contextual_score": float(contextual_score),
                         "contextual_penalty": float(contextual_penalty),
                         "regime_score_mult": float(regime_score_mult),
@@ -206,6 +240,8 @@ class AlphaSelectionStage:
                     "p_win": float(p_win),
                     "expected_return": float(expected_return),
                     "policy_size_mult": float(policy_size_mult),
+                    "post_ml_score": float(post_ml_score),
+                    "competitive_score": float(competitive_score),
                     "contextual_score": float(contextual_score),
                     "contextual_penalty": float(contextual_penalty),
                     "regime_score_mult": float(regime_score_mult),

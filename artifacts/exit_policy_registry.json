@@ -1,0 +1,165 @@
+{
+  "default": {
+    "family": "trend_atr_dynamic",
+    "params": {
+      "stop_atr_mult": 1.5,
+      "tp_atr_mult": 2.6,
+      "breakeven_activate_atr": 0.9,
+      "breakeven_offset_atr": 0.1,
+      "trail_activate_atr": 1.0,
+      "trail_stop_atr_mult": 1.2,
+      "max_hold_bars": 0,
+      "invalidate_on_trend_break": false
+    }
+  },
+  "strategies": {
+    "btc_trend": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.6,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.2,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "btc_trend_loose": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.6,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.2,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "eth_trend": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.4,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "link_trend": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.4,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "bnb_trend": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.4,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "xrp_trend": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.45,
+        "tp_atr_mult": 2.2,
+        "breakeven_activate_atr": 0.8,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 0.9,
+        "trail_stop_atr_mult": 1.2,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "aave_trend": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.6,
+        "tp_atr_mult": 2.7,
+        "breakeven_activate_atr": 1.0,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.1,
+        "trail_stop_atr_mult": 1.3,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "sol_trend_pullback": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.45,
+        "tp_atr_mult": 2.3,
+        "breakeven_activate_atr": 0.85,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.15,
+        "max_hold_bars": 18,
+        "invalidate_on_trend_break": true
+      }
+    },
+    "sol_vol_breakout": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.6,
+        "tp_atr_mult": 2.8,
+        "breakeven_activate_atr": 1.0,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.2,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 24,
+        "invalidate_on_trend_break": false
+      }
+    },
+    "sol_vol_expansion": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.6,
+        "tp_atr_mult": 2.8,
+        "breakeven_activate_atr": 1.0,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.2,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 20,
+        "invalidate_on_trend_break": false
+      }
+    },
+    "sol_bbrsi": {
+      "family": "mean_reversion_basis_atr",
+      "params": {
+        "stop_atr_mult": 1.4,
+        "basis_field": "bb_mid",
+        "max_hold_bars": 8,
+        "use_entry_atr_for_stop": true
+      }
+    },
+    "sol_extreme_mr": {
+      "family": "mean_reversion_basis_atr",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "basis_field": "bb_mid",
+        "max_hold_bars": 10,
+        "use_entry_atr_for_stop": true
+      }
+    }
+  }
+}

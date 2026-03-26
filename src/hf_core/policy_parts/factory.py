@@ -70,6 +70,7 @@ class PolicyFactory:
                 penalty_ema_gap=float(cfg.get("penalty_ema_gap", 0.90)),
                 penalty_atrp=float(cfg.get("penalty_atrp", 0.90)),
                 penalty_range_expansion=float(cfg.get("penalty_range_expansion", 0.92)),
+                long_penalty_mult=float(cfg.get("long_penalty_mult", 1.0)),
             ),
             SideBiasSizeRule(
                 long_size_bias=float(cfg.get("long_size_bias", 1.0)),

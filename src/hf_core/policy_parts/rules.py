@@ -117,6 +117,7 @@ class RegimeAwareSizePenaltyRule(PolicyRule):
     penalty_ema_gap: float = 0.90
     penalty_atrp: float = 0.90
     penalty_range_expansion: float = 0.92
+    long_penalty_mult: float = 1.0
 
     def apply(self, state: PolicyState) -> PolicyState:
         if not state.accept:
@@ -134,9 +135,8 @@ class RegimeAwareSizePenaltyRule(PolicyRule):
         if bool(state.tags.get("range_expansion_low", False)):
             state.size_mult *= float(self.penalty_range_expansion)
 
-        # Temporary directional penalty until long-side alpha is recalibrated.
         if str(state.side).lower() == "long":
-            state.size_mult *= 0.50
+            state.size_mult *= float(self.long_penalty_mult)
 
         return state
 

@@ -8,3 +8,9 @@ __all__ = [
     "SnapshotAllocatorEngine",
     "build_snapshot_allocator",
 ]
+from hf_core.legacy_allocation_engine import LegacyAllocationEngine
+
+
+class AllocationEngine(LegacyAllocationEngine):
+    """Canonical allocation engine name during migration."""
+    pass

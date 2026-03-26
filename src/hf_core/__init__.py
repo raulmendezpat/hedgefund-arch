@@ -9,3 +9,28 @@ from .allocator import Allocator
 
 from .context_enricher import AssetContextEnricher
 from .execution_projection import ProjectionResult, ProjectionFactory
+from .score_projector import ScoreProjector
+from .competition import opp_score, build_pre_allocator_trace, apply_competition_mode
+from .allocation_pipeline import weights_snapshot, gross_exposure, run_allocation_stages
+from .opportunity_adapter import OpportunityAdapter
+from .legacy_opportunity_adapter import LegacyOpportunityAdapter
+from .allocation_postprocessor import AllocationPostprocessor
+from .legacy_allocation_postprocessor import LegacyAllocationPostprocessor
+from .portfolio_regime_scaler import PortfolioRegimeScaler
+from .legacy_allocation_regime_scaler import LegacyAllocationRegimeScaler
+from .allocation_step_guardrail import AllocationStepGuardrail
+from .legacy_allocation_step_guardrail import LegacyAllocationStepGuardrail
+from .allocation_engine import AllocationEngine
+from .legacy_allocation_engine import LegacyAllocationEngine
+from .allocation_factory import build_allocation_engine
+from .legacy_allocation_factory import build_legacy_allocation_engine
+from .allocation_config import AllocationConfig, allocation_config_to_dict
+from .legacy_allocation_config import LegacyAllocationConfig, legacy_allocation_config_to_dict
+from .research_allocation_router import ResearchAllocationRouter
+from .portfolio_risk_overlay import PortfolioRiskOverlay
+from .legacy_portfolio_risk_overlay import LegacyPortfolioRiskOverlay
+from .strategy_side_weight_overlay import StrategySideWeightOverlay
+from .strategy_side_weight_rules import parse_strategy_side_post_ml_weight_rules
+from .legacy_strategy_side_weight_overlay import LegacyStrategySideWeightOverlay
+from .allocation_config_builder import build_allocation_config_from_args
+from .legacy_allocation_config_builder import build_legacy_allocation_config_from_args

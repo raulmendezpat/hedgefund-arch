@@ -208,16 +208,17 @@ class MultiStrategyAllocator:
         symbol_budget = self._symbol_budget(symbol_scores)
 
         if not symbol_budget:
-
-            if prev_allocation is not None:
-                return Allocation(
-                    weights=dict(prev_allocation.weights),
-                    meta={"case": "multi_strategy_empty_sticky"},
-                )
-
             return Allocation(
                 weights=weights_by_symbol,
-                meta={"case": "multi_strategy_empty"},
+                meta={
+                    "case": "multi_strategy_empty",
+                    "empty_allocator_forced_flat": True,
+                    "empty_allocator_prev_allocation_ignored": bool(prev_allocation is not None),
+                    "symbol_scores": {},
+                    "symbol_budget": {},
+                    "strategy_weights": {},
+                    "allocator_hysteresis": hysteresis_meta,
+                },
             )
 
         for symbol, opps in opps_by_symbol.items():
@@ -249,6 +250,8 @@ class MultiStrategyAllocator:
                 strategy_weights[key] = final_w
                 weights_by_symbol[symbol] = weights_by_symbol.get(symbol, 0.0) + final_w
 
+        active_symbols = set(opps_by_symbol.keys())
+
         if prev_allocation is not None and self.weight_blend_alpha > 0:
             prev_weights = {
                 str(k): float(v or 0.0)
@@ -256,12 +259,24 @@ class MultiStrategyAllocator:
             }
 
             alpha = float(self.weight_blend_alpha)
+            blended_symbols = []
+
             for symbol in list(weights_by_symbol.keys()):
                 target_w = float(weights_by_symbol.get(symbol, 0.0) or 0.0)
+
+                if symbol not in active_symbols:
+                    weights_by_symbol[symbol] = float(target_w)
+                    continue
+
                 prev_w = float(prev_weights.get(symbol, 0.0) or 0.0)
                 weights_by_symbol[symbol] = alpha * target_w + (1.0 - alpha) * prev_w
+                blended_symbols.append(symbol)
 
-            hysteresis_meta["blend_applied"] = True
+            hysteresis_meta["blend_applied"] = bool(blended_symbols)
+            hysteresis_meta["blend_symbols"] = sorted(blended_symbols)
+            hysteresis_meta["inactive_symbols_forced_flat_before_blend"] = sorted(
+                [str(s) for s in weights_by_symbol.keys() if s not in active_symbols]
+            )
 
         if prev_allocation is not None and self.rebalance_deadband > 0:
             prev_weights = {
@@ -272,6 +287,9 @@ class MultiStrategyAllocator:
             deadband_symbols = []
 
             for symbol in list(weights_by_symbol.keys()):
+                if symbol not in active_symbols:
+                    continue
+
                 new_w = float(weights_by_symbol.get(symbol, 0.0) or 0.0)
                 prev_w = float(prev_weights.get(symbol, 0.0) or 0.0)
 

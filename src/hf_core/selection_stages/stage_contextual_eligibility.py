@@ -126,9 +126,6 @@ class ContextualEligibilityStage:
             min_size_mult = _safe_float(ccfg.get("min_size_mult", 0.0), 0.0)
             allowed_sides = list(ccfg.get("allowed_sides", ["long", "short"]) or ["long", "short"])
 
-            min_adx = _safe_float(ccfg.get("min_adx", 0.0), 0.0)
-            min_ema_gap = _safe_float(ccfg.get("min_ema_gap", 0.0), 0.0)
-            ema_gap_field = str(ccfg.get("ema_gap_field", "ema_gap_fast_slow") or "ema_gap_fast_slow")
 
             accept_in = bool(getattr(r, "accept_in", False))
             policy_score = _safe_float(getattr(r, "policy_score", 0.0), 0.0)
@@ -139,9 +136,6 @@ class ContextualEligibilityStage:
             competitive_score = _safe_float(getattr(r, "competitive_score", 0.0), 0.0)
             side = str(getattr(r, "side", "flat") or "flat").lower()
 
-            meta = dict(getattr(r, "meta", {}) or {})
-            adx = _safe_float(meta.get("adx", 0.0), 0.0)
-            ema_gap = abs(_safe_float(meta.get(ema_gap_field, 0.0), 0.0))
 
             reasons = []
             passed = True
@@ -164,12 +158,6 @@ class ContextualEligibilityStage:
             if policy_size_mult < min_size_mult:
                 passed = False
                 reasons.append("policy_size_mult_below_min")
-            if min_adx > 0.0 and adx < min_adx:
-                passed = False
-                reasons.append("adx_below_min")
-            if min_ema_gap > 0.0 and ema_gap < min_ema_gap:
-                passed = False
-                reasons.append("ema_gap_below_min")
 
             contextual_score, contextual_penalty = self._compute_contextual_score(
                 p_win=p_win,
@@ -205,9 +193,6 @@ class ContextualEligibilityStage:
                         "policy_size_mult": float(policy_size_mult),
                         "post_ml_score": float(post_ml_score),
                         "competitive_score": float(competitive_score),
-                        "adx": float(adx),
-                        "ema_gap": float(ema_gap),
-                        "ema_gap_field": str(ema_gap_field),
                     },
                 }
             )
@@ -237,11 +222,6 @@ class ContextualEligibilityStage:
                     "min_expected_return": float(min_expected_return),
                     "min_policy_score": float(min_policy_score),
                     "min_size_mult": float(min_size_mult),
-                    "min_adx": float(min_adx),
-                    "min_ema_gap": float(min_ema_gap),
-                    "adx": float(adx),
-                    "ema_gap": float(ema_gap),
-                    "ema_gap_field": str(ema_gap_field),
                 }
             )
 
