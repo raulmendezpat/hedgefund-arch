@@ -1,0 +1,68 @@
+{
+  "type": "pwin_v2_registry",
+  "source_candidates": "results/research_runtime_candidates_audit_ml_dataset_long_pwin_math_v1.csv",
+  "source_trades": "results/research_runtime_lifecycle_trades_audit_ml_dataset_long_pwin_math_v1.csv",
+  "models": {
+    "AAVE/USDT:USDT|short": {
+      "artifact_path": null,
+      "model_name": null,
+      "recommended_apply": false,
+      "skip_reason": "insufficient_rows:15",
+      "rows": 15
+    },
+    "BNB/USDT:USDT|short": {
+      "artifact_path": null,
+      "model_name": null,
+      "recommended_apply": false,
+      "skip_reason": "insufficient_rows:65",
+      "rows": 65
+    },
+    "BTC/USDT:USDT|short": {
+      "artifact_path": "artifacts/pwin_v2_long_30d/pwin_v2_BTC_USDT_USDT_short.joblib",
+      "model_name": "logistic",
+      "recommended_apply": false,
+      "roc_auc_valid": 0.4358974358974359,
+      "balanced_accuracy_valid": 0.4358974358974359,
+      "accuracy_valid": 0.47368421052631576,
+      "rows_train": 91,
+      "rows_valid": 19,
+      "rows_test": 20
+    },
+    "ETH/USDT:USDT|short": {
+      "artifact_path": null,
+      "model_name": null,
+      "recommended_apply": false,
+      "skip_reason": "insufficient_rows:36",
+      "rows": 36
+    },
+    "LINK/USDT:USDT|short": {
+      "artifact_path": null,
+      "model_name": null,
+      "recommended_apply": false,
+      "skip_reason": "insufficient_rows:26",
+      "rows": 26
+    },
+    "SOL/USDT:USDT|short": {
+      "artifact_path": null,
+      "model_name": null,
+      "recommended_apply": false,
+      "skip_reason": "insufficient_rows:2",
+      "rows": 2
+    },
+    "XRP/USDT:USDT|short": {
+      "artifact_path": null,
+      "model_name": null,
+      "recommended_apply": false,
+      "skip_reason": "insufficient_rows:50",
+      "rows": 50
+    }
+  },
+  "global_fallback": {
+    "artifact_path": "artifacts/pwin_v2_long_30d/pwin_v2_global.joblib",
+    "model_name": "extra_trees",
+    "recommended_apply": false,
+    "roc_auc_valid": 0.4682274247491638,
+    "balanced_accuracy_valid": 0.4506688963210702,
+    "accuracy_valid": 0.4489795918367347
+  }
+}

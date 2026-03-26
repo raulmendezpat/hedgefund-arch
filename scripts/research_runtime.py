@@ -13,8 +13,7 @@ from hf.engines.opportunity_book import RegistryOpportunityBook
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
 from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher, AllocationEngine, ResearchAllocationRouter, build_allocation_config_from_args, build_allocation_engine
 from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
-from hf_core.pwin_ml_multiwindow import PWinMLMultiWindow
-from hf_core.pwin_ml_by_side import PWinMLBySide
+from hf_core.pwin_math_v2 import MathPWinV2
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
 from hf_core.trade_lifecycle import TradeLifecycleEngine
@@ -653,7 +652,7 @@ def main() -> None:
     ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     ap.add_argument("--selection-policy-config", default="artifacts/selection_policy_config.json")
-    ap.add_argument("--pwin-mode", choices=["ml", "math_v1", "hybrid_v1"], default="ml")
+    ap.add_argument("--pwin-mode", choices=["math_v1", "math_v2"], default="math_v2")
     ap.add_argument("--selection-policy-profile", default="research")
     args = ap.parse_args()
 
@@ -696,8 +695,7 @@ def main() -> None:
     book = RegistryOpportunityBook(registry_path=args.strategy_registry)
     fb = FeatureBuilder()
     mm = MetaModel()
-    mm.pwin_ml = PWinMLMultiWindow("artifacts/pwin_ml_multiwindow_v1/pwin_ml_operational_registry.json")
-    mm.pwin_ml_by_side = PWinMLBySide("artifacts/pwin_ml_by_side_v1/pwin_ml_by_side_operational_registry.json")
+    pwin_math_v2 = MathPWinV2()
 
     policy_cfg = {}
     if args.policy_config and Path(args.policy_config).exists():
@@ -845,9 +843,14 @@ def main() -> None:
             _sm_pre["p_win_ml"] = float(getattr(s, "p_win", 0.0) or 0.0)
 
             _p_ml, _p_math, _p_hybrid = _resolve_pwin(_sm_pre, args.pwin_mode)
+            _sm_pre["strategy_id"] = str(getattr(c, "strategy_id", "") or "")
+            _sm_pre["side"] = str(getattr(c, "side", "flat") or "flat")
+            _p_math_v2 = float(pwin_math_v2.predict_from_meta(_sm_pre))
 
             if str(args.pwin_mode) == "math_v1":
                 _p_final = float(_p_math)
+            elif str(args.pwin_mode) == "math_v2":
+                _p_final = float(_p_math_v2)
             elif str(args.pwin_mode) == "hybrid_v1":
                 _p_final = float(_p_hybrid)
             else:
@@ -870,6 +873,7 @@ def main() -> None:
 
             _sm_pre["p_win"] = float(_p_final)
             _sm_pre["p_win_math_v1"] = float(_p_math)
+            _sm_pre["p_win_math_v2"] = float(_p_math_v2)
             _sm_pre["p_win_hybrid_v1"] = float(_p_hybrid)
             _sm_pre["p_win_mode"] = str(args.pwin_mode)
             _sm_pre["expected_return"] = float(getattr(s, "expected_return", 0.0) or 0.0)
@@ -900,13 +904,19 @@ def main() -> None:
             sm0["p_win"] = float(getattr(s, "p_win", 0.0) or 0.0)
 
             _p_ml, _p_math, _p_hybrid = _resolve_pwin(sm0, args.pwin_mode)
+            sm0["strategy_id"] = str(getattr(c, "strategy_id", "") or "")
+            sm0["side"] = str(getattr(c, "side", "flat") or "flat")
+            _p_math_v2 = float(pwin_math_v2.predict_from_meta(sm0))
             sm0["p_win_ml"] = float(_p_ml)
             sm0["p_win_math_v1"] = float(_p_math)
+            sm0["p_win_math_v2"] = float(_p_math_v2)
             sm0["p_win_hybrid_v1"] = float(_p_hybrid)
             sm0["p_win_mode"] = str(args.pwin_mode)
 
             if str(args.pwin_mode) == "math_v1":
                 sm0["p_win"] = float(_p_math)
+            elif str(args.pwin_mode) == "math_v2":
+                sm0["p_win"] = float(_p_math_v2)
             elif str(args.pwin_mode) == "hybrid_v1":
                 sm0["p_win"] = float(_p_hybrid)
             else:
@@ -995,9 +1005,13 @@ def main() -> None:
                 "side": c.side,
                 "signal_strength": c.signal_strength,
                 "base_weight": c.base_weight,
-                "p_win": sm.get("p_win", getattr(s, "p_win", 0.0)),
-                "expected_return": sm.get("expected_return", getattr(s, "expected_return", 0.0)),
-                "score": sm.get("score", getattr(s, "score", 0.0)),
+                "p_win": float(sm.get("p_win", getattr(s, "p_win", 0.0)) or 0.0),
+                "p_win_base": float(sm.get("p_win_base", getattr(s, "p_win", 0.0)) or 0.0),
+                "p_win_math_v1": float(sm.get("p_win_math_v1", float("nan"))),
+                "p_win_math_v2": float(sm.get("p_win_math_v2", float("nan"))),
+                "p_win_mode": str(sm.get("p_win_mode", "")),
+                "expected_return": float(sm.get("expected_return", getattr(s, "expected_return", 0.0)) or 0.0),
+                "score": float(sm.get("score", getattr(s, "score", 0.0)) or 0.0),
                 "accept": getattr(d, "accept", False),
                 "size_mult": getattr(d, "size_mult", 0.0),
                 "band": getattr(d, "band", ""),

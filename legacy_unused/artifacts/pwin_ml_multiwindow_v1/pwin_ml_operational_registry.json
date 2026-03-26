@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "selection_rule": {
+    "max_windows_per_symbol": 3,
+    "score_formula": {
+      "roc_auc": 0.5,
+      "balanced_accuracy": 0.3,
+      "accuracy": 0.2
+    },
+    "only_recommended_apply": true
+  },
+  "symbols": {
+    "BNB/USDT:USDT": {
+      "mode": "multiwindow_blend",
+      "windows": [
+        {
+          "window": "1m",
+          "window_days": 30,
+          "model_type": "extratrees",
+          "model_path": "artifacts/pwin_ml_multiwindow_v1/pwin_model_BNB_USDT_USDT_1m.joblib",
+          "weight": 1.0,
+          "accuracy": 0.712707182320442,
+          "balanced_accuracy": 0.6892945544554455,
+          "roc_auc": 0.7365717821782177,
+          "brier": 0.2368843304721139,
+          "fallback_mode": "round_robin_ex_symbol"
+        }
+      ],
+      "fallback_symbol": "LINK/USDT:USDT",
+      "fallback_similarity_score": 0.6706412557085675,
+      "transfer_scale": 0.0
+    },
+    "BTC/USDT:USDT": {
+      "mode": "multiwindow_blend",
+      "windows": [
+        {
+          "window": "1m",
+          "window_days": 30,
+          "model_type": "extratrees",
+          "model_path": "artifacts/pwin_ml_multiwindow_v1/pwin_model_BTC_USDT_USDT_1m.joblib",
+          "weight": 1.0,
+          "accuracy": 0.5678670360110804,
+          "balanced_accuracy": 0.5397340754483612,
+          "roc_auc": 0.6781230674087817,
+          "brier": 0.2371015023562194,
+          "fallback_mode": "round_robin_ex_symbol"
+        }
+      ],
+      "fallback_symbol": "ETH/USDT:USDT",
+      "fallback_similarity_score": 0.7048871440886345,
+      "transfer_scale": 0.85
+    },
+    "ETH/USDT:USDT": {
+      "mode": "multiwindow_blend",
+      "windows": [
+        {
+          "window": "1m",
+          "window_days": 30,
+          "model_type": "hgb",
+          "model_path": "artifacts/pwin_ml_multiwindow_v1/pwin_model_ETH_USDT_USDT_1m.joblib",
+          "weight": 0.34950791507969015,
+          "accuracy": 0.6132596685082873,
+          "balanced_accuracy": 0.5831481481481482,
+          "roc_auc": 0.6747530864197531,
+          "brier": 0.2533152104766559,
+          "fallback_mode": "round_robin_ex_symbol"
+        },
+        {
+          "window": "12m",
+          "window_days": 365,
+          "model_type": "mlp",
+          "model_path": "artifacts/pwin_ml_multiwindow_v1/pwin_model_ETH_USDT_USDT_12m.joblib",
+          "weight": 0.3252460424601549,
+          "accuracy": 0.5993179880647911,
+          "balanced_accuracy": 0.6011836053086457,
+          "roc_auc": 0.5813523569566109,
+          "brier": 0.2452918031205603,
+          "fallback_mode": "symbol"
+        },
+        {
+          "window": "24m",
+          "window_days": 730,
+          "model_type": "mlp",
+          "model_path": "artifacts/pwin_ml_multiwindow_v1/pwin_model_ETH_USDT_USDT_24m.joblib",
+          "weight": 0.3252460424601549,
+          "accuracy": 0.5993179880647911,
+          "balanced_accuracy": 0.6011836053086457,
+          "roc_auc": 0.5813523569566109,
+          "brier": 0.2452918031205603,
+          "fallback_mode": "symbol"
+        }
+      ],
+      "fallback_symbol": "BTC/USDT:USDT",
+      "fallback_similarity_score": 0.7048871440886345,
+      "transfer_scale": 0.85
+    },
+    "LINK/USDT:USDT": {
+      "mode": "fallback_only",
+      "windows": [],
+      "fallback_symbol": "ETH/USDT:USDT",
+      "fallback_similarity_score": 0.6841847348635796,
+      "transfer_scale": 0.0
+    },
+    "XRP/USDT:USDT": {
+      "mode": "multiwindow_blend",
+      "windows": [
+        {
+          "window": "1m",
+          "window_days": 30,
+          "model_type": "logreg",
+          "model_path": "artifacts/pwin_ml_multiwindow_v1/pwin_model_XRP_USDT_USDT_1m.joblib",
+          "weight": 1.0,
+          "accuracy": 0.5469613259668509,
+          "balanced_accuracy": 0.59,
+          "roc_auc": 0.5940740740740741,
+          "brier": 0.2590275548922956,
+          "fallback_mode": "round_robin_ex_symbol"
+        }
+      ],
+      "fallback_symbol": "LINK/USDT:USDT",
+      "fallback_similarity_score": 0.6731903301396145,
+      "transfer_scale": 0.0
+    }
+  }
+}

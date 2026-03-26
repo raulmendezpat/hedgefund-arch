@@ -16,7 +16,6 @@ class MetaModel:
         self.pwin_cap = float(pwin_cap)
         self.context_shrink_max = float(context_shrink_max)
         self.expected_return_floor = float(expected_return_floor)
-        self.pwin_ml_by_side = None
 
     @staticmethod
     def _clip(x: float, lo: float, hi: float) -> float:
@@ -24,22 +23,9 @@ class MetaModel:
 
     
     def _global_pwin(self, v: dict) -> float:
-        p = None
-
-        by_side = getattr(self, "pwin_ml_by_side", None)
-        if by_side is not None:
-            try:
-                p_side = by_side.predict_from_feature_values(v)
-                if p_side is not None:
-                    p = float(p_side)
-            except Exception:
-                p = None
-
-        if p is None:
-            p = float(v.get("meta_p_win", 0.50) or 0.50)
-            sig = float(v.get("signal_strength", 0.0) or 0.0)
-            p += 0.012 * self._clip(sig, -1.0, 1.0)
-
+        p = float(v.get("meta_p_win", 0.50) or 0.50)
+        sig = float(v.get("signal_strength", 0.0) or 0.0)
+        p += 0.012 * self._clip(sig, -1.0, 1.0)
         return self._clip(p, self.pwin_floor, self.pwin_cap)
 
     def _strategy_side_bias(self, strategy_id: str, side: str) -> float:
@@ -143,14 +129,7 @@ class MetaModel:
     def predict_one(self, feature_row: FeatureRow) -> MetaScore:
         v = dict(feature_row.values or {})
 
-        p_ml = None
-        if hasattr(self, "pwin_ml") and self.pwin_ml is not None:
-            p_ml = self.pwin_ml.predict(v)
-
-        if p_ml is not None:
-            p_global = float(p_ml)
-        else:
-            p_global = self._global_pwin(v)
+        p_global = self._global_pwin(v)
         ctx_bonus, shrink_w, ctx_meta = self._context_bonus(v)
 
         p_context_raw = self._clip(p_global + ctx_bonus, self.pwin_floor, self.pwin_cap)
