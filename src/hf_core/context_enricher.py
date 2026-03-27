@@ -9,6 +9,50 @@ import pandas as pd
 from hf_core.contracts import OpportunityCandidate
 
 
+
+
+def _apply_strategy_exit_profile_overrides(
+    *,
+    strategy_id: str,
+    side: str,
+    portfolio_regime: str,
+    portfolio_breadth: float,
+    p_win: float,
+    adx: float,
+    atrp: float,
+    ema_gap: float,
+    exit_profile: str,
+    tp_mult: float,
+    sl_mult: float,
+    time_stop_bars: int,
+) -> tuple[str, float, float, int]:
+    strategy_id = str(strategy_id or "")
+    side = str(side or "")
+    portfolio_regime = str(portfolio_regime or "")
+    portfolio_breadth = float(portfolio_breadth or 0.0)
+    p_win = float(p_win or 0.0)
+    adx = float(adx or 0.0)
+    atrp = float(atrp or 0.0)
+    ema_gap = abs(float(ema_gap or 0.0))
+
+    if strategy_id == "btc_trend" and side == "short":
+        if ema_gap < 0.008 or adx < 24.0 or portfolio_breadth <= 3.0:
+            return ("fast_exit", 0.8, 0.8, 8)
+
+        if (
+            p_win >= 0.53
+            and ema_gap >= 0.025
+            and adx >= 35.0
+            and atrp >= 0.006
+            and portfolio_breadth >= 8.0
+            and portfolio_regime in {"normal", "defensive"}
+        ):
+            return ("runner", 1.2, 1.0, 24)
+
+        return ("normal", 1.0, 1.0, 12)
+
+    return (exit_profile, tp_mult, sl_mult, int(time_stop_bars))
+
 def _f(x: Any, default: float = 0.0) -> float:
     try:
         if x is None:
@@ -162,6 +206,21 @@ class AssetContextEnricher:
         elif exit_profile == "runner":
             tp_mult = 1.4
             sl_mult = 1.1
+
+        exit_profile, tp_mult, sl_mult, time_stop_bars = _apply_strategy_exit_profile_overrides(
+            strategy_id=str(getattr(candidate, "strategy_id", "") or meta.get("strategy_id", "")),
+            side=str(getattr(candidate, "side", "") or meta.get("side", "")),
+            portfolio_regime=str(meta.get("portfolio_regime", "") or ""),
+            portfolio_breadth=float(meta.get("portfolio_breadth", 0.0) or 0.0),
+            p_win=float(meta.get("p_win", 0.0) or 0.0),
+            adx=float(adx or 0.0),
+            atrp=float(atrp or 0.0),
+            ema_gap=float(meta.get("ema_gap_fast_slow", meta.get("ema_gap_pct", ema_fast_vs_ema_slow)) or 0.0),
+            exit_profile=str(exit_profile or ""),
+            tp_mult=float(tp_mult or 1.0),
+            sl_mult=float(sl_mult or 1.0),
+            time_stop_bars=int(time_stop_bars or 12),
+        )
 
         meta.update({
             "close": float(close_now),

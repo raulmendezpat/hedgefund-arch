@@ -73,6 +73,10 @@ class TrendAtrDynamicExitPolicy:
         signal_side = _s(context.get("signal_side"), "").lower()
         regime_on = bool(context.get("regime_on", True))
 
+        ctx_tp_mult = _f(context.get("tp_mult", context.get("ctx_tp_mult", 1.0)), 1.0)
+        ctx_sl_mult = _f(context.get("sl_mult", context.get("ctx_sl_mult", 1.0)), 1.0)
+        ctx_time_stop_bars = int(_f(context.get("time_stop_bars", context.get("ctx_time_stop_bars", self.max_hold_bars)), self.max_hold_bars))
+
         atr_now = _f(prev_bar.get("atr"), position.entry_atr)
         close_now = _f(prev_bar.get("close"), position.entry_px)
         high_now = _f(current_bar.get("high"), close_now)
@@ -84,8 +88,11 @@ class TrendAtrDynamicExitPolicy:
         side = _s(position.side).lower()
 
         if side == "long":
-            tp = float(position.entry_px + self.tp_atr_mult * atr_now)
-            sl = float(position.entry_px - self.stop_atr_mult * atr_now)
+            tp_atr_mult = float(self.tp_atr_mult * max(ctx_tp_mult, 0.1))
+            stop_atr_mult = float(self.stop_atr_mult * max(ctx_sl_mult, 0.1))
+
+            tp = float(position.entry_px + tp_atr_mult * atr_now)
+            sl = float(position.entry_px - stop_atr_mult * atr_now)
             move_atr = float((close_now - position.entry_px) / atr_now)
 
             if move_atr >= float(self.breakeven_activate_atr):
@@ -109,7 +116,9 @@ class TrendAtrDynamicExitPolicy:
                         breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
                     )
 
-            if self.max_hold_bars > 0 and int(position.bars_held) >= int(self.max_hold_bars):
+            max_hold_bars = int(ctx_time_stop_bars if ctx_time_stop_bars > 0 else self.max_hold_bars)
+
+            if max_hold_bars > 0 and int(position.bars_held) >= int(max_hold_bars):
                 return ExitDecision(
                     action="close",
                     exit_reason="time_stop",
@@ -174,39 +183,6 @@ class TrendAtrDynamicExitPolicy:
                     breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
                 )
 
-            if not regime_on:
-                return ExitDecision(
-                    action="close",
-                    exit_reason="regime_off",
-                    exit_price=float(close_now),
-                    tp_price=float(tp),
-                    sl_price=float(sl),
-                    trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
-                )
-
-            if _side_from_weight(target_weight) == "flat":
-                return ExitDecision(
-                    action="close",
-                    exit_reason="target_flatten",
-                    exit_price=float(close_now),
-                    tp_price=float(tp),
-                    sl_price=float(sl),
-                    trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
-                )
-
-            if signal_side in {"long", "short"} and signal_side != "short":
-                return ExitDecision(
-                    action="close",
-                    exit_reason="reverse_signal",
-                    exit_price=float(close_now),
-                    tp_price=float(tp),
-                    sl_price=float(sl),
-                    trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
-                )
-
             return ExitDecision(
                 action="hold",
                 exit_reason="hold",
@@ -217,8 +193,11 @@ class TrendAtrDynamicExitPolicy:
             )
 
         if side == "short":
-            tp = float(position.entry_px - self.tp_atr_mult * atr_now)
-            sl = float(position.entry_px + self.stop_atr_mult * atr_now)
+            tp_atr_mult = float(self.tp_atr_mult * max(ctx_tp_mult, 0.1))
+            stop_atr_mult = float(self.stop_atr_mult * max(ctx_sl_mult, 0.1))
+
+            tp = float(position.entry_px - tp_atr_mult * atr_now)
+            sl = float(position.entry_px + stop_atr_mult * atr_now)
             move_atr = float((position.entry_px - close_now) / atr_now)
 
             if move_atr >= float(self.breakeven_activate_atr):
@@ -242,7 +221,9 @@ class TrendAtrDynamicExitPolicy:
                         breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
                     )
 
-            if self.max_hold_bars > 0 and int(position.bars_held) >= int(self.max_hold_bars):
+            max_hold_bars = int(ctx_time_stop_bars if ctx_time_stop_bars > 0 else self.max_hold_bars)
+
+            if max_hold_bars > 0 and int(position.bars_held) >= int(max_hold_bars):
                 return ExitDecision(
                     action="close",
                     exit_reason="time_stop",

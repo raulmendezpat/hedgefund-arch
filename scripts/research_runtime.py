@@ -14,6 +14,7 @@ from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
 from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher, AllocationEngine, ResearchAllocationRouter, build_allocation_config_from_args, build_allocation_engine
 from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
 from hf_core.pwin_math_v2 import MathPWinV2
+from hf_core.pwin_math_v3 import MathPWinV3
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
 from hf_core.trade_lifecycle import TradeLifecycleEngine
@@ -529,24 +530,71 @@ def resolve_exit_policy(exit_cfg: dict, strategy_id: str) -> dict:
 def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str) -> dict:
     selected_candidates = list(selected_candidates or [])
     weights = dict(weights or {})
+
     signal_side = ""
     regime_on = True
+    strategy_id = ""
+    ctx_exit_profile = "normal"
+    ctx_tp_mult = 1.0
+    ctx_sl_mult = 1.0
+    ctx_time_stop_bars = 12
+    p_win = 0.0
+    policy_score = 0.0
+    size_mult = 0.0
+    adx = 0.0
+    atrp = 0.0
+    ema_gap = 0.0
+    portfolio_regime = ""
+    portfolio_breadth = 0.0
+    portfolio_avg_pwin = 0.0
 
     for c in selected_candidates:
         if str(getattr(c, "symbol", "") or "") != str(symbol):
             continue
+
         signal_side = str(getattr(c, "side", "") or "").lower()
+        strategy_id = str(getattr(c, "strategy_id", "") or "")
         sm = dict(getattr(c, "signal_meta", {}) or {})
+
         if "regime_as_metadata" in sm:
             regime_on = bool(sm.get("regime_as_metadata", True))
         elif "portfolio_regime" in sm:
             regime_on = str(sm.get("portfolio_regime", "normal") or "normal").lower() != "off"
+
+        ctx_exit_profile = str(sm.get("ctx_exit_profile", "normal") or "normal")
+        ctx_tp_mult = float(sm.get("ctx_tp_mult", 1.0) or 1.0)
+        ctx_sl_mult = float(sm.get("ctx_sl_mult", 1.0) or 1.0)
+        ctx_time_stop_bars = int(sm.get("ctx_time_stop_bars", 12) or 12)
+
+        p_win = float(sm.get("p_win", 0.0) or 0.0)
+        policy_score = float(sm.get("policy_score", 0.0) or 0.0)
+        size_mult = float(sm.get("policy_size_mult", sm.get("size_mult", 0.0)) or 0.0)
+        adx = float(sm.get("adx", 0.0) or 0.0)
+        atrp = float(sm.get("atrp", 0.0) or 0.0)
+        ema_gap = abs(float(sm.get("ema_gap_fast_slow", sm.get("ema_gap_pct", 0.0)) or 0.0))
+        portfolio_regime = str(sm.get("portfolio_regime", "") or "")
+        portfolio_breadth = float(sm.get("portfolio_breadth", 0.0) or 0.0)
+        portfolio_avg_pwin = float(sm.get("portfolio_avg_pwin", 0.0) or 0.0)
         break
 
     return {
         "target_weight": float(weights.get(symbol, 0.0) or 0.0),
         "signal_side": str(signal_side),
+        "strategy_id": str(strategy_id),
         "regime_on": bool(regime_on),
+        "ctx_exit_profile": str(ctx_exit_profile),
+        "ctx_tp_mult": float(ctx_tp_mult),
+        "ctx_sl_mult": float(ctx_sl_mult),
+        "ctx_time_stop_bars": int(ctx_time_stop_bars),
+        "p_win": float(p_win),
+        "policy_score": float(policy_score),
+        "size_mult": float(size_mult),
+        "adx": float(adx),
+        "atrp": float(atrp),
+        "ema_gap": float(ema_gap),
+        "portfolio_regime": str(portfolio_regime),
+        "portfolio_breadth": float(portfolio_breadth),
+        "portfolio_avg_pwin": float(portfolio_avg_pwin),
         "context_source": "research_runtime_shadow",
     }
 
@@ -630,7 +678,7 @@ def main() -> None:
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
     ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "legacy_multi_strategy"])
-    ap.add_argument("--legacy-competition-mode", default="off", choices=["off", "best_per_symbol", "top1_global", "top2_global"])
+    ap.add_argument("--legacy-competition-mode", default="off", choices=["off", "best_per_symbol", "top1_global", "top2_global", "top3_global"])
     ap.add_argument("--legacy-score-power", type=float, default=1.0)
     ap.add_argument("--legacy-min-score", type=float, default=1e-12)
     ap.add_argument("--legacy-symbol-score-agg", default="sum", choices=["sum", "max"])
@@ -696,6 +744,7 @@ def main() -> None:
     fb = FeatureBuilder()
     mm = MetaModel()
     pwin_math_v2 = MathPWinV2()
+    pwin_math_v3 = MathPWinV3()
 
     policy_cfg = {}
     if args.policy_config and Path(args.policy_config).exists():
@@ -846,6 +895,7 @@ def main() -> None:
             _sm_pre["strategy_id"] = str(getattr(c, "strategy_id", "") or "")
             _sm_pre["side"] = str(getattr(c, "side", "flat") or "flat")
             _p_math_v2 = float(pwin_math_v2.predict_from_meta(_sm_pre))
+            _p_math_v3 = float(pwin_math_v3.predict_from_meta(_sm_pre))
 
             if str(args.pwin_mode) == "math_v1":
                 _p_final = float(_p_math)
@@ -874,6 +924,23 @@ def main() -> None:
             _sm_pre["p_win"] = float(_p_final)
             _sm_pre["p_win_math_v1"] = float(_p_math)
             _sm_pre["p_win_math_v2"] = float(_p_math_v2)
+
+            # score floor operacional:
+            # si el candidato fue aceptado pero el score quedó microscópico,
+            # lo elevamos a un piso mínimo para que el allocator pueda convertirlo
+            # en peso real y no lo deje en cero.
+            _score_raw = float(_sm_pre.get("score", 0.0) or 0.0)
+            _policy_raw = float(_sm_pre.get("policy_score", 0.0) or 0.0)
+            _accepted_flag = bool(_sm_pre.get("accept", False))
+
+            if _accepted_flag:
+                _score_floor = 1.0e-4
+                _policy_floor = 1.0e-4
+                if _score_raw < _score_floor:
+                    _sm_pre["score"] = float(_score_floor)
+                if _policy_raw < _policy_floor:
+                    _sm_pre["policy_score"] = float(_policy_floor)
+            _sm_pre["p_win_math_v3"] = float(_p_math_v3)
             _sm_pre["p_win_hybrid_v1"] = float(_p_hybrid)
             _sm_pre["p_win_mode"] = str(args.pwin_mode)
             _sm_pre["expected_return"] = float(getattr(s, "expected_return", 0.0) or 0.0)
@@ -907,9 +974,11 @@ def main() -> None:
             sm0["strategy_id"] = str(getattr(c, "strategy_id", "") or "")
             sm0["side"] = str(getattr(c, "side", "flat") or "flat")
             _p_math_v2 = float(pwin_math_v2.predict_from_meta(sm0))
+            _p_math_v3 = float(pwin_math_v3.predict_from_meta(sm0))
             sm0["p_win_ml"] = float(_p_ml)
             sm0["p_win_math_v1"] = float(_p_math)
             sm0["p_win_math_v2"] = float(_p_math_v2)
+            sm0["p_win_math_v3"] = float(_p_math_v3)
             sm0["p_win_hybrid_v1"] = float(_p_hybrid)
             sm0["p_win_mode"] = str(args.pwin_mode)
 
@@ -950,6 +1019,20 @@ def main() -> None:
                 except Exception:
                     pass
 
+            _accept_flag = bool(getattr(d, "accept", False))
+            if _accept_flag and _competitive_score <= 0.0:
+                _fallback_strength = abs(float(getattr(c, "signal_strength", 0.0) or 0.0))
+                _fallback_base_weight = float(
+                    getattr(c, "base_weight", sm0.get("base_weight", 1.0)) or sm0.get("base_weight", 1.0) or 1.0
+                )
+                _competitive_score = float(_fallback_strength * _fallback_base_weight)
+
+            if _accept_flag and _post_ml_score <= 0.0 and _competitive_score > 0.0:
+                _fallback_pwin = max(0.0, float(sm0.get("p_win", 0.0) or 0.0))
+                _fallback_size_mult = float(getattr(d, "size_mult", sm0.get("policy_size_mult", 1.0)) or 1.0)
+                _fallback_size_mult = max(0.50, min(1.50, _fallback_size_mult))
+                _post_ml_score = float(_competitive_score * _fallback_pwin * _fallback_size_mult)
+
             sm0["competitive_score"] = float(_competitive_score)
             sm0["post_ml_score"] = float(_post_ml_score)
             sm0["post_ml_competitive_score"] = float(_post_ml_score)
@@ -961,6 +1044,14 @@ def main() -> None:
             sm0["policy_reason"] = str(getattr(d, "reason", "") or "")
             sm0["policy_size_mult"] = float(getattr(d, "size_mult", 0.0) or 0.0)
             sm0["accept"] = bool(getattr(d, "accept", False))
+
+            if bool(sm0.get("accept", False)):
+                _score_floor = 1.0e-4
+                _policy_floor = 1.0e-4
+                if float(sm0.get("score", 0.0) or 0.0) < _score_floor:
+                    sm0["score"] = float(_score_floor)
+                if float(sm0.get("policy_score", 0.0) or 0.0) < _policy_floor:
+                    sm0["policy_score"] = float(_policy_floor)
             sm0["portfolio_regime"] = portfolio_context.get("portfolio_regime")
             sm0["portfolio_breadth"] = portfolio_context.get("portfolio_breadth")
             sm0["portfolio_avg_pwin"] = portfolio_context.get("portfolio_avg_pwin")
@@ -1009,6 +1100,7 @@ def main() -> None:
                 "p_win_base": float(sm.get("p_win_base", getattr(s, "p_win", 0.0)) or 0.0),
                 "p_win_math_v1": float(sm.get("p_win_math_v1", float("nan"))),
                 "p_win_math_v2": float(sm.get("p_win_math_v2", float("nan"))),
+                "p_win_math_v3": float(sm.get("p_win_math_v3", float("nan"))),
                 "p_win_mode": str(sm.get("p_win_mode", "")),
                 "expected_return": float(sm.get("expected_return", getattr(s, "expected_return", 0.0)) or 0.0),
                 "score": float(sm.get("score", getattr(s, "score", 0.0)) or 0.0),
