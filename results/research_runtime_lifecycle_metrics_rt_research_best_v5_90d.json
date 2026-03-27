@@ -1,0 +1,10 @@
+{
+  "equity_start": 1000.0,
+  "equity_final": 1001.1029219435252,
+  "total_return_pct": 0.11029219435252369,
+  "sharpe_annual": 0.22073220354411913,
+  "max_drawdown_pct": -0.8933375208861616,
+  "vol_annual": 0.021680234799984592,
+  "trade_count": 335,
+  "win_rate_pct": 48.95522388059702
+}
