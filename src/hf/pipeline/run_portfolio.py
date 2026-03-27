@@ -26,6 +26,11 @@ from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalE
 from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
 from hf.engines.signals.sol_vol_compression_signal import SolVolCompressionSignalEngine
 from hf.engines.signals.sol_vol_expansion_signal import SolVolExpansionSignalEngine
+from hf.engines.signals.link_trend_signal import LinkTrendSignalEngine
+from hf.engines.signals.aave_trend_signal import AaveTrendSignalEngine
+from hf.engines.signals.bnb_trend_signal import BnbTrendSignalEngine
+from hf.engines.signals.eth_trend_signal import EthTrendSignalEngine
+from hf.engines.signals.xrp_trend_signal import XrpTrendSignalEngine
 from hf.engines.opportunity_book import select_opportunities, compute_competitive_score, compute_post_ml_competitive_score
 from hf.engines.ml_filter import FEATURE_COLUMNS, apply_ml_filter_to_signals, build_feature_row, load_model, load_model_registry, predict_proba
 from hf.engines.ml_position_sizer import MlPositionSizingEngine
@@ -665,6 +670,21 @@ def run(
                     **dict(cfg.get("params", {}) or {})
                 ),
                 "sol_vol_expansion_signal": lambda cfg: SolVolExpansionSignalEngine(
+                    **dict(cfg.get("params", {}) or {})
+                ),
+                "link_trend_signal": lambda cfg: LinkTrendSignalEngine(
+                    **dict(cfg.get("params", {}) or {})
+                ),
+                "aave_trend_signal": lambda cfg: AaveTrendSignalEngine(
+                    **dict(cfg.get("params", {}) or {})
+                ),
+                "bnb_trend_signal": lambda cfg: BnbTrendSignalEngine(
+                    **dict(cfg.get("params", {}) or {})
+                ),
+                "eth_trend_signal": lambda cfg: EthTrendSignalEngine(
+                    **dict(cfg.get("params", {}) or {})
+                ),
+                "xrp_trend_signal": lambda cfg: XrpTrendSignalEngine(
                     **dict(cfg.get("params", {}) or {})
                 ),
             },
