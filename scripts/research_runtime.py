@@ -527,6 +527,70 @@ def resolve_exit_policy(exit_cfg: dict, strategy_id: str) -> dict:
     return dict((exit_cfg or {}).get("default", {}) or {})
 
 
+
+def _resolve_runtime_exit_profile_for_candidate(candidate) -> dict:
+    sm = dict(getattr(candidate, "signal_meta", {}) or {})
+    strategy_id = str(getattr(candidate, "strategy_id", "") or sm.get("strategy_id", ""))
+    side = str(getattr(candidate, "side", "") or sm.get("side", "")).lower()
+
+    base_profile = str(sm.get("ctx_exit_profile", "normal") or "normal")
+    base_tp = float(sm.get("ctx_tp_mult", 1.0) or 1.0)
+    base_sl = float(sm.get("ctx_sl_mult", 1.0) or 1.0)
+    base_time_stop = int(sm.get("ctx_time_stop_bars", 12) or 12)
+
+    portfolio_regime = str(sm.get("portfolio_regime", "") or "").lower()
+    portfolio_breadth = float(sm.get("portfolio_breadth", 0.0) or 0.0)
+    p_win = float(sm.get("p_win", 0.0) or 0.0)
+    adx = float(sm.get("adx", 0.0) or 0.0)
+    atrp = float(sm.get("atrp", 0.0) or 0.0)
+    ema_gap = abs(float(sm.get("ema_gap_fast_slow", sm.get("ema_gap_pct", 0.0)) or 0.0))
+
+    if strategy_id == "btc_trend" and side == "short":
+        is_fast_exit = (
+            p_win < 0.470
+            or ema_gap < 0.010
+            or adx < 22.0
+            or atrp < 0.0045
+            or portfolio_breadth <= 3.0
+        )
+        is_runner = (
+            p_win >= 0.530
+            and ema_gap >= 0.020
+            and adx >= 30.0
+            and atrp >= 0.0060
+            and portfolio_breadth >= 6.0
+            and portfolio_regime in {"normal", "defensive"}
+        )
+
+        if is_runner:
+            return {
+                "ctx_exit_profile": "runner",
+                "ctx_tp_mult": 1.2,
+                "ctx_sl_mult": 1.0,
+                "ctx_time_stop_bars": 24,
+            }
+        if is_fast_exit:
+            return {
+                "ctx_exit_profile": "fast_exit",
+                "ctx_tp_mult": 0.8,
+                "ctx_sl_mult": 0.8,
+                "ctx_time_stop_bars": 8,
+            }
+        return {
+            "ctx_exit_profile": "normal",
+            "ctx_tp_mult": 1.0,
+            "ctx_sl_mult": 1.0,
+            "ctx_time_stop_bars": 12,
+        }
+
+    return {
+        "ctx_exit_profile": base_profile,
+        "ctx_tp_mult": base_tp,
+        "ctx_sl_mult": base_sl,
+        "ctx_time_stop_bars": base_time_stop,
+    }
+
+
 def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str) -> dict:
     selected_candidates = list(selected_candidates or [])
     weights = dict(weights or {})
@@ -1074,6 +1138,14 @@ def main() -> None:
         )
 
         selected_candidates = score_projector.enrich_many(selected_candidates)
+
+        projected_selected_candidates = []
+        for _c in selected_candidates:
+            _sm = dict(getattr(_c, "signal_meta", {}) or {})
+            _sm.update(_resolve_runtime_exit_profile_for_candidate(_c))
+            _c.signal_meta = _sm
+            projected_selected_candidates.append(_c)
+        selected_candidates = projected_selected_candidates
         allocation_portfolio_context = build_portfolio_context(selected_candidates, score_mode="allocation")
         selection_meta["disabled_strategy_side_filtered"] = int(len(disabled_candidates))
         selection_meta["global_competition"] = dict(global_competition_meta or {})

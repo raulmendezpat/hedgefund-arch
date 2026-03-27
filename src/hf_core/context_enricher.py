@@ -27,31 +27,44 @@ def _apply_strategy_exit_profile_overrides(
     time_stop_bars: int,
 ) -> tuple[str, float, float, int]:
     strategy_id = str(strategy_id or "")
-    side = str(side or "")
-    portfolio_regime = str(portfolio_regime or "")
+    side = str(side or "").lower()
+    portfolio_regime = str(portfolio_regime or "").lower()
     portfolio_breadth = float(portfolio_breadth or 0.0)
     p_win = float(p_win or 0.0)
     adx = float(adx or 0.0)
     atrp = float(atrp or 0.0)
     ema_gap = abs(float(ema_gap or 0.0))
 
+    # BTC short necesita una segmentación propia.
+    # No debemos heredar ciegamente el perfil base calculado por expected_holding_bars,
+    # porque eso colapsó casi todo a fast_exit.
     if strategy_id == "btc_trend" and side == "short":
-        if ema_gap < 0.008 or adx < 24.0 or portfolio_breadth <= 3.0:
-            return ("fast_exit", 0.8, 0.8, 8)
+        is_fast_exit = (
+            p_win < 0.470
+            or ema_gap < 0.010
+            or adx < 22.0
+            or atrp < 0.0045
+            or portfolio_breadth <= 3.0
+        )
 
-        if (
-            p_win >= 0.53
-            and ema_gap >= 0.025
-            and adx >= 35.0
-            and atrp >= 0.006
-            and portfolio_breadth >= 8.0
+        is_runner = (
+            p_win >= 0.530
+            and ema_gap >= 0.020
+            and adx >= 30.0
+            and atrp >= 0.0060
+            and portfolio_breadth >= 6.0
             and portfolio_regime in {"normal", "defensive"}
-        ):
+        )
+
+        if is_runner:
             return ("runner", 1.2, 1.0, 24)
+
+        if is_fast_exit:
+            return ("fast_exit", 0.8, 0.8, 8)
 
         return ("normal", 1.0, 1.0, 12)
 
-    return (exit_profile, tp_mult, sl_mult, int(time_stop_bars))
+    return (str(exit_profile or ""), float(tp_mult or 1.0), float(sl_mult or 1.0), int(time_stop_bars or 12))
 
 def _f(x: Any, default: float = 0.0) -> float:
     try:
@@ -207,20 +220,45 @@ class AssetContextEnricher:
             tp_mult = 1.4
             sl_mult = 1.1
 
+        debug_strategy_id = str(getattr(candidate, "strategy_id", "") or meta.get("strategy_id", ""))
+        debug_side = str(getattr(candidate, "side", "") or meta.get("side", ""))
+        debug_portfolio_regime = str(meta.get("portfolio_regime", "") or "")
+        debug_portfolio_breadth = float(meta.get("portfolio_breadth", 0.0) or 0.0)
+        debug_p_win = float(meta.get("p_win", 0.0) or 0.0)
+        debug_adx = float(adx or 0.0)
+        debug_atrp = float(atrp or 0.0)
+        debug_ema_gap = float(meta.get("ema_gap_fast_slow", meta.get("ema_gap_pct", ema_fast_vs_ema_slow)) or 0.0)
+
         exit_profile, tp_mult, sl_mult, time_stop_bars = _apply_strategy_exit_profile_overrides(
-            strategy_id=str(getattr(candidate, "strategy_id", "") or meta.get("strategy_id", "")),
-            side=str(getattr(candidate, "side", "") or meta.get("side", "")),
-            portfolio_regime=str(meta.get("portfolio_regime", "") or ""),
-            portfolio_breadth=float(meta.get("portfolio_breadth", 0.0) or 0.0),
-            p_win=float(meta.get("p_win", 0.0) or 0.0),
-            adx=float(adx or 0.0),
-            atrp=float(atrp or 0.0),
-            ema_gap=float(meta.get("ema_gap_fast_slow", meta.get("ema_gap_pct", ema_fast_vs_ema_slow)) or 0.0),
+            strategy_id=debug_strategy_id,
+            side=debug_side,
+            portfolio_regime=debug_portfolio_regime,
+            portfolio_breadth=debug_portfolio_breadth,
+            p_win=debug_p_win,
+            adx=debug_adx,
+            atrp=debug_atrp,
+            ema_gap=debug_ema_gap,
             exit_profile=str(exit_profile or ""),
             tp_mult=float(tp_mult or 1.0),
             sl_mult=float(sl_mult or 1.0),
             time_stop_bars=int(time_stop_bars or 12),
         )
+
+        if debug_strategy_id == "btc_trend" and debug_side.lower() == "short":
+            meta["debug_exit_probe"] = {
+                "strategy_id": debug_strategy_id,
+                "side": debug_side,
+                "portfolio_regime": debug_portfolio_regime,
+                "portfolio_breadth": debug_portfolio_breadth,
+                "p_win": debug_p_win,
+                "adx": debug_adx,
+                "atrp": debug_atrp,
+                "ema_gap": debug_ema_gap,
+                "resolved_exit_profile": str(exit_profile),
+                "resolved_tp_mult": float(tp_mult),
+                "resolved_sl_mult": float(sl_mult),
+                "resolved_time_stop_bars": int(time_stop_bars),
+            }
 
         meta.update({
             "close": float(close_now),
