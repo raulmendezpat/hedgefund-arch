@@ -44,7 +44,7 @@
     "engine": "bnb_trend_signal",
     "base_weight": 0.8,
     "params": {
-      "adx_min": 24.0,
+      "adx_min": 22.0,
       "require_ema_gap_min": true,
       "ema_gap_min": 0.002,
       "use_strength_tiers": false,
@@ -58,7 +58,7 @@
     "engine": "xrp_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 24.0,
+      "adx_min": 22.0,
       "require_ema_gap_min": true,
       "ema_gap_min": 0.002,
       "use_strength_tiers": false,
@@ -72,7 +72,7 @@
     "engine": "eth_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 24.0,
+      "adx_min": 22.0,
       "require_ema_gap_min": true,
       "ema_gap_min": 0.002,
       "use_strength_tiers": false,
@@ -86,9 +86,9 @@
     "engine": "btc_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 24.0,
+      "adx_min": 28.0,
       "require_ema_gap_min": true,
-      "ema_gap_min": 0.002,
+      "ema_gap_min": 0.003,
       "use_strength_tiers": false,
       "soft_adx_gate": false,
       "soft_ema_gap_gate": false
@@ -114,7 +114,7 @@
     "engine": "btc_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 24.0,
+      "adx_min": 22.0,
       "require_ema_gap_min": true,
       "ema_gap_min": 0.002,
       "use_strength_tiers": false,
@@ -128,7 +128,7 @@
     "engine": "btc_trend_signal",
     "base_weight": 0.8,
     "params": {
-      "adx_min": 24.0,
+      "adx_min": 22.0,
       "require_ema_gap_min": true,
       "ema_gap_min": 0.002,
       "use_strength_tiers": false,
