@@ -68,12 +68,17 @@
     "engine": "xrp_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 22.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.002,
-      "use_strength_tiers": false,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false
+      "adx_min": 27.0,
+      "atrp_min": 0.003,
+      "atrp_max": 0.018,
+      "min_ema_sep_atr": 0.16,
+      "min_ema_slope_atr": 0.022,
+      "breakout_buffer_atr": 0.1,
+      "pullback_max_atr": 0.75,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
     }
   },
   {
