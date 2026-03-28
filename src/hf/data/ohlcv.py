@@ -60,12 +60,24 @@ def fetch_ohlcv_ccxt(
 
     cached = _read_cache() if use_cache else None
     if cached is not None and not cached.empty:
-        # If end_ms is set, just slice from cached (best effort).
+        have_min = int(cached["timestamp"].min())
+        have_max = int(cached["timestamp"].max())
+
+        # For bounded windows, only return directly from cache if the sliced range is complete and continuous.
         if end_ms is not None:
-            sliced = cached[(cached["timestamp"] >= int(start_ms)) & (cached["timestamp"] <= int(end_ms))].copy()
-            if not sliced.empty:
-                return sliced
-        # If no end is provided and refresh requested, we will extend cache to latest.
+            if have_min <= int(start_ms) and have_max >= int(end_ms):
+                sliced = cached[(cached["timestamp"] >= int(start_ms)) & (cached["timestamp"] <= int(end_ms))].copy()
+                if not sliced.empty:
+                    sliced = sliced.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+                    tf_ms = 60 * 60 * 1000  # research_runtime uses 1h
+                    expected_rows = ((int(end_ms) - int(start_ms)) // tf_ms) + 1
+                    deltas_ok = True
+                    if len(sliced) > 1:
+                        deltas_ok = bool((sliced["timestamp"].diff().dropna() == tf_ms).all())
+                    if len(sliced) == expected_rows and deltas_ok:
+                        return sliced
+
+        # For open-ended windows without refresh, return cached data from start onward.
         if end_ms is None and not refresh_if_no_end:
             sliced = cached[cached["timestamp"] >= int(start_ms)].copy()
             if not sliced.empty:
@@ -78,6 +90,13 @@ def fetch_ohlcv_ccxt(
     limit = 500
     cur = int(start_ms)
     rows = []
+
+    # If bounded window and cache already covers the beginning, continue from cached max + 1.
+    if cached is not None and not cached.empty and end_ms is not None:
+        have_min = int(cached["timestamp"].min())
+        have_max = int(cached["timestamp"].max())
+        if have_min <= int(start_ms) and have_max < int(end_ms):
+            cur = max(int(start_ms), have_max + 1)
 
     # If we have cache, start from last+1 candle when refreshing without end_ms.
     if cached is not None and not cached.empty and end_ms is None and refresh_if_no_end:

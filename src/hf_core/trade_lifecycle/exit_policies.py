@@ -150,39 +150,6 @@ class TrendAtrDynamicExitPolicy:
                     breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
                 )
 
-            if not regime_on:
-                return ExitDecision(
-                    action="close",
-                    exit_reason="regime_off",
-                    exit_price=float(close_now),
-                    tp_price=float(tp),
-                    sl_price=float(sl),
-                    trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
-                )
-
-            if _side_from_weight(target_weight) == "flat":
-                return ExitDecision(
-                    action="close",
-                    exit_reason="target_flatten",
-                    exit_price=float(close_now),
-                    tp_price=float(tp),
-                    sl_price=float(sl),
-                    trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
-                )
-
-            if signal_side in {"long", "short"} and signal_side != "long":
-                return ExitDecision(
-                    action="close",
-                    exit_reason="reverse_signal",
-                    exit_price=float(close_now),
-                    tp_price=float(tp),
-                    sl_price=float(sl),
-                    trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
-                )
-
             return ExitDecision(
                 action="hold",
                 exit_reason="hold",
