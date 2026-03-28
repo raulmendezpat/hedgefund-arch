@@ -31,11 +31,16 @@
     "base_weight": 1.0,
     "params": {
       "adx_min": 24.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.003,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false,
-      "use_strength_tiers": false
+      "atrp_min": 0.004,
+      "atrp_max": 0.03,
+      "min_ema_sep_atr": 0.22,
+      "min_ema_slope_atr": 0.03,
+      "breakout_buffer_atr": 0.12,
+      "pullback_max_atr": 0.9,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
     }
   },
   {
