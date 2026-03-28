@@ -15,6 +15,12 @@ from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalE
 from hf.engines.signals.sol_extreme_mr_signal import SolExtremeMrSignalEngine
 from hf.engines.signals.sol_vol_compression_signal import SolVolCompressionSignalEngine
 from hf.engines.signals.sol_vol_expansion_signal import SolVolExpansionSignalEngine
+from hf.engines.signals.link_trend_signal import LinkTrendSignalEngine
+from hf.engines.signals.aave_trend_signal import AaveTrendSignalEngine
+from hf.engines.signals.bnb_trend_signal import BnbTrendSignalEngine
+from hf.engines.signals.eth_trend_signal import EthTrendSignalEngine
+from hf.engines.signals.xrp_trend_signal import XrpTrendSignalEngine
+from hf.engines.signals.trx_trend_signal import TrxTrendSignalEngine
 
 
 def _default_registry() -> List[dict]:
@@ -72,6 +78,12 @@ class RegistryOpportunityBook:
                 "sol_extreme_mr_signal": lambda cfg: SolExtremeMrSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_compression_signal": lambda cfg: SolVolCompressionSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_expansion_signal": lambda cfg: SolVolExpansionSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "link_trend_signal": lambda cfg: LinkTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "aave_trend_signal": lambda cfg: AaveTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "bnb_trend_signal": lambda cfg: BnbTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "eth_trend_signal": lambda cfg: EthTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "xrp_trend_signal": lambda cfg: XrpTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+            "trx_trend_signal": lambda cfg: TrxTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:

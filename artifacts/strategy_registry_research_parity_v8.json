@@ -83,18 +83,22 @@
   {
     "strategy_id": "trx_trend",
     "symbol": "TRX/USDT:USDT",
-    "engine": "btc_trend_signal",
+    "engine": "trx_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 28.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.003,
-      "use_strength_tiers": false,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false,
-      "long_adx_min": 30.0,
-      "long_require_ema_gap_min": true,
-      "long_ema_gap_min": 0.0045
+      "adx_min": 32.0,
+      "atrp_min": 0.0028,
+      "atrp_max": 0.012,
+      "min_ema_sep_atr": 0.22,
+      "ema_slope_lookback": 6,
+      "min_ema_slope_atr": 0.035,
+      "breakout_lookback": 20,
+      "breakout_buffer_atr": 0.1,
+      "pullback_max_atr": 0.55,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
     }
   },
   {
