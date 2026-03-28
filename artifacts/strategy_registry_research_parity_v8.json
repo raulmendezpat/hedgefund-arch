@@ -44,12 +44,17 @@
     "engine": "bnb_trend_signal",
     "base_weight": 0.8,
     "params": {
-      "adx_min": 22.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.002,
-      "use_strength_tiers": false,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false
+      "adx_min": 28.0,
+      "atrp_min": 0.003,
+      "atrp_max": 0.02,
+      "min_ema_sep_atr": 0.18,
+      "min_ema_slope_atr": 0.025,
+      "breakout_buffer_atr": 0.12,
+      "pullback_max_atr": 0.8,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
     }
   },
   {
@@ -104,43 +109,46 @@
   {
     "strategy_id": "aave_trend",
     "symbol": "AAVE/USDT:USDT",
-    "engine": "aave_trend_signal",
+    "engine": "btc_trend_signal",
     "base_weight": 1.0,
-    "params": {
-      "adx_min": 24.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.004,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false,
-      "use_strength_tiers": false
-    }
+    "params": {}
   },
   {
     "strategy_id": "dot_trend",
     "symbol": "DOT/USDT:USDT",
-    "engine": "btc_trend_signal",
+    "engine": "dot_trend_signal",
     "base_weight": 0.7,
     "params": {
-      "adx_min": 22.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.002,
-      "use_strength_tiers": false,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false
+      "adx_min": 26.0,
+      "atrp_min": 0.0045,
+      "atrp_max": 0.03,
+      "min_ema_sep_atr": 0.18,
+      "min_ema_slope_atr": 0.03,
+      "breakout_buffer_atr": 0.18,
+      "pullback_max_atr": 0.65,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
     }
   },
   {
     "strategy_id": "avax_trend",
     "symbol": "AVAX/USDT:USDT",
-    "engine": "btc_trend_signal",
+    "engine": "avax_trend_signal",
     "base_weight": 0.8,
     "params": {
-      "adx_min": 22.0,
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.002,
-      "use_strength_tiers": false,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false
+      "adx_min": 28.0,
+      "atrp_min": 0.004,
+      "atrp_max": 0.03,
+      "min_ema_sep_atr": 0.18,
+      "min_ema_slope_atr": 0.025,
+      "breakout_buffer_atr": 0.12,
+      "pullback_max_atr": 0.8,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
     }
   }
 ]
