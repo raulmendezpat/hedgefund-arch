@@ -11,11 +11,15 @@ class MetaModel:
         pwin_cap: float = 0.88,
         context_shrink_max: float = 0.85,
         expected_return_floor: float = 0.0,
+        enable_strategy_side_pwin: bool = False,
+        strategy_side_pwin_scale: float = 1.0,
     ):
         self.pwin_floor = float(pwin_floor)
         self.pwin_cap = float(pwin_cap)
         self.context_shrink_max = float(context_shrink_max)
         self.expected_return_floor = float(expected_return_floor)
+        self.enable_strategy_side_pwin = bool(enable_strategy_side_pwin)
+        self.strategy_side_pwin_scale = float(strategy_side_pwin_scale)
 
     @staticmethod
     def _clip(x: float, lo: float, hi: float) -> float:
@@ -48,6 +52,27 @@ class MetaModel:
             "btc_trend_loose|long": -0.035,
         }
         return float(bias_map.get(f"{strategy_id}|{side}", 0.0))
+
+
+    def _apply_strategy_side_pwin_adjustment(self, p: float, strategy_id: str, side: str) -> tuple[float, dict]:
+        p = float(p)
+        if not self.enable_strategy_side_pwin:
+            return float(self._clip(p, self.pwin_floor, self.pwin_cap)), {
+                "enabled": False,
+                "strategy_side_pwin_bias": 0.0,
+                "strategy_side_pwin_scale": float(self.strategy_side_pwin_scale),
+            }
+
+        raw_bias = float(self._strategy_side_bias(strategy_id, side))
+        scaled_bias = float(raw_bias * self.strategy_side_pwin_scale)
+        p_adj = self._clip(p + scaled_bias, self.pwin_floor, self.pwin_cap)
+
+        return float(p_adj), {
+            "enabled": True,
+            "strategy_side_pwin_bias": float(raw_bias),
+            "strategy_side_pwin_scaled_bias": float(scaled_bias),
+            "strategy_side_pwin_scale": float(self.strategy_side_pwin_scale),
+        }
 
     def _context_bonus(self, v: dict) -> tuple[float, float, dict]:
         strategy_id = str(v.get("strategy_id", "") or "")
@@ -128,8 +153,11 @@ class MetaModel:
 
     def predict_one(self, feature_row: FeatureRow) -> MetaScore:
         v = dict(feature_row.values or {})
+        strategy_id = str(v.get("strategy_id", feature_row.strategy_id) or "")
+        side = str(v.get("side", feature_row.side) or "flat").lower()
 
-        p_global = self._global_pwin(v)
+        p_global_raw = self._global_pwin(v)
+        p_global, side_meta = self._apply_strategy_side_pwin_adjustment(p_global_raw, strategy_id, side)
         ctx_bonus, shrink_w, ctx_meta = self._context_bonus(v)
 
         p_context_raw = self._clip(p_global + ctx_bonus, self.pwin_floor, self.pwin_cap)
@@ -160,10 +188,12 @@ class MetaModel:
             score=float(score),
             model_meta={
                 "model_family": "contextual_bootstrap_recalibrated_v2",
+                "p_win_global_raw": float(p_global_raw),
                 "p_win_global": float(p_global),
                 "p_win_context_raw": float(p_context_raw),
                 "context_bonus": float(ctx_bonus),
                 "shrink_weight": float(shrink_w),
+                **side_meta,
                 **ctx_meta,
             },
         )

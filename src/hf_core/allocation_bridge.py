@@ -32,6 +32,8 @@ class AllocationBridge:
             return float(post_ml_score)
         if self.score_projection == "pwin_expected_return":
             return float(max(0.0, p_win - 0.5) * max(0.0, expected_return))
+        if self.score_projection == "frozen_allocation_score":
+            return float(meta.get("allocation_score", meta.get("bridge_projected_score", 0.0)) or 0.0)
 
         if post_ml_competitive_score > 0.0:
             return float(post_ml_competitive_score)
@@ -116,6 +118,14 @@ class AllocationBridge:
             signal_strength = float(getattr(c, "signal_strength", 0.0) or 0.0)
             projected_score = float(self._project_score(meta))
 
+            trace_candidate_id = str(
+                meta.get(
+                    "trace_candidate_id",
+                    f"{int(getattr(c, 'ts', 0) or 0)}|{str(c.symbol)}|{str(c.strategy_id)}|{str(c.side)}"
+                )
+            )
+            alloc_input_id = f"{trace_candidate_id}|alloc"
+
             out.append(
                 {
                     "symbol": str(c.symbol),
@@ -126,6 +136,8 @@ class AllocationBridge:
                     "expected_return": float(expected_return),
                     "base_weight": float(c.base_weight),
                     "signal_strength": float(signal_strength),
+                    "trace_candidate_id": trace_candidate_id,
+                    "alloc_input_id": alloc_input_id,
                     "meta": {
                         **meta,
                         "score": float(projected_score),
@@ -141,6 +153,8 @@ class AllocationBridge:
                         "bridge_projected_score": float(projected_score),
                         "bridge_score_projection": str(self.score_projection),
                         "bridge_base_weight_projection": str(self.base_weight_projection),
+                        "trace_candidate_id": str(trace_candidate_id),
+                        "alloc_input_id": str(alloc_input_id),
                     },
                 }
             )

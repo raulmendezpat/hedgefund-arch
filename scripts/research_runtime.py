@@ -15,15 +15,23 @@ from hf.engines.opportunity_book import (
     compute_post_ml_competitive_score,
 )
 from hf.pipeline.run_portfolio import _adx, _atr, _ema, _row_to_candle
+from hf.engines.ml_position_sizer import MlPositionSizingEngine
 from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Allocator, OpportunityCandidate, AssetContextEnricher, AllocationEngine, ResearchAllocationRouter, build_allocation_config_from_args, build_allocation_engine
+from hf_core.contracts import FeatureRow
 from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
+from hf_core.selection_engine import compute_enhanced_score, apply_cross_sectional_ranking
 from hf_core.pwin_math_v2 import MathPWinV2
 from hf_core.pwin_math_v3 import MathPWinV3
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
 from hf_core.trade_lifecycle import TradeLifecycleEngine
+from hf_core.pwin_calibration import PWinCalibrationTable
+from hf_core.prod_selection_adapter import apply_prod_selection_semantics
 
 from hf_core.score_projector import ScoreProjector
+from hf_core.production_like_allocation_postprocess import ProductionLikeAllocationPostProcessor
+from hf_core.production_like_allocation_ml_sizer import ProductionLikeAllocationMlSizer
+from hf_core.production_like_allocation_cluster_controls import ProductionLikeAllocationClusterControls
 
 
 def _resolve_competitive_rank_score(candidate) -> float:
@@ -221,6 +229,8 @@ def _build_runtime_feature_rows(
     return feature_rows
 
 
+
+
 def _apply_runtime_score_overrides(
     *,
     enriched_candidates,
@@ -229,71 +239,59 @@ def _apply_runtime_score_overrides(
     pwin_math_v2,
     pwin_math_v3,
 ):
-    for c, s in zip(enriched_candidates or [], scores or []):
-        _sm_pre = dict(getattr(c, "signal_meta", {}) or {})
-        _sm_pre["expected_return_ml"] = float(getattr(s, "expected_return", 0.0) or 0.0)
-        _sm_pre["p_win_ml"] = float(getattr(s, "p_win", 0.0) or 0.0)
-
-        _p_ml, _p_math, _p_hybrid = _resolve_pwin(_sm_pre, args.pwin_mode)
-        _sm_pre["strategy_id"] = str(getattr(c, "strategy_id", "") or "")
-        _sm_pre["side"] = str(getattr(c, "side", "flat") or "flat")
-        _p_math_v2 = float(pwin_math_v2.predict_from_meta(_sm_pre))
-        _p_math_v3 = float(pwin_math_v3.predict_from_meta(_sm_pre))
-
-        if str(args.pwin_mode) == "math_v1":
-            _p_final = float(_p_math)
-        elif str(args.pwin_mode) == "math_v2":
-            _p_final = float(_p_math_v2)
-        elif str(args.pwin_mode) == "hybrid_v1":
-            _p_final = float(_p_hybrid)
-        else:
-            _p_final = float(_p_ml)
-
-        try:
-            s.p_win = float(_p_final)
-        except Exception:
-            pass
-
-        try:
-            s.expected_return = float(_recompute_expected_return(_sm_pre, float(_p_final)))
-        except Exception:
-            pass
-
-        try:
-            s.score = float(max(0.0, float(_p_final) - 0.5) ** 0.90) * float(max(0.0, getattr(s, "expected_return", 0.0) or 0.0))
-        except Exception:
-            pass
-
-        _sm_pre["p_win"] = float(_p_final)
-        _sm_pre["p_win_math_v1"] = float(_p_math)
-        _sm_pre["p_win_math_v2"] = float(_p_math_v2)
-
-        # score floor operacional:
-        # si el candidato fue aceptado pero el score quedó microscópico,
-        # lo elevamos a un piso mínimo para que el allocator pueda convertirlo
-        # en peso real y no lo deje en cero.
-        _score_raw = float(_sm_pre.get("score", 0.0) or 0.0)
-        _policy_raw = float(_sm_pre.get("policy_score", 0.0) or 0.0)
-        _accepted_flag = bool(_sm_pre.get("accept", False))
-
-        if _accepted_flag:
-            _score_floor = 1.0e-4
-            _policy_floor = 1.0e-4
-            if _score_raw < _score_floor:
-                _sm_pre["score"] = float(_score_floor)
-            if _policy_raw < _policy_floor:
-                _sm_pre["policy_score"] = float(_policy_floor)
-        _sm_pre["p_win_math_v3"] = float(_p_math_v3)
-        _sm_pre["p_win_hybrid_v1"] = float(_p_hybrid)
-        _sm_pre["p_win_mode"] = str(args.pwin_mode)
-        _sm_pre["expected_return"] = float(getattr(s, "expected_return", 0.0) or 0.0)
-        _sm_pre["score"] = float(getattr(s, "score", 0.0) or 0.0)
-        c.signal_meta = _sm_pre
-
     return enriched_candidates, scores
 
 
-def _enrich_candidate_for_selection_runtime(
+def _calibrate_runtime_pwin(
+    p: float,
+    *,
+    mode: str = "off",
+    a: float = 8.0,
+    b: float = 0.5,
+    gamma: float = 1.0,
+) -> float:
+    try:
+        p = float(p)
+    except Exception:
+        p = 0.5
+
+    if p < 0.0:
+        p = 0.0
+    if p > 1.0:
+        p = 1.0
+
+    mode = str(mode or "off").lower()
+
+    if mode == "off":
+        return float(p)
+
+    if mode == "sigmoid":
+        # calibración alrededor de b, por defecto 0.5
+        try:
+            import math
+            z = float(a) * (float(p) - float(b))
+            out = 1.0 / (1.0 + math.exp(-z))
+        except Exception:
+            out = p
+    elif mode == "power":
+        # sharpening simétrico alrededor de 0.5
+        eps = 1.0e-12
+        p = min(max(p, eps), 1.0 - eps)
+        g = float(gamma) if float(gamma) > 0.0 else 1.0
+        num = p ** g
+        den = num + ((1.0 - p) ** g)
+        out = num / den if den != 0.0 else p
+    else:
+        out = p
+
+    if out < 0.0:
+        out = 0.0
+    if out > 1.0:
+        out = 1.0
+    return float(out)
+
+
+def _apply_runtime_prod_score_semantics(
     *,
     candidate,
     score_obj,
@@ -305,29 +303,43 @@ def _enrich_candidate_for_selection_runtime(
     score_projector,
 ):
     sm0 = dict(getattr(candidate, "signal_meta", {}) or {})
-    sm0["expected_return"] = float(getattr(score_obj, "expected_return", 0.0) or 0.0)
-    sm0["p_win"] = float(getattr(score_obj, "p_win", 0.0) or 0.0)
+    _p_ml_raw = float(getattr(score_obj, "p_win", 0.0) or 0.0)
 
-    _p_ml, _p_math, _p_hybrid = _resolve_pwin(sm0, args.pwin_mode)
+    _p_cal = _calibrate_runtime_pwin(
+        float(_p_ml_raw),
+        mode=str(getattr(args, "pwin_calibration_mode", "off")),
+        a=float(getattr(args, "pwin_calibration_a", 8.0)),
+        b=float(getattr(args, "pwin_calibration_b", 0.5)),
+        gamma=float(getattr(args, "pwin_calibration_gamma", 1.0)),
+    )
+
+    sm0["expected_return_ml"] = float(getattr(score_obj, "expected_return", 0.0) or 0.0)
+    sm0["expected_return"] = float(getattr(score_obj, "expected_return", 0.0) or 0.0)
+
+    sm0["p_win"] = float(_p_cal)
+    sm0["p_win_prod"] = float(_p_cal)
+    sm0["p_win_ml_raw"] = float(_p_ml_raw)
+    sm0["p_win_ml"] = float(_p_ml_raw)
+    sm0["p_win_calibrated"] = float(_p_cal)
+
     sm0["strategy_id"] = str(getattr(candidate, "strategy_id", "") or "")
     sm0["side"] = str(getattr(candidate, "side", "flat") or "flat")
-    _p_math_v2 = float(pwin_math_v2.predict_from_meta(sm0))
-    _p_math_v3 = float(pwin_math_v3.predict_from_meta(sm0))
-    sm0["p_win_ml"] = float(_p_ml)
-    sm0["p_win_math_v1"] = float(_p_math)
-    sm0["p_win_math_v2"] = float(_p_math_v2)
-    sm0["p_win_math_v3"] = float(_p_math_v3)
-    sm0["p_win_hybrid_v1"] = float(_p_hybrid)
-    sm0["p_win_mode"] = str(args.pwin_mode)
 
-    if str(args.pwin_mode) == "math_v1":
-        sm0["p_win"] = float(_p_math)
-    elif str(args.pwin_mode) == "math_v2":
-        sm0["p_win"] = float(_p_math_v2)
-    elif str(args.pwin_mode) == "hybrid_v1":
-        sm0["p_win"] = float(_p_hybrid)
-    else:
-        sm0["p_win"] = float(_p_ml)
+    _diag_meta = dict(sm0)
+    _diag_meta["p_win"] = float(_p_ml_raw)
+    _p_ml_diag, _p_math, _p_hybrid = _resolve_pwin(_diag_meta, args.pwin_mode)
+    _p_math_v2_val = float(pwin_math_v2.predict_from_meta(_diag_meta))
+    _p_math_v3_val = float(pwin_math_v3.predict_from_meta(_diag_meta))
+
+    sm0["p_win_math_v1"] = float(_p_math)
+    sm0["p_win_math_v2"] = float(_p_math_v2_val)
+    sm0["p_win_math_v3"] = float(_p_math_v3_val)
+    sm0["p_win_hybrid_v1"] = float(_p_hybrid)
+    sm0["p_win_mode"] = "ml_raw_prod_semantics"
+    sm0["pwin_calibration_mode"] = str(getattr(args, "pwin_calibration_mode", "off"))
+    sm0["pwin_calibration_a"] = float(getattr(args, "pwin_calibration_a", 8.0))
+    sm0["pwin_calibration_b"] = float(getattr(args, "pwin_calibration_b", 0.5))
+    sm0["pwin_calibration_gamma"] = float(getattr(args, "pwin_calibration_gamma", 1.0))
 
     sm0["score"] = float(getattr(score_obj, "score", 0.0) or 0.0)
     sm0["policy_score"] = float(getattr(decision, "policy_score", getattr(score_obj, "score", 0.0)) or 0.0)
@@ -355,32 +367,97 @@ def _enrich_candidate_for_selection_runtime(
     candidate = score_projector.enrich_candidate(candidate)
 
     sm1 = dict(getattr(candidate, "signal_meta", {}) or {})
-    if bool(sm1.get("accept", False)):
-        _competitive_score = float(sm1.get("competitive_score", sm1.get("meta_competitive_score", 0.0)) or 0.0)
-        _post_ml_score = float(sm1.get("post_ml_score", sm1.get("meta_post_ml_score", 0.0)) or 0.0)
+    _side_now = str(getattr(candidate, "side", sm1.get("side", "")) or "").lower()
+    _active_flag = 1.0 if _side_now in {"long", "short"} else 0.0
+    _strength = abs(float(getattr(candidate, "signal_strength", 0.0) or 0.0))
+    try:
+        _base_weight = float(getattr(candidate, "base_weight", sm1.get("base_weight", 1.0)) or sm1.get("base_weight", 1.0) or 1.0)
+    except Exception:
+        _base_weight = 1.0
 
-        if _competitive_score <= 0.0:
-            _fallback_strength = abs(float(getattr(candidate, "signal_strength", 0.0) or 0.0))
-            _fallback_base_weight = float(
-                getattr(candidate, "base_weight", sm1.get("base_weight", 1.0)) or sm1.get("base_weight", 1.0) or 1.0
-            )
-            _competitive_score = float(_fallback_strength * _fallback_base_weight)
+    _competitive_score = float(_active_flag * _strength * _base_weight)
 
-        if _post_ml_score <= 0.0 and _competitive_score > 0.0:
-            _fallback_pwin = max(0.0, float(sm1.get("p_win", 0.0) or 0.0))
-            _fallback_size_mult = float(getattr(decision, "size_mult", sm1.get("policy_size_mult", 1.0)) or 1.0)
-            _fallback_size_mult = max(0.50, min(1.50, _fallback_size_mult))
-            _post_ml_score = float(_competitive_score * _fallback_pwin * _fallback_size_mult)
+    _prod_pwin = float(sm1.get("p_win_prod", sm1.get("p_win_ml_raw", sm1.get("p_win", 0.0))) or 0.0)
+    try:
+        _size_factor = float(sm1.get("ml_position_size_mult", 1.0) or 1.0)
+    except Exception:
+        _size_factor = 1.0
+    if _size_factor <= 0.0:
+        _size_factor = 1.0
+    _size_factor = max(0.50, min(1.50, _size_factor))
 
-        sm1["competitive_score"] = float(_competitive_score)
-        sm1["post_ml_score"] = float(_post_ml_score)
-        sm1["post_ml_competitive_score"] = float(_post_ml_score)
-        sm1["meta_competitive_score"] = float(_competitive_score)
-        sm1["meta_post_ml_score"] = float(_post_ml_score)
-        sm1["meta_post_ml_competitive_score"] = float(_post_ml_score)
+    _post_ml_score = float(_competitive_score * _prod_pwin * _size_factor)
+
+    sm1["competitive_score"] = float(_competitive_score)
+    sm1["post_ml_score"] = float(_post_ml_score)
+    sm1["post_ml_competitive_score"] = float(_post_ml_score)
+    sm1["meta_competitive_score"] = float(_competitive_score)
+    sm1["meta_post_ml_score"] = float(_post_ml_score)
+    sm1["meta_post_ml_competitive_score"] = float(_post_ml_score)
+    sm1["ml_position_size_mult"] = float(_size_factor)
 
     candidate.signal_meta = sm1
     return candidate
+
+
+def _apply_runtime_ml_position_sizing_semantics(
+    *,
+    candidate,
+    score_obj,
+    ml_position_sizer,
+):
+    if ml_position_sizer is None:
+        return candidate
+
+    sm = dict(getattr(candidate, "signal_meta", {}) or {})
+    _side = str(getattr(candidate, "side", sm.get("side", "flat")) or "flat").lower()
+    if _side not in {"long", "short"}:
+        sm["ml_position_size_mult"] = 0.0
+        candidate.signal_meta = sm
+        return candidate
+
+    _p_win = float(getattr(score_obj, "p_win", sm.get("p_win", 0.0)) or 0.0)
+    _mult = float(ml_position_sizer.size_from_pwin(_p_win))
+
+    sm["ml_position_size_mult"] = float(_mult)
+    sm["ml_position_size_mode"] = str(getattr(ml_position_sizer, "mode", ""))
+    sm["ml_position_size_scale"] = float(getattr(ml_position_sizer, "scale", 0.0))
+    sm["ml_position_size_base"] = float(getattr(ml_position_sizer, "base_size", 0.0))
+    sm["ml_position_size_pwin_threshold"] = float(getattr(ml_position_sizer, "pwin_threshold", 0.0))
+    candidate.signal_meta = sm
+    return candidate
+
+
+def _enrich_candidate_for_selection_runtime(
+    *,
+    candidate,
+    score_obj,
+    decision,
+    args,
+    pwin_math_v2,
+    pwin_math_v3,
+    portfolio_context,
+    score_projector,
+):
+    return _apply_runtime_prod_score_semantics(
+        candidate=candidate,
+        score_obj=score_obj,
+        decision=decision,
+        args=args,
+        pwin_math_v2=pwin_math_v2,
+        pwin_math_v3=pwin_math_v3,
+        portfolio_context=portfolio_context,
+        score_projector=score_projector,
+    )
+
+
+def _candidate_observability_key(candidate) -> str:
+    sm = dict(getattr(candidate, "signal_meta", {}) or {})
+    ts = int(getattr(candidate, "ts", sm.get("ts", 0)) or 0)
+    symbol = str(getattr(candidate, "symbol", sm.get("symbol", "")) or "")
+    strategy_id = str(getattr(candidate, "strategy_id", sm.get("strategy_id", "")) or "")
+    side = str(getattr(candidate, "side", sm.get("side", "")) or "")
+    return f"{ts}|{symbol}|{strategy_id}|{side}"
 
 
 def _build_runtime_candidate_row(
@@ -391,13 +468,24 @@ def _build_runtime_candidate_row(
     decision,
     portfolio_context,
     ts,
+    selected_after_pipeline=False,
+    selected_after_prod_selection=False,
+    selected_final=False,
 ):
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
     mm_meta = dict(getattr(score_obj, "model_meta", {}) or {})
     pm_meta = dict(getattr(decision, "policy_meta", {}) or {})
     _feature_map = dict(getattr(feature_row, "values", {}) or {})
 
+    candidate_key = _candidate_observability_key(candidate)
+    trace_candidate_id = str(sm.get("trace_candidate_id", candidate_key) or candidate_key)
+    selection_passed_stages = sm.get("selection_passed_stages", [])
+    if not isinstance(selection_passed_stages, list):
+        selection_passed_stages = []
+
     return {
+        "candidate_key": candidate_key,
+        "trace_candidate_id": trace_candidate_id,
         "portfolio_regime": portfolio_context.get("portfolio_regime"),
         "portfolio_breadth": portfolio_context.get("portfolio_breadth"),
         "portfolio_avg_pwin": portfolio_context.get("portfolio_avg_pwin"),
@@ -418,12 +506,30 @@ def _build_runtime_candidate_row(
         "p_win_mode": str(sm.get("p_win_mode", "")),
         "expected_return": float(sm.get("expected_return", getattr(score_obj, "expected_return", 0.0)) or 0.0),
         "score": float(sm.get("score", getattr(score_obj, "score", 0.0)) or 0.0),
+        "competitive_score": float(sm.get("competitive_score", 0.0) or 0.0),
+        "post_ml_score": float(sm.get("post_ml_score", 0.0) or 0.0),
+        "post_ml_competitive_score": float(sm.get("post_ml_competitive_score", 0.0) or 0.0),
+        "meta_competitive_score": float(sm.get("meta_competitive_score", 0.0) or 0.0),
+        "meta_post_ml_score": float(sm.get("meta_post_ml_score", 0.0) or 0.0),
+        "meta_post_ml_competitive_score": float(sm.get("meta_post_ml_competitive_score", 0.0) or 0.0),
         "accept": getattr(decision, "accept", False),
         "size_mult": getattr(decision, "size_mult", 0.0),
         "band": getattr(decision, "band", ""),
         "reason": getattr(decision, "reason", ""),
         "policy_score": getattr(decision, "policy_score", 0.0),
+        "policy_size_mult": float(sm.get("policy_size_mult", getattr(decision, "size_mult", 0.0)) or 0.0),
+        "policy_reason": str(sm.get("policy_reason", getattr(decision, "reason", "")) or ""),
         "policy_profile": pm_meta.get("policy_profile", ""),
+        "prod_selection_threshold": float(sm.get("prod_selection_threshold", float("nan"))),
+        "prod_selection_p_win": float(sm.get("prod_selection_p_win", float("nan"))),
+        "prod_selection_filtered_by_threshold": bool(sm.get("prod_selection_filtered_by_threshold", False)),
+        "prod_selection_filtered_by_mode": bool(sm.get("prod_selection_filtered_by_mode", False)),
+        "selection_row_idx": int(sm.get("selection_row_idx", -1) or -1),
+        "selection_passed_stages": "|".join(selection_passed_stages),
+        "selection_passed_stage_count": len(selection_passed_stages),
+        "selected_after_pipeline": bool(selected_after_pipeline),
+        "selected_after_prod_selection": bool(selected_after_prod_selection),
+        "selected_final": bool(selected_final),
         "adx": sm.get("adx", mm_meta.get("adx", 0.0)),
         "atrp": sm.get("atrp", mm_meta.get("atrp", 0.0)),
         "rsi": sm.get("rsi", mm_meta.get("rsi", 0.0)),
@@ -453,6 +559,35 @@ def _build_runtime_candidate_row(
     }
 
 
+
+def _build_symbol_cluster_metadata(strategy_registry_rows) -> tuple[dict[str, str], dict[str, float]]:
+    symbol_cluster_map: dict[str, str] = {}
+    cluster_cap_map: dict[str, float] = {}
+
+    for row in list(strategy_registry_rows or []):
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol", "") or "")
+        if not sym:
+            continue
+
+        params = dict(row.get("params", {}) or {})
+        cluster_id = str(
+            row.get("cluster_id", params.get("cluster_id", params.get("symbol_cluster_id", ""))) or ""
+        ).strip()
+        if cluster_id:
+            symbol_cluster_map[sym] = cluster_id
+
+        cap_val = row.get("cluster_cap", params.get("cluster_cap", params.get("cluster_cap_abs", None)))
+        if cluster_id and cap_val is not None:
+            try:
+                cluster_cap_map[cluster_id] = float(cap_val)
+            except Exception:
+                pass
+
+    return symbol_cluster_map, cluster_cap_map
+
+
 def _build_runtime_allocator_inputs(
     *,
     allocation_bridge,
@@ -463,6 +598,28 @@ def _build_runtime_allocator_inputs(
         candidates=selected_candidates,
         decisions=selected_decisions,
     )
+
+
+def _seed_frozen_allocation_score(selected_candidates):
+    out = []
+    for c in list(selected_candidates or []):
+        sm = dict(getattr(c, "signal_meta", {}) or {})
+        allocation_score = float(
+            sm.get(
+                "post_ml_competitive_score",
+                sm.get(
+                    "post_ml_score",
+                    sm.get(
+                        "competitive_score",
+                        sm.get("policy_score", 0.0),
+                    ),
+                ),
+            ) or 0.0
+        )
+        sm["allocation_score"] = float(allocation_score)
+        c.signal_meta = sm
+        out.append(c)
+    return out
 
 
 def _apply_best_per_symbol_competition(
@@ -1095,6 +1252,121 @@ def _apply_runtime_exit_profiles_to_selected_candidates(selected_candidates):
     return projected_selected_candidates
 
 
+def _apply_runtime_cross_sectional_ranking(
+    *,
+    candidates,
+    decisions,
+    top_pct: float = 0.20,
+):
+    candidates = list(candidates or [])
+    decisions = list(decisions or [])
+    pairs = list(zip(candidates, decisions))
+
+    meta = {
+        "enabled": True,
+        "top_pct": float(top_pct),
+        "rows_in": int(len(pairs)),
+        "rows_ranked": 0,
+        "kept_count": 0,
+        "dropped_count": 0,
+        "kept": [],
+        "dropped": [],
+    }
+
+    if not pairs:
+        return candidates, decisions, meta
+
+    rows = []
+    for idx, (c, d) in enumerate(pairs):
+        sm = dict(getattr(c, "signal_meta", {}) or {})
+        rows.append(
+            {
+                "idx": int(idx),
+                "symbol": str(getattr(c, "symbol", "") or ""),
+                "strategy_id": str(getattr(c, "strategy_id", "") or ""),
+                "side": str(getattr(c, "side", "flat") or "flat"),
+                "strength": float(getattr(c, "signal_strength", 0.0) or 0.0),
+                "p_win": float(sm.get("p_win", 0.0) or 0.0),
+                "base_weight": float(getattr(c, "base_weight", sm.get("base_weight", 0.0)) or 0.0),
+                "competitive_score": float(sm.get("competitive_score", sm.get("meta_competitive_score", 0.0)) or 0.0),
+                "post_ml_score": float(sm.get("post_ml_score", sm.get("meta_post_ml_score", 0.0)) or 0.0),
+                "accept_policy": bool(getattr(d, "accept", False)),
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    policy_df = df[df["accept_policy"]].copy()
+
+    if policy_df.empty:
+        meta["rows_ranked"] = 0
+        return candidates, decisions, meta
+
+    ranked = compute_enhanced_score(policy_df)
+    ranked = apply_cross_sectional_ranking(ranked, top_pct=float(top_pct))
+
+    keep_idx = set(int(v) for v in ranked.loc[ranked["accept_ranked"].fillna(False), "idx"].tolist())
+    meta["rows_ranked"] = int(len(ranked))
+
+    kept_candidates = []
+    kept_decisions = []
+
+    for idx, (c, d) in enumerate(pairs):
+        sm = dict(getattr(c, "signal_meta", {}) or {})
+        if bool(getattr(d, "accept", False)):
+            ranked_row = ranked[ranked["idx"] == int(idx)]
+            if not ranked_row.empty:
+                rr = ranked_row.iloc[0]
+                sm["cross_sectional_enhanced_score"] = float(rr.get("enhanced_score", 0.0) or 0.0)
+                sm["cross_sectional_side_rank_desc"] = int(rr.get("side_rank_desc", 0) or 0)
+                sm["cross_sectional_side_rank_pct"] = float(rr.get("side_rank_pct", 0.0) or 0.0)
+                sm["cross_sectional_accept_ranked"] = bool(rr.get("accept_ranked", False))
+            else:
+                sm["cross_sectional_enhanced_score"] = 0.0
+                sm["cross_sectional_side_rank_desc"] = 0
+                sm["cross_sectional_side_rank_pct"] = 0.0
+                sm["cross_sectional_accept_ranked"] = False
+        else:
+            sm["cross_sectional_enhanced_score"] = 0.0
+            sm["cross_sectional_side_rank_desc"] = 0
+            sm["cross_sectional_side_rank_pct"] = 0.0
+            sm["cross_sectional_accept_ranked"] = False
+
+        c.signal_meta = sm
+
+        if not bool(getattr(d, "accept", False)):
+            kept_candidates.append(c)
+            kept_decisions.append(d)
+            continue
+
+        item = {
+            "symbol": str(getattr(c, "symbol", "") or ""),
+            "strategy_id": str(getattr(c, "strategy_id", "") or ""),
+            "side": str(getattr(c, "side", "") or ""),
+            "enhanced_score": float(sm.get("cross_sectional_enhanced_score", 0.0) or 0.0),
+            "side_rank_desc": int(sm.get("cross_sectional_side_rank_desc", 0) or 0),
+            "side_rank_pct": float(sm.get("cross_sectional_side_rank_pct", 0.0) or 0.0),
+        }
+
+        if idx in keep_idx:
+            kept_candidates.append(c)
+            kept_decisions.append(d)
+            meta["kept"].append(item)
+        else:
+            sm["accept"] = False
+            sm["policy_reason"] = str(sm.get("policy_reason", "") or "")
+            sm["cross_sectional_filtered"] = True
+            c.signal_meta = sm
+            try:
+                d.accept = False
+            except Exception:
+                pass
+            meta["dropped"].append(item)
+
+    meta["kept_count"] = int(len(meta["kept"]))
+    meta["dropped_count"] = int(len(meta["dropped"]))
+    return kept_candidates, kept_decisions, meta
+
+
 def _build_lifecycle_metrics(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
     equity = pd.to_numeric(equity_df.get("equity", pd.Series(dtype=float)), errors="coerce").dropna()
 
@@ -1173,7 +1445,7 @@ def main() -> None:
     ap.add_argument("--symbol-cap", type=float, default=0.50)
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
-    ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "legacy_multi_strategy"])
+    ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "production_like_snapshot", "legacy_multi_strategy"])
     ap.add_argument("--legacy-competition-mode", default="off", choices=["off", "best_per_symbol", "top1_global", "top2_global", "top3_global"])
     ap.add_argument("--legacy-score-power", type=float, default=1.0)
     ap.add_argument("--legacy-min-score", type=float, default=1e-12)
@@ -1198,6 +1470,37 @@ def main() -> None:
     ap.add_argument("--selection-policy-config", default="artifacts/selection_policy_config.json")
     ap.add_argument("--pwin-mode", choices=["math_v1", "math_v2"], default="math_v2")
     ap.add_argument("--selection-policy-profile", default="research")
+    ap.add_argument("--enable-cross-sectional-ranking", action="store_true")
+    ap.add_argument("--cross-sectional-top-pct", type=float, default=0.20)
+    ap.add_argument("--enable-strategy-side-pwin", action="store_true")
+    ap.add_argument("--strategy-side-pwin-scale", type=float, default=1.0)
+    ap.add_argument("--pwin-calibration-artifact", default="")
+    ap.add_argument("--pwin-calibration-key-mode", default="strategy_side", choices=["strategy_side", "symbol_side"])
+    ap.add_argument("--selection-semantics-mode", default="research", choices=["research", "prod"])
+    ap.add_argument("--prod-selection-mode", default="best_per_symbol", choices=["all", "best_per_symbol", "competitive", "top1_global", "top2_global", "top3_global"])
+    ap.add_argument("--prod-ml-threshold", type=float, default=0.0)
+    ap.add_argument("--prod-ml-thresholds-json", default="")
+    ap.add_argument("--prod-preserve-upstream-post-ml-scores", action="store_true")
+    ap.add_argument("--allocation-score-mode", default="legacy", choices=["legacy", "frozen"])
+    ap.add_argument("--prodlike-allocator-smoothing-alpha", type=float, default=0.0)
+    ap.add_argument("--prodlike-allocator-smoothing-snap-eps", type=float, default=0.0)
+    ap.add_argument("--prodlike-allocator-max-step-per-bar", type=float, default=1.0)
+    ap.add_argument("--prodlike-allocator-apply-signal-gating", action="store_true")
+    ap.add_argument("--prodlike-allocator-apply-ml-sizing", action="store_true")
+    ap.add_argument("--prodlike-allocator-top-n-symbols", type=int, default=0)
+    ap.add_argument("--prodlike-allocator-apply-cluster-caps", action="store_true")
+    ap.add_argument("--pwin-calibration-mode", default="off", choices=["off", "sigmoid", "power"])
+    ap.add_argument("--pwin-calibration-a", type=float, default=8.0)
+    ap.add_argument("--pwin-calibration-b", type=float, default=0.5)
+    ap.add_argument("--pwin-calibration-gamma", type=float, default=1.0)
+    ap.add_argument("--runtime-prod-ml-position-sizing", action="store_true")
+    ap.add_argument("--runtime-ml-size-mode", default="calibrated", choices=["linear_edge", "calibrated", "artifact_map"])
+    ap.add_argument("--runtime-ml-size-scale", type=float, default=4.0)
+    ap.add_argument("--runtime-ml-size-min", type=float, default=0.50)
+    ap.add_argument("--runtime-ml-size-max", type=float, default=1.50)
+    ap.add_argument("--runtime-ml-size-base", type=float, default=0.50)
+    ap.add_argument("--runtime-ml-size-pwin-threshold", type=float, default=0.50)
+    ap.add_argument("--runtime-ml-size-artifact-path", default="artifacts/ml_position_size_map_v1.json")
     args = ap.parse_args()
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
@@ -1212,6 +1515,7 @@ def main() -> None:
 
     registry_rows = load_registry(args.strategy_registry)
     symbols = extract_symbols(registry_rows)
+    symbol_cluster_map, cluster_cap_map = _build_symbol_cluster_metadata(registry_rows)
 
     data_by_symbol = {sym: load_symbol_df(sym, args.start, args.end, args.exchange, args.cache_dir) for sym in symbols}
     feature_series_by_symbol = {sym: build_feature_map(df, sym) for sym, df in data_by_symbol.items()}
@@ -1238,7 +1542,14 @@ def main() -> None:
 
     book = RegistryOpportunityBook(registry_path=args.strategy_registry)
     fb = FeatureBuilder()
-    mm = MetaModel()
+    mm = MetaModel(
+        enable_strategy_side_pwin=bool(getattr(args, "enable_strategy_side_pwin", False)),
+        strategy_side_pwin_scale=float(getattr(args, "strategy_side_pwin_scale", 1.0)),
+    )
+    pwin_calibrator = PWinCalibrationTable(
+        artifact_path=str(getattr(args, "pwin_calibration_artifact", "") or ""),
+        key_mode=str(getattr(args, "pwin_calibration_key_mode", "strategy_side") or "strategy_side"),
+    )
     pwin_math_v2 = MathPWinV2()
     pwin_math_v3 = MathPWinV3()
 
@@ -1269,13 +1580,43 @@ def main() -> None:
         use_policy_scaled_base_weight=False,
         inject_post_ml_competitive_score=True,
     )
+    runtime_ml_position_sizer = MlPositionSizingEngine(
+        scale=float(getattr(args, "runtime_ml_size_scale", 4.0)),
+        min_mult=float(getattr(args, "runtime_ml_size_min", 0.50)),
+        max_mult=float(getattr(args, "runtime_ml_size_max", 1.50)),
+        mode=str(getattr(args, "runtime_ml_size_mode", "calibrated") or "calibrated"),
+        base_size=float(getattr(args, "runtime_ml_size_base", 0.50)),
+        pwin_threshold=float(getattr(args, "runtime_ml_size_pwin_threshold", 0.50)),
+        artifact_path=str(getattr(args, "runtime_ml_size_artifact_path", "artifacts/ml_position_size_map_v1.json") or "artifacts/ml_position_size_map_v1.json"),
+    ) if bool(getattr(args, "runtime_prod_ml_position_sizing", False)) else None
     allocation_config = build_allocation_config_from_args(args)
     allocation_engine = build_allocation_engine(
         config=allocation_config,
     )
+    production_like_ml_sizer = ProductionLikeAllocationMlSizer(
+        enabled=bool(getattr(args, "prodlike_allocator_apply_ml_sizing", False)),
+    )
+
+    production_like_cluster_controls = ProductionLikeAllocationClusterControls(
+        top_n_symbols=int(getattr(args, "prodlike_allocator_top_n_symbols", 0) or 0),
+        apply_cluster_caps=bool(getattr(args, "prodlike_allocator_apply_cluster_caps", False)),
+        symbol_cluster_map=dict(symbol_cluster_map or {}),
+        cluster_cap_map=dict(cluster_cap_map or {}),
+    )
+
+    production_like_postprocessor = ProductionLikeAllocationPostProcessor(
+        smoothing_alpha=float(getattr(args, "prodlike_allocator_smoothing_alpha", 0.0) or 0.0),
+        smoothing_snap_eps=float(getattr(args, "prodlike_allocator_smoothing_snap_eps", 0.0) or 0.0),
+        max_step_per_bar=float(getattr(args, "prodlike_allocator_max_step_per_bar", 1.0) or 1.0),
+        apply_signal_gating=bool(getattr(args, "prodlike_allocator_apply_signal_gating", False)),
+        ml_sizer=production_like_ml_sizer,
+        cluster_controls=production_like_cluster_controls,
+    )
+
     allocation_router = ResearchAllocationRouter(
         snapshot_allocator=allocator,
         legacy_allocation_engine=allocation_engine,
+        production_like_postprocessor=production_like_postprocessor,
     )
     context_enricher = AssetContextEnricher()
 
@@ -1340,6 +1681,26 @@ def main() -> None:
 
         scores = mm.predict_many(feature_rows)
 
+        if getattr(pwin_calibrator, "enabled", False):
+            for c, s in zip(enriched_candidates or [], scores or []):
+                _strategy_id = str(getattr(c, "strategy_id", "") or "")
+                _side = str(getattr(c, "side", "flat") or "flat")
+                _symbol = str(getattr(c, "symbol", "") or "")
+                _raw_p = float(getattr(s, "p_win", 0.5) or 0.5)
+                _cal_p, _cal_meta = pwin_calibrator.calibrate(
+                    p_win=_raw_p,
+                    strategy_id=_strategy_id,
+                    side=_side,
+                    symbol=_symbol,
+                )
+                try:
+                    s.p_win = float(_cal_p)
+                except Exception:
+                    pass
+                _mm_meta = dict(getattr(s, "model_meta", {}) or {})
+                _mm_meta.update(dict(_cal_meta or {}))
+                s.model_meta = _mm_meta
+
         enriched_candidates, scores = _apply_runtime_score_overrides(
             enriched_candidates=enriched_candidates,
             scores=scores,
@@ -1357,6 +1718,11 @@ def main() -> None:
 
         enriched_candidates_scored = []
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
+            c = _apply_runtime_ml_position_sizing_semantics(
+                candidate=c,
+                score_obj=s,
+                ml_position_sizer=runtime_ml_position_sizer,
+            )
             c = _enrich_candidate_for_selection_runtime(
                 candidate=c,
                 score_obj=s,
@@ -1371,9 +1737,30 @@ def main() -> None:
 
         enriched_candidates = enriched_candidates_scored
 
+        cross_sectional_meta = {
+            "enabled": False,
+            "top_pct": float(args.cross_sectional_top_pct),
+            "rows_in": int(len(enriched_candidates)),
+            "rows_ranked": 0,
+            "kept_count": 0,
+            "dropped_count": 0,
+            "kept": [],
+            "dropped": [],
+        }
+
+        candidates_for_pipeline = enriched_candidates
+        decisions_for_pipeline = decisions
+
+        if bool(args.enable_cross_sectional_ranking):
+            candidates_for_pipeline, decisions_for_pipeline, cross_sectional_meta = _apply_runtime_cross_sectional_ranking(
+                candidates=enriched_candidates,
+                decisions=decisions,
+                top_pct=float(args.cross_sectional_top_pct),
+            )
+
         selected_candidates, selected_decisions, selection_meta = selection_pipeline.run(
-            candidates=enriched_candidates,
-            decisions=decisions,
+            candidates=candidates_for_pipeline,
+            decisions=decisions_for_pipeline,
         )
 
         global_competition_meta = {
@@ -1390,11 +1777,49 @@ def main() -> None:
         selected_candidates = _apply_runtime_exit_profiles_to_selected_candidates(
             selected_candidates
         )
+
+        if str(getattr(args, "selection_semantics_mode", "research")) == "prod":
+            _prod_thresholds = {}
+            _prod_thresholds_path = str(getattr(args, "prod_ml_thresholds_json", "") or "").strip()
+            if _prod_thresholds_path:
+                try:
+                    _prod_thresholds = json.loads(Path(_prod_thresholds_path).read_text(encoding="utf-8"))
+                except Exception:
+                    _prod_thresholds = {}
+
+            _prod_sel = apply_prod_selection_semantics(
+                candidates=selected_candidates,
+                decisions=selected_decisions,
+                selection_mode=str(getattr(args, "prod_selection_mode", "best_per_symbol") or "best_per_symbol"),
+                ml_threshold=float(getattr(args, "prod_ml_threshold", 0.0) or 0.0),
+                ml_thresholds=dict(_prod_thresholds or {}),
+                preserve_upstream_post_ml_scores=bool(getattr(args, "prod_preserve_upstream_post_ml_scores", False)),
+            )
+            selected_candidates = list(_prod_sel.selected_candidates or [])
+            selected_decisions = list(_prod_sel.selected_decisions or [])
+            selection_meta["prod_selection_adapter"] = dict(_prod_sel.meta or {})
+        else:
+            selection_meta["prod_selection_adapter"] = {
+                "enabled": False,
+                "selection_mode": "research",
+            }
+
+        selected_after_pipeline_keys = {
+            _candidate_observability_key(c)
+            for c in list(candidates_for_pipeline or [])
+        }
+        selected_after_prod_selection_keys = {
+            _candidate_observability_key(c)
+            for c in list(selected_candidates or [])
+        }
+
         allocation_portfolio_context = build_portfolio_context(selected_candidates, score_mode="allocation")
         selection_meta["disabled_strategy_side_filtered"] = int(len(disabled_candidates))
         selection_meta["global_competition"] = dict(global_competition_meta or {})
+        selection_meta["cross_sectional_ranking"] = dict(cross_sectional_meta or {})
 
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
+            _obs_key = _candidate_observability_key(c)
             candidate_rows.append(
                 _build_runtime_candidate_row(
                     candidate=c,
@@ -1403,8 +1828,15 @@ def main() -> None:
                     decision=d,
                     portfolio_context=portfolio_context,
                     ts=ts,
+                    selected_after_pipeline=(_obs_key in selected_after_pipeline_keys),
+                    selected_after_prod_selection=(_obs_key in selected_after_prod_selection_keys),
+                    selected_final=(_obs_key in selected_after_prod_selection_keys),
                 )
             )
+
+        if str(getattr(args, "allocation_score_mode", "legacy") or "legacy") == "frozen":
+            selected_candidates = _seed_frozen_allocation_score(selected_candidates)
+            bridge.score_projection = "frozen_allocation_score"
 
         alloc_inputs = _build_runtime_allocator_inputs(
             allocation_bridge=bridge,
@@ -1693,7 +2125,12 @@ def main() -> None:
             if lifecycle_equity_prev != 0.0 else 0.0
         )
 
-        rows.append({
+        _raw_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("raw_allocator_weights", {}) or {}).items()}
+        _ml_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_ml_position_sizing_weights", {}) or {}).items()}
+        _smooth_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_smoothing_weights", {}) or {}).items()}
+        _gate_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_signal_gating_weights", {}) or {}).items()}
+
+        _row = {
             "ts": ts,
             "n_opps": len(opps),
             "n_features": len(feature_rows),
@@ -1705,7 +2142,17 @@ def main() -> None:
             "equity_simple": equity,
             "port_ret": lifecycle_port_ret,
             "equity": lifecycle_equity_now,
-        })
+            "pipeline_weight_order": str(_alloc_meta.get("pipeline_weight_order", "") or ""),
+        }
+
+        for sym in symbols:
+            _sym_key = str(sym).replace("/", "_").replace(":", "_").lower()
+            _row[f"{_sym_key}_w_raw_allocator"] = float(_raw_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
+            _row[f"{_sym_key}_w_after_ml_position_sizing"] = float(_ml_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
+            _row[f"{_sym_key}_w_after_smoothing"] = float(_smooth_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
+            _row[f"{_sym_key}_w_after_signal_gating"] = float(_gate_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
+
+        rows.append(_row)
 
     t_run = time.perf_counter()
 
@@ -1745,6 +2192,19 @@ def main() -> None:
         "entry_adx": t.entry_adx,
         "entry_atrp": t.entry_atrp,
         "entry_atr": t.entry_atr,
+        "trace_candidate_id": str(dict((t.meta or {}).get("signal_meta", {}) or {}).get("trace_candidate_id", "")),
+        "entry_reason": str(dict(t.meta or {}).get("signal_meta", {}).get("policy_reason", "")),
+        "entry_strength": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("signal_strength", 0.0) or 0.0),
+        "entry_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("score", 0.0) or 0.0),
+        "entry_p_win": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("p_win", 0.0) or 0.0),
+        "entry_policy_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("policy_score", 0.0) or 0.0),
+        "entry_policy_size_mult": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("policy_size_mult", 0.0) or 0.0),
+        "entry_competitive_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("competitive_score", 0.0) or 0.0),
+        "entry_post_ml_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("post_ml_score", 0.0) or 0.0),
+        "entry_post_ml_competitive_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("post_ml_competitive_score", 0.0) or 0.0),
+        "entry_target_weight": float(dict(t.meta or {}).get("trace_target_weight", 0.0) or 0.0),
+        "entry_notional_frac": float(dict(t.meta or {}).get("entry_notional_frac", 0.0) or 0.0),
+        "entry_portfolio_regime": str(dict((t.meta or {}).get("signal_meta", {}) or {}).get("portfolio_regime", "")),
     } for t in lifecycle_engine.trade_log])
     lifecycle_equity_df = pd.DataFrame(lifecycle_equity_rows)
     lifecycle_open_df = pd.DataFrame(lifecycle_open_rows)

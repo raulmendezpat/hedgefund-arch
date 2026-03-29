@@ -49,13 +49,18 @@ class MathPWinV2:
     def predict_from_meta(self, meta: dict) -> float:
         m = dict(meta or {})
 
-        p0 = _f(m.get("p_win_math_v1", m.get("p_win", 0.5)), 0.5)
+        # Base segura:
+        # - preferir p_win_math_v1 si existe
+        # - NO reutilizar p_win porque ya puede venir sobrescrito / colapsado
+        p0 = _f(m.get("p_win_math_v1", 0.5), 0.5)
 
         strategy_id = str(m.get("strategy_id", "") or "").lower()
         side = str(m.get("side", "flat") or "flat").lower()
 
         adx = _f(m.get("adx", 0.0), 0.0)
         atrp = _f(m.get("atrp", 0.0), 0.0)
+        rsi = _f(m.get("rsi", 50.0), 50.0)
+        signal_strength = _f(m.get("signal_strength", 0.0), 0.0)
         policy_score = _f(m.get("policy_score", 0.0), 0.0)
         expected_return = _f(m.get("expected_return", 0.0), 0.0)
         conviction = _f(m.get("portfolio_conviction", 0.0), 0.0)
@@ -124,5 +129,55 @@ class MathPWinV2:
                 p += 0.006
             elif adx >= 27.0:
                 p -= 0.010
+
+        # 8) reglas útiles para longs SOL
+        if strategy_id == "sol_bbrsi" and side == "long":
+            if rsi <= 32.0:
+                p += 0.035
+            elif rsi <= 38.0:
+                p += 0.022
+            elif rsi >= 55.0:
+                p -= 0.012
+
+            if 16.0 <= adx <= 28.0:
+                p += 0.010
+            elif adx >= 38.0:
+                p -= 0.010
+
+            if 0.007 <= atrp <= 0.0135:
+                p += 0.010
+
+            if signal_strength >= 1.0:
+                p += 0.012
+            elif signal_strength >= 0.7:
+                p += 0.006
+
+        if strategy_id == "sol_trend_pullback" and side == "long":
+            if 45.0 <= rsi <= 52.0:
+                p += 0.028
+            elif 42.0 <= rsi < 45.0:
+                p += 0.014
+            elif rsi >= 58.0:
+                p -= 0.010
+
+            if 18.0 <= adx <= 27.0:
+                p += 0.012
+            elif adx >= 34.0:
+                p -= 0.010
+
+            if 0.009 <= atrp <= 0.0135:
+                p += 0.010
+            elif atrp >= 0.016:
+                p -= 0.012
+
+            if signal_strength >= 1.4:
+                p += 0.016
+            elif signal_strength >= 1.0:
+                p += 0.010
+            elif signal_strength >= 0.75:
+                p += 0.004
+
+            if conviction >= 0.62:
+                p += 0.008
 
         return _clip(p, self.cfg.p_floor, self.cfg.p_cap)
