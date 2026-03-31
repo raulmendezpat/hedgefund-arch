@@ -1805,6 +1805,12 @@ def main() -> None:
             selected_candidates
         )
 
+        selected_after_pipeline_candidates = list(selected_candidates or [])
+        selected_after_pipeline_keys = {
+            _candidate_observability_key(c)
+            for c in selected_after_pipeline_candidates
+        }
+
         if str(getattr(args, "selection_semantics_mode", "research")) == "prod":
             _prod_thresholds = {}
             _prod_thresholds_path = str(getattr(args, "prod_ml_thresholds_json", "") or "").strip()
@@ -1831,10 +1837,6 @@ def main() -> None:
                 "selection_mode": "research",
             }
 
-        selected_after_pipeline_keys = {
-            _candidate_observability_key(c)
-            for c in list(candidates_for_pipeline or [])
-        }
         selected_after_prod_selection_keys = {
             _candidate_observability_key(c)
             for c in list(selected_candidates or [])

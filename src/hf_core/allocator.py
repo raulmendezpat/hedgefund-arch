@@ -24,7 +24,7 @@ class Allocator:
         self.profile = str(profile)
         self.projection_profile = str(projection_profile)
 
-        score_mode = "policy_first" if self.profile in {"symbol_net", "policy_first", "snapshot_v2"} else "pwin_expected_return"
+        score_mode = "policy_first" if self.profile in {"symbol_net", "policy_first", "snapshot_v2", "blended"} else "pwin_expected_return"
 
         self.prev_allocation = None
 
