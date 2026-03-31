@@ -3,13 +3,13 @@
   "profiles": {
     "research": {
       "asset_gate": {
-        "min_pwin_strong": 0.59,
-        "min_pwin_contextual": 0.57,
-        "min_policy_score": 1e-06,
-        "min_pwin_rank": 0.7,
-        "min_postml_rank": 0.6,
-        "min_competitive_rank": 0.55,
-        "mode": "observe_only"
+        "mode": "off",
+        "min_pwin_strong": 0.0,
+        "min_pwin_contextual": 0.0,
+        "min_policy_score": 0.0,
+        "min_pwin_rank": 0.0,
+        "min_postml_rank": 0.0,
+        "min_competitive_rank": 0.0
       },
       "asset_rank": {
         "top_k_per_symbol": 1
