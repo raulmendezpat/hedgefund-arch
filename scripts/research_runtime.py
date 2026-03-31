@@ -25,6 +25,7 @@ from hf_core.pwin_math_v3 import MathPWinV3
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
 from hf_core.trade_lifecycle import TradeLifecycleEngine
+from hf_core.target_position_lifecycle import TargetPositionLifecycleEngine
 from hf_core.pwin_calibration import PWinCalibrationTable
 from hf_core.prod_selection_adapter import apply_prod_selection_semantics
 
@@ -468,7 +469,8 @@ def _build_runtime_candidate_row(
     decision,
     portfolio_context,
     ts,
-    selected_after_pipeline=False,
+    entered_selection_pipeline=False,
+    survived_selection_pipeline=False,
     selected_after_prod_selection=False,
     selected_final=False,
 ):
@@ -482,6 +484,9 @@ def _build_runtime_candidate_row(
     selection_passed_stages = sm.get("selection_passed_stages", [])
     if not isinstance(selection_passed_stages, list):
         selection_passed_stages = []
+
+    selection_meta = dict(sm.get("selection_meta", {}) or {})
+    best_per_symbol_meta = dict(selection_meta.get("best_per_symbol", {}) or {})
 
     return {
         "candidate_key": candidate_key,
@@ -527,7 +532,23 @@ def _build_runtime_candidate_row(
         "selection_row_idx": int(sm.get("selection_row_idx", -1) or -1),
         "selection_passed_stages": "|".join(selection_passed_stages),
         "selection_passed_stage_count": len(selection_passed_stages),
-        "selected_after_pipeline": bool(selected_after_pipeline),
+        "entered_selection_pipeline": bool(entered_selection_pipeline),
+        "survived_selection_pipeline": bool(survived_selection_pipeline),
+        "best_per_symbol_winner": bool(best_per_symbol_meta.get("winner", False)),
+        "best_per_symbol_kept": bool(best_per_symbol_meta.get("kept", False)),
+        "best_per_symbol_rank": int(best_per_symbol_meta.get("rank", -1) or -1),
+        "best_per_symbol_competitor_count": int(best_per_symbol_meta.get("competitor_count", 0) or 0),
+        "best_per_symbol_score_field": str(best_per_symbol_meta.get("score_field", "") or ""),
+        "best_per_symbol_score_value": float(best_per_symbol_meta.get("score_value", 0.0) or 0.0),
+        "best_per_symbol_winner_idx": int(best_per_symbol_meta.get("winner_idx", -1) or -1),
+        "best_per_symbol_winner_side": str(best_per_symbol_meta.get("winner_side", "") or ""),
+        "best_per_symbol_winner_strategy_id": str(best_per_symbol_meta.get("winner_strategy_id", "") or ""),
+        "best_per_symbol_winner_score": float(best_per_symbol_meta.get("winner_score", 0.0) or 0.0),
+        "best_per_symbol_runner_up_idx": int(best_per_symbol_meta.get("runner_up_idx", -1) or -1),
+        "best_per_symbol_runner_up_score": float(best_per_symbol_meta.get("runner_up_score", 0.0) or 0.0),
+        "best_per_symbol_win_margin": float(best_per_symbol_meta.get("win_margin", 0.0) or 0.0),
+        "best_per_symbol_reason": str(best_per_symbol_meta.get("reason", "") or ""),
+        "selected_after_pipeline": bool(survived_selection_pipeline),
         "selected_after_prod_selection": bool(selected_after_prod_selection),
         "selected_final": bool(selected_final),
         "adx": sm.get("adx", mm_meta.get("adx", 0.0)),
@@ -1501,6 +1522,11 @@ def main() -> None:
     ap.add_argument("--runtime-ml-size-base", type=float, default=0.50)
     ap.add_argument("--runtime-ml-size-pwin-threshold", type=float, default=0.50)
     ap.add_argument("--runtime-ml-size-artifact-path", default="artifacts/ml_position_size_map_v1.json")
+    ap.add_argument(
+        "--enable-target-position-lifecycle",
+        action="store_true",
+        help="Enable target-position lifecycle semantics in shadow trading runtime.",
+    )
     args = ap.parse_args()
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
@@ -1630,6 +1656,7 @@ def main() -> None:
         taker_fee=0.0006,
         cooldown_after_close_bars=2,
     )
+    target_lifecycle_engine = TargetPositionLifecycleEngine()
     lifecycle_exit_cfg = load_exit_registry("artifacts/exit_policy_registry.json")
     lifecycle_balance = 1000.0
     lifecycle_equity_rows = []
@@ -1828,7 +1855,8 @@ def main() -> None:
                     decision=d,
                     portfolio_context=portfolio_context,
                     ts=ts,
-                    selected_after_pipeline=(_obs_key in selected_after_pipeline_keys),
+                    entered_selection_pipeline=True,
+                    survived_selection_pipeline=(_obs_key in selected_after_pipeline_keys),
                     selected_after_prod_selection=(_obs_key in selected_after_prod_selection_keys),
                     selected_final=(_obs_key in selected_after_prod_selection_keys),
                 )
@@ -1963,84 +1991,89 @@ def main() -> None:
                     }
                 )
 
-        # shadow entries second
-        opened_symbols = set()
-        for c in selected_candidates:
-            sym = str(getattr(c, "symbol", "") or "")
-            strategy_id = str(getattr(c, "strategy_id", "") or "")
-            if sym in opened_symbols:
-                continue
-            if not lifecycle_engine.can_open(sym):
-                continue
+        if not bool(getattr(args, "enable_target_position_lifecycle", False)):
+            # legacy shadow entries second
+            opened_symbols = set()
+            for c in selected_candidates:
+                sym = str(getattr(c, "symbol", "") or "")
+                strategy_id = str(getattr(c, "strategy_id", "") or "")
+                if sym in opened_symbols:
+                    continue
+                if not lifecycle_engine.can_open(sym):
+                    continue
 
-            target_weight = float(weights.get(sym, 0.0) or 0.0)
-            if abs(target_weight) <= 1e-12:
-                continue
+                target_weight = float(weights.get(sym, 0.0) or 0.0)
+                if abs(target_weight) <= 1e-12:
+                    continue
 
-            side = "long" if target_weight > 0 else "short"
-            df = data_by_symbol[sym]
-            i = df.index.get_loc(ts)
-            if i <= 0:
-                continue
+                side = "long" if target_weight > 0 else "short"
+                df = data_by_symbol[sym]
+                i = df.index.get_loc(ts)
+                if i <= 0:
+                    continue
 
-            prev_raw = df.iloc[i - 1]
-            entry_px = _f(prev_raw.get("close"), 0.0)
+                prev_raw = df.iloc[i - 1]
+                entry_px = _f(prev_raw.get("close"), 0.0)
 
-            prev_feats = {}
-            for feat_name, feat_series in feature_series_by_symbol[sym].items():
-                if (i - 1) >= 0:
-                    try:
-                        prev_feats[feat_name] = float(feat_series.iloc[i - 1])
-                    except Exception:
-                        pass
+                prev_feats = {}
+                for feat_name, feat_series in feature_series_by_symbol[sym].items():
+                    if (i - 1) >= 0:
+                        try:
+                            prev_feats[feat_name] = float(feat_series.iloc[i - 1])
+                        except Exception:
+                            pass
 
-            atr = _f(prev_feats.get("atr"), 0.0)
-            adx = _f(prev_feats.get("adx"), float("nan"))
-            atrp = _f(prev_feats.get("atrp"), float("nan"))
+                atr = _f(prev_feats.get("atr"), 0.0)
+                adx = _f(prev_feats.get("adx"), float("nan"))
+                atrp = _f(prev_feats.get("atrp"), float("nan"))
 
-            if entry_px <= 0.0 or atr <= 0.0:
-                continue
+                if entry_px <= 0.0 or atr <= 0.0:
+                    continue
 
-            notional_frac = min(max(abs(target_weight), 0.01), 0.30)
-            notional = lifecycle_balance * notional_frac
-            qty = notional / entry_px
-            fee = notional * lifecycle_engine.maker_fee
-            lifecycle_balance -= fee
+                notional_frac = min(max(abs(target_weight), 0.01), 0.30)
+                notional = lifecycle_balance * notional_frac
+                qty = notional / entry_px
+                fee = notional * lifecycle_engine.maker_fee
+                lifecycle_balance -= fee
 
-            lifecycle_engine.open_position(
-                symbol=sym,
-                strategy_id=strategy_id,
-                side=side,
-                entry_ts=int(pd.to_numeric(df.iloc[i]["timestamp"], errors="coerce")),
-                entry_px=float(entry_px),
-                qty=float(qty),
-                entry_atr=float(atr),
-                entry_adx=float(adx),
-                entry_atrp=float(atrp),
-                entry_strength=_f(getattr(c, "signal_strength", 0.0), 0.0),
-                entry_reason="shadow_allocator_target_weight",
-                entry_meta={
-                    "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
-                    "cooldown_after_close_bars": 2,
-                    "trace_target_weight": float(target_weight),
-                    "entry_notional_frac": float(notional_frac),
-                },
-            )
+                lifecycle_engine.open_position(
+                    symbol=sym,
+                    strategy_id=strategy_id,
+                    side=side,
+                    entry_ts=int(pd.to_numeric(df.iloc[i]["timestamp"], errors="coerce")),
+                    entry_px=float(entry_px),
+                    qty=float(qty),
+                    entry_atr=float(atr),
+                    entry_adx=float(adx),
+                    entry_atrp=float(atrp),
+                    entry_strength=_f(getattr(c, "signal_strength", 0.0), 0.0),
+                    entry_reason="shadow_allocator_target_weight",
+                    entry_meta={
+                        "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
+                        "cooldown_after_close_bars": 2,
+                        "trace_target_weight": float(target_weight),
+                        "entry_notional_frac": float(notional_frac),
+                    },
+                )
 
-            opened_symbols.add(sym)
-            lifecycle_event_rows.append(
-                {
-                    "ts": str(ts),
-                    "symbol": sym,
-                    "strategy_id": strategy_id,
-                    "event": "entry",
-                    "side": side,
-                    "entry_px": float(entry_px),
-                    "qty": float(qty),
-                    "target_weight": float(target_weight),
-                    "notional_frac": float(notional_frac),
-                }
-            )
+                opened_symbols.add(sym)
+                lifecycle_event_rows.append(
+                    {
+                        "ts": str(ts),
+                        "symbol": sym,
+                        "strategy_id": strategy_id,
+                        "event": "entry",
+                        "side": side,
+                        "entry_px": float(entry_px),
+                        "qty": float(qty),
+                        "target_weight": float(target_weight),
+                        "notional_frac": float(notional_frac),
+                    }
+                )
+        else:
+            # shadow target-aware actions second
+            # temporarily disabled; legacy branch remains the source of truth
+            pass
 
         lifecycle_mtm = 0.0
         for sym, pos in list(lifecycle_engine.open_positions.items()):

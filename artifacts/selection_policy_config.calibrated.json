@@ -25,7 +25,7 @@
         "enabled": true
       },
       "alpha_selection_min_policy_score": 5e-06,
-      "alpha_selection_min_p_win": 0.505,
+      "alpha_selection_min_p_win": 0.0,
       "alpha_selection_min_expected_return": 0.0,
       "alpha_selection_min_size_mult": 0.1,
       "alpha_selection_require_accept": true,
@@ -55,7 +55,7 @@
         ]
       },
       "contextual_eligibility": {
-        "mode": "strict",
+        "mode": "observe_only",
         "require_accept": true,
         "allowed_sides": [
           "long",
@@ -81,7 +81,7 @@
           "sides": {
             "short": {
               "contextual_eligibility": {
-                "mode": "strict",
+                "mode": "observe_only",
                 "min_adx": 18.0,
                 "min_ema_gap": 0.002,
                 "ema_gap_field": "ema_gap_fast_slow"
@@ -99,7 +99,7 @@
           }
         }
       },
-      "alpha_selection_min_alpha_score": 0.18
+      "alpha_selection_min_alpha_score": 0.02
     }
   },
   "asset_overrides": {
@@ -315,7 +315,7 @@
         "rsi_short_min": 45.0,
         "rsi_short_max": 60.0
       },
-      "alpha_selection_min_alpha_score": 0.12
+      "alpha_selection_min_alpha_score": 0.02
     },
     "SOL/USDT:USDT::short::sol_trend_pullback": {
       "market_guard": {
@@ -380,7 +380,7 @@
         "rsi_long_max": 36.0,
         "rsi_short_min": 64.0
       },
-      "alpha_selection_min_alpha_score": 0.1
+      "alpha_selection_min_alpha_score": 0.02
     },
     "SOL/USDT:USDT::short::sol_bbrsi": {
       "market_guard": {
