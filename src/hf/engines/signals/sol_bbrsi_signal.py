@@ -46,17 +46,6 @@ class SolBbrsiSignalEngine(SignalEngine):
 
     only_if_symbol_contains: str = "SOL"
 
-    # research: regime/context as metadata, not hard rejection
-    strength_penalty_adx: float = 0.70
-    strength_penalty_atrp: float = 0.70
-    strength_penalty_rsi: float = 0.85
-    strength_penalty_bb_width: float = 0.85
-    strength_penalty_range_expansion: float = 0.85
-    strength_penalty_directional_close: float = 0.90
-    strength_penalty_extension: float = 0.85
-    strength_penalty_trend_alignment: float = 0.85
-    strength_penalty_donchian: float = 0.85
-
     def _flat(self, sym: str, reason: str, **meta) -> Signal:
         return Signal(
             symbol=sym,
@@ -72,12 +61,7 @@ class SolBbrsiSignalEngine(SignalEngine):
 
         for sym, c in candles.items():
             if self.only_if_symbol_contains and self.only_if_symbol_contains not in sym:
-                out[sym] = Signal(
-                    symbol=sym,
-                    side="flat",
-                    strength=0.0,
-                    meta={"engine": "sol_bbrsi", "skip": "not_sol"},
-                )
+                out[sym] = self._flat(sym, "symbol_filtered")
                 continue
 
             adx = _feat(c, self.adx_key)
@@ -87,6 +71,7 @@ class SolBbrsiSignalEngine(SignalEngine):
             bb_up = _feat(c, self.bb_up_key)
             bb_mid = _feat(c, self.bb_mid_key)
             bb_width = _feat(c, self.bb_width_key)
+            close_v = float(getattr(c, "close", 0.0) or 0.0)
 
             if None in (adx, atrp, rsi, bb_low, bb_up, bb_mid, bb_width):
                 reason = "missing_features"
@@ -95,49 +80,84 @@ class SolBbrsiSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            atrp_out_of_range = (atrp < float(self.atrp_min)) or (atrp > float(self.atrp_max))
-            bb_width_out_of_range = (bb_width < float(self.bb_width_min)) or (bb_width > float(self.bb_width_max))
-            adx_trend_regime = adx >= float(self.adx_hard)
+            atrp_out_of_range = (float(atrp) < float(self.atrp_min)) or (float(atrp) > float(self.atrp_max))
+            bb_width_out_of_range = (float(bb_width) < float(self.bb_width_min)) or (float(bb_width) > float(self.bb_width_max))
+            adx_trend_regime = float(adx) >= float(self.adx_hard)
 
-            close_v = float(getattr(c, "close", 0.0))
-
-            if close_v <= bb_low and rsi <= float(self.rsi_long_max):
+            if close_v <= float(bb_low) and float(rsi) <= float(self.rsi_long_max):
                 side = "long"
                 reason = "long_setup"
-            elif close_v >= bb_up and rsi >= float(self.rsi_short_min):
+            elif close_v >= float(bb_up) and float(rsi) >= float(self.rsi_short_min):
                 side = "short"
                 reason = "short_setup"
             else:
                 side = "flat"
                 reason = "no_setup"
 
-            side_counts[side] = int(side_counts.get(side, 0)) + 1
-            strength = 1.0 if side != "flat" else 0.0
+            if side != "flat":
+                if atrp_out_of_range:
+                    side = "flat"
+                    reason = "atrp_out_of_range"
+                elif bb_width_out_of_range:
+                    side = "flat"
+                    reason = "bb_width_out_of_range"
+                elif adx_trend_regime:
+                    side = "flat"
+                    reason = "adx_trend_regime"
 
-            if side != "flat" and bool(locals().get("atrp_out_of_range", False)):
-                strength *= float(self.strength_penalty_atrp)
-            if side != "flat" and bool(locals().get("bb_width_out_of_range", False)):
-                strength *= float(self.strength_penalty_bb_width)
-            if side != "flat" and bool(locals().get("adx_trend_regime", False)):
-                strength *= float(self.strength_penalty_adx)
+            side_counts[side] = int(side_counts.get(side, 0)) + 1
+            if side == "flat":
+                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
+                out[sym] = self._flat(
+                    sym,
+                    reason,
+                    adx=float(adx),
+                    atrp=float(atrp),
+                    rsi=float(rsi),
+                    bb_low=float(bb_low),
+                    bb_up=float(bb_up),
+                    bb_mid=float(bb_mid),
+                    bb_width=float(bb_width),
+                    close=float(close_v),
+                    atrp_out_of_range=bool(atrp_out_of_range),
+                    bb_width_out_of_range=bool(bb_width_out_of_range),
+                    adx_trend_regime=bool(adx_trend_regime),
+                    rsi_long_max=float(self.rsi_long_max),
+                    rsi_short_min=float(self.rsi_short_min),
+                    atrp_min=float(self.atrp_min),
+                    atrp_max=float(self.atrp_max),
+                    bb_width_min=float(self.bb_width_min),
+                    bb_width_max=float(self.bb_width_max),
+                    adx_hard=float(self.adx_hard),
+                )
+                continue
+
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
-                strength=strength,
+                strength=1.0,
                 meta={
                     "engine": "sol_bbrsi",
                     "reason": reason,
-                    "adx": adx,
-                    "atrp": atrp,
-                    "rsi": rsi,
-                    "bb_low": bb_low,
+                    "adx": float(adx),
+                    "atrp": float(atrp),
+                    "rsi": float(rsi),
+                    "bb_low": float(bb_low),
+                    "bb_up": float(bb_up),
+                    "bb_mid": float(bb_mid),
+                    "bb_width": float(bb_width),
+                    "close": float(close_v),
+                    "atrp_out_of_range": bool(atrp_out_of_range),
+                    "bb_width_out_of_range": bool(bb_width_out_of_range),
+                    "adx_trend_regime": bool(adx_trend_regime),
+                    "rsi_long_max": float(self.rsi_long_max),
+                    "rsi_short_min": float(self.rsi_short_min),
+                    "atrp_min": float(self.atrp_min),
+                    "atrp_max": float(self.atrp_max),
+                    "bb_width_min": float(self.bb_width_min),
+                    "bb_width_max": float(self.bb_width_max),
+                    "adx_hard": float(self.adx_hard),
                     "regime_as_metadata": True,
-                    "atrp_out_of_range": bool(locals().get("atrp_out_of_range", False)),
-                    "bb_width_out_of_range": bool(locals().get("bb_width_out_of_range", False)),
-                    "adx_trend_regime": bool(locals().get("adx_trend_regime", False)),
-                    "bb_up": bb_up,
-                    "bb_mid": bb_mid,
-                    "bb_width": bb_width,
                 },
             )
 

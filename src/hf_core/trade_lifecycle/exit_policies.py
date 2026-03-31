@@ -235,6 +235,172 @@ class TrendAtrDynamicExitPolicy:
 
 
 @dataclass
+
+@dataclass
+class TrendAtrDynamicSignalDecayExitPolicy:
+    family: str = "trend_atr_dynamic_signal_decay"
+    stop_atr_mult: float = 1.5
+    tp_atr_mult: float = 2.6
+    breakeven_activate_atr: float = 0.9
+    breakeven_offset_atr: float = 0.1
+    trail_activate_atr: float = 1.0
+    trail_stop_atr_mult: float = 1.2
+    max_hold_bars: int = 0
+    invalidate_on_trend_break: bool = False
+
+    # target-aware exits aligned with production target_position_lifecycle
+    exit_on_regime_off: bool = False
+    exit_on_target_flatten: bool = False
+    exit_on_reverse_signal: bool = False
+
+    # softer decay exits, only when already in profit
+    min_open_profit_atr: float = 0.60
+    max_target_weight_frac_of_entry: float = 0.35
+    exit_on_regime_off_in_profit: bool = True
+    exit_on_target_decay_in_profit: bool = True
+    exit_on_signal_flip_in_profit: bool = True
+
+    def evaluate(
+        self,
+        *,
+        position: PositionState,
+        prev_bar: dict[str, Any],
+        current_bar: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> ExitDecision:
+        base = TrendAtrDynamicExitPolicy(
+            stop_atr_mult=self.stop_atr_mult,
+            tp_atr_mult=self.tp_atr_mult,
+            breakeven_activate_atr=self.breakeven_activate_atr,
+            breakeven_offset_atr=self.breakeven_offset_atr,
+            trail_activate_atr=self.trail_activate_atr,
+            trail_stop_atr_mult=self.trail_stop_atr_mult,
+            max_hold_bars=self.max_hold_bars,
+            invalidate_on_trend_break=self.invalidate_on_trend_break,
+        ).evaluate(
+            position=position,
+            prev_bar=prev_bar,
+            current_bar=current_bar,
+            context=context,
+        )
+
+        if str(base.action).lower() == "close":
+            return base
+
+        context = dict(context or {})
+        close_now = _f(prev_bar.get("close"), position.entry_px)
+        atr_now = _f(prev_bar.get("atr"), position.entry_atr)
+        move_atr = float(position.move_atr(close_now, atr_now))
+
+        target_weight = _f(context.get("target_weight"), 0.0)
+        signal_side = _s(context.get("signal_side"), "").lower()
+        regime_on = bool(context.get("regime_on", True))
+        entry_target_weight = _f((position.entry_meta or {}).get("trace_target_weight"), 0.0)
+
+        entry_abs = abs(float(entry_target_weight))
+        curr_abs = abs(float(target_weight))
+        weight_frac = 1.0 if entry_abs <= 1e-12 else float(curr_abs / max(entry_abs, 1e-12))
+        side = _s(position.side).lower()
+
+        # ------------------------------------------------------------------
+        # hard target-aware exits aligned with production target lifecycle
+        # ------------------------------------------------------------------
+        if bool(self.exit_on_regime_off) and not regime_on:
+            return ExitDecision(
+                action="close",
+                exit_reason="regime_off",
+                exit_price=float(close_now),
+                tp_price=base.tp_price,
+                sl_price=base.sl_price,
+                trail_stop=base.trail_stop,
+                breakeven_armed=base.breakeven_armed,
+            )
+
+        if bool(self.exit_on_target_flatten) and _side_from_weight(target_weight) == "flat":
+            return ExitDecision(
+                action="close",
+                exit_reason="target_flatten",
+                exit_price=float(close_now),
+                tp_price=base.tp_price,
+                sl_price=base.sl_price,
+                trail_stop=base.trail_stop,
+                breakeven_armed=base.breakeven_armed,
+            )
+
+        if bool(self.exit_on_reverse_signal) and signal_side in {"long", "short"} and signal_side != side:
+            return ExitDecision(
+                action="close",
+                exit_reason="reverse_signal",
+                exit_price=float(close_now),
+                tp_price=base.tp_price,
+                sl_price=base.sl_price,
+                trail_stop=base.trail_stop,
+                breakeven_armed=base.breakeven_armed,
+            )
+
+        # ------------------------------------------------------------------
+        # softer decay exits only when already in profit
+        # ------------------------------------------------------------------
+        if move_atr < float(self.min_open_profit_atr):
+            return base
+
+        if bool(self.exit_on_regime_off_in_profit) and not regime_on:
+            return ExitDecision(
+                action="close",
+                exit_reason="signal_decay_regime_off",
+                exit_price=float(close_now),
+                tp_price=base.tp_price,
+                sl_price=base.sl_price,
+                trail_stop=base.trail_stop,
+                breakeven_armed=base.breakeven_armed,
+            )
+
+        if bool(self.exit_on_target_decay_in_profit) and weight_frac < float(self.max_target_weight_frac_of_entry):
+            return ExitDecision(
+                action="close",
+                exit_reason="signal_decay_target",
+                exit_price=float(close_now),
+                tp_price=base.tp_price,
+                sl_price=base.sl_price,
+                trail_stop=base.trail_stop,
+                breakeven_armed=base.breakeven_armed,
+            )
+
+        if bool(self.exit_on_signal_flip_in_profit):
+            if signal_side == "flat":
+                return ExitDecision(
+                    action="close",
+                    exit_reason="signal_decay_flat",
+                    exit_price=float(close_now),
+                    tp_price=base.tp_price,
+                    sl_price=base.sl_price,
+                    trail_stop=base.trail_stop,
+                    breakeven_armed=base.breakeven_armed,
+                )
+            if side == "long" and signal_side == "short":
+                return ExitDecision(
+                    action="close",
+                    exit_reason="signal_decay_flip",
+                    exit_price=float(close_now),
+                    tp_price=base.tp_price,
+                    sl_price=base.sl_price,
+                    trail_stop=base.trail_stop,
+                    breakeven_armed=base.breakeven_armed,
+                )
+            if side == "short" and signal_side == "long":
+                return ExitDecision(
+                    action="close",
+                    exit_reason="signal_decay_flip",
+                    exit_price=float(close_now),
+                    tp_price=base.tp_price,
+                    sl_price=base.sl_price,
+                    trail_stop=base.trail_stop,
+                    breakeven_armed=base.breakeven_armed,
+                )
+
+        return base
+
+
 class MeanReversionBasisAtrExitPolicy:
     family: str = "mean_reversion_basis_atr"
     stop_atr_mult: float = 1.4
@@ -424,6 +590,26 @@ def build_exit_policy(cfg: dict[str, Any] | None) -> ExitPolicy:
             trail_stop_atr_mult=_f(params.get("trail_stop_atr_mult"), 1.2),
             max_hold_bars=int(_f(params.get("max_hold_bars"), 0)),
             invalidate_on_trend_break=bool(params.get("invalidate_on_trend_break", False)),
+        )
+
+    if family == "trend_atr_dynamic_signal_decay":
+        return TrendAtrDynamicSignalDecayExitPolicy(
+            stop_atr_mult=_f(params.get("stop_atr_mult"), 1.5),
+            tp_atr_mult=_f(params.get("tp_atr_mult"), 2.6),
+            breakeven_activate_atr=_f(params.get("breakeven_activate_atr"), 0.9),
+            breakeven_offset_atr=_f(params.get("breakeven_offset_atr"), 0.1),
+            trail_activate_atr=_f(params.get("trail_activate_atr"), 1.0),
+            trail_stop_atr_mult=_f(params.get("trail_stop_atr_mult"), 1.2),
+            max_hold_bars=int(_f(params.get("max_hold_bars"), 0)),
+            invalidate_on_trend_break=bool(params.get("invalidate_on_trend_break", False)),
+            exit_on_regime_off=bool(params.get("exit_on_regime_off", False)),
+            exit_on_target_flatten=bool(params.get("exit_on_target_flatten", False)),
+            exit_on_reverse_signal=bool(params.get("exit_on_reverse_signal", False)),
+            min_open_profit_atr=_f(params.get("min_open_profit_atr"), 0.60),
+            max_target_weight_frac_of_entry=_f(params.get("max_target_weight_frac_of_entry"), 0.35),
+            exit_on_regime_off_in_profit=bool(params.get("exit_on_regime_off_in_profit", True)),
+            exit_on_target_decay_in_profit=bool(params.get("exit_on_target_decay_in_profit", True)),
+            exit_on_signal_flip_in_profit=bool(params.get("exit_on_signal_flip_in_profit", True)),
         )
 
     if family == "mean_reversion_basis_atr":

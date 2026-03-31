@@ -91,6 +91,14 @@ class SelectionPipeline:
                         if isinstance(v, dict) and bool(v.get("kept", v.get("pass", False)))
                     ]
                 )
+                merged_signal_meta["selection_row_idx"] = int(i)
+                merged_signal_meta["trace_candidate_id"] = (
+                    f"{int(getattr(c, 'ts', 0) or 0)}|"
+                    f"{str(getattr(c, 'symbol', '') or '')}|"
+                    f"{str(getattr(c, 'strategy_id', '') or '')}|"
+                    f"{str(getattr(c, 'side', '') or '')}|"
+                    f"{int(i)}"
+                )
                 c.signal_meta = merged_signal_meta
             out_candidates.append(c)
         return out_candidates, dict(ctx.meta or {})
@@ -162,29 +170,45 @@ class SelectionPipeline:
 
         keep = set(ctx.selected_idx)
         row_map = {int(r.idx): r for r in ctx.rows}
+
+        # Propagar observabilidad de selección a TODOS los candidatos originales,
+        # incluyendo losers, para que candidate_rows/CSV puedan auditar rank,
+        # winner, competitor_count y win_margin sin alterar la semántica de keep/drop.
+        for i, c in enumerate(candidates or []):
+            row = row_map.get(int(i))
+            if row is None:
+                continue
+
+            signal_meta = dict(getattr(c, "signal_meta", {}) or {})
+            row_meta = dict(getattr(row, "meta", {}) or {})
+
+            merged_signal_meta = {}
+            merged_signal_meta.update(row_meta)
+            merged_signal_meta.update(signal_meta)
+
+            merged_signal_meta["selection_meta"] = dict(getattr(row, "selection_meta", {}) or {})
+            merged_signal_meta["selection_passed_stages"] = sorted(
+                [
+                    k
+                    for k, v in dict(getattr(row, "selection_meta", {}) or {}).items()
+                    if isinstance(v, dict) and bool(v.get("kept", v.get("pass", False)))
+                ]
+            )
+            merged_signal_meta["selection_row_idx"] = int(i)
+            merged_signal_meta["trace_candidate_id"] = (
+                f"{int(getattr(c, 'ts', 0) or 0)}|"
+                f"{str(getattr(c, 'symbol', '') or '')}|"
+                f"{str(getattr(c, 'strategy_id', '') or '')}|"
+                f"{str(getattr(c, 'side', '') or '')}|"
+                f"{int(i)}"
+            )
+            c.signal_meta = merged_signal_meta
+
         out_candidates = []
         out_decisions = []
         for i, (c, d) in enumerate(zip(candidates or [], decisions or [])):
             if i not in keep:
                 continue
-            row = row_map.get(int(i))
-            if row is not None:
-                signal_meta = dict(getattr(c, "signal_meta", {}) or {})
-                row_meta = dict(getattr(row, "meta", {}) or {})
-
-                merged_signal_meta = {}
-                merged_signal_meta.update(row_meta)
-                merged_signal_meta.update(signal_meta)
-
-                merged_signal_meta["selection_meta"] = dict(getattr(row, "selection_meta", {}) or {})
-                merged_signal_meta["selection_passed_stages"] = sorted(
-                    [
-                        k
-                        for k, v in dict(getattr(row, "selection_meta", {}) or {}).items()
-                        if isinstance(v, dict) and bool(v.get("kept", v.get("pass", False)))
-                    ]
-                )
-                c.signal_meta = merged_signal_meta
             out_candidates.append(c)
             out_decisions.append(d)
 

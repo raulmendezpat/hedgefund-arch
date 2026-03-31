@@ -208,12 +208,26 @@ class MultiStrategyAllocator:
         symbol_budget = self._symbol_budget(symbol_scores)
 
         if not symbol_budget:
+            if prev_allocation is not None:
+                return Allocation(
+                    weights=dict(prev_allocation.weights),
+                    meta={
+                        "case": "multi_strategy_empty_sticky",
+                        "empty_allocator_forced_flat": False,
+                        "empty_allocator_prev_allocation_ignored": False,
+                        "symbol_scores": {},
+                        "symbol_budget": {},
+                        "strategy_weights": {},
+                        "allocator_hysteresis": hysteresis_meta,
+                    },
+                )
+
             return Allocation(
                 weights=weights_by_symbol,
                 meta={
                     "case": "multi_strategy_empty",
                     "empty_allocator_forced_flat": True,
-                    "empty_allocator_prev_allocation_ignored": bool(prev_allocation is not None),
+                    "empty_allocator_prev_allocation_ignored": False,
                     "symbol_scores": {},
                     "symbol_budget": {},
                     "strategy_weights": {},

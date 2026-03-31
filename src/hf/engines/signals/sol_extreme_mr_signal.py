@@ -51,17 +51,6 @@ class SolExtremeMrSignalEngine(SignalEngine):
 
     only_if_symbol_contains: str = "SOL"
 
-    # research: regime/context as metadata, not hard rejection
-    strength_penalty_adx: float = 0.70
-    strength_penalty_atrp: float = 0.70
-    strength_penalty_rsi: float = 0.85
-    strength_penalty_bb_width: float = 0.85
-    strength_penalty_range_expansion: float = 0.85
-    strength_penalty_directional_close: float = 0.90
-    strength_penalty_extension: float = 0.85
-    strength_penalty_trend_alignment: float = 0.85
-    strength_penalty_donchian: float = 0.85
-
     def _flat(self, sym: str, reason: str, **meta) -> Signal:
         return Signal(
             symbol=sym,
@@ -77,12 +66,7 @@ class SolExtremeMrSignalEngine(SignalEngine):
 
         for sym, c in candles.items():
             if self.only_if_symbol_contains and self.only_if_symbol_contains not in sym:
-                out[sym] = Signal(
-                    symbol=sym,
-                    side="flat",
-                    strength=0.0,
-                    meta={"engine": "sol_extreme_mr", "skip": "not_sol"},
-                )
+                out[sym] = self._flat(sym, "symbol_filtered")
                 continue
 
             rsi = _feat(c, self.rsi_key)
@@ -92,7 +76,7 @@ class SolExtremeMrSignalEngine(SignalEngine):
             bb_up = _feat(c, self.bb_up_key)
             bb_width = _feat(c, self.bb_width_key)
             range_expansion = _feat(c, self.range_expansion_key)
-            close_v = float(getattr(c, "close", 0.0))
+            close_v = float(getattr(c, "close", 0.0) or 0.0)
 
             if None in (rsi, atrp, adx, bb_low, bb_up, bb_width, range_expansion):
                 reason = "missing_features"
@@ -101,12 +85,10 @@ class SolExtremeMrSignalEngine(SignalEngine):
                 out[sym] = self._flat(sym, reason)
                 continue
 
-            atrp_out_of_range = (atrp < float(self.atrp_min)) or (atrp > float(self.atrp_max))
-            adx_too_high = adx > float(self.adx_max)
-            bb_width_below_min = bb_width < float(self.bb_width_min)
-            range_expansion_below_min = range_expansion < float(self.range_expansion_min)
-
-
+            atrp_out_of_range = (float(atrp) < float(self.atrp_min)) or (float(atrp) > float(self.atrp_max))
+            adx_too_high = float(adx) > float(self.adx_max)
+            bb_width_below_min = float(bb_width) < float(self.bb_width_min)
+            range_expansion_below_min = float(range_expansion) < float(self.range_expansion_min)
 
             if close_v <= float(bb_low) * float(self.bb_long_mult) and float(rsi) <= float(self.rsi_long_max):
                 side = "long"
@@ -118,38 +100,70 @@ class SolExtremeMrSignalEngine(SignalEngine):
                 side = "flat"
                 reason = "no_setup"
 
-            side_counts[side] = int(side_counts.get(side, 0)) + 1
-            strength = 1.0 if side != "flat" else 0.0
+            if side != "flat":
+                if atrp_out_of_range:
+                    side = "flat"
+                    reason = "atrp_out_of_range"
+                elif adx_too_high:
+                    side = "flat"
+                    reason = "adx_too_high"
+                elif bb_width_below_min:
+                    side = "flat"
+                    reason = "bb_width_below_min"
+                elif range_expansion_below_min:
+                    side = "flat"
+                    reason = "range_expansion_below_min"
 
-            if side != "flat" and bool(locals().get("atrp_out_of_range", False)):
-                strength *= float(self.strength_penalty_atrp)
-            if side != "flat" and bool(locals().get("adx_too_high", False)):
-                strength *= float(self.strength_penalty_adx)
-            if side != "flat" and bool(locals().get("bb_width_below_min", False)):
-                strength *= float(self.strength_penalty_bb_width)
-            if side != "flat" and bool(locals().get("range_expansion_below_min", False)):
-                strength *= float(self.strength_penalty_range_expansion)
+            side_counts[side] = int(side_counts.get(side, 0)) + 1
+
+            if side == "flat":
+                reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
+                out[sym] = self._flat(
+                    sym,
+                    reason,
+                    rsi=float(rsi),
+                    atrp=float(atrp),
+                    adx=float(adx),
+                    bb_low=float(bb_low),
+                    bb_up=float(bb_up),
+                    bb_width=float(bb_width),
+                    range_expansion=float(range_expansion),
+                    close=float(close_v),
+                    atrp_out_of_range=bool(atrp_out_of_range),
+                    adx_too_high=bool(adx_too_high),
+                    bb_width_below_min=bool(bb_width_below_min),
+                    range_expansion_below_min=bool(range_expansion_below_min),
+                    rsi_long_max=float(self.rsi_long_max),
+                    rsi_short_min=float(self.rsi_short_min),
+                    atrp_min=float(self.atrp_min),
+                    atrp_max=float(self.atrp_max),
+                    adx_max=float(self.adx_max),
+                    bb_long_mult=float(self.bb_long_mult),
+                    bb_short_mult=float(self.bb_short_mult),
+                    bb_width_min=float(self.bb_width_min),
+                    range_expansion_min=float(self.range_expansion_min),
+                )
+                continue
 
             out[sym] = Signal(
                 symbol=sym,
                 side=side,
-                strength=strength,
+                strength=1.0,
                 meta={
                     "engine": "sol_extreme_mr",
                     "reason": reason,
-                    "rsi": rsi,
-                    "atrp": atrp,
-                    "adx": adx,
-                    "bb_low": bb_low,
-                    "regime_as_metadata": True,
-                    "atrp_out_of_range": bool(locals().get("atrp_out_of_range", False)),
-                    "adx_too_high": bool(locals().get("adx_too_high", False)),
-                    "bb_width_below_min": bool(locals().get("bb_width_below_min", False)),
-                    "range_expansion_below_min": bool(locals().get("range_expansion_below_min", False)),
-                    "bb_up": bb_up,
-                    "bb_width": bb_width,
-                    "range_expansion": range_expansion,
-                    "close": close_v,
+                    "rsi": float(rsi),
+                    "atrp": float(atrp),
+                    "adx": float(adx),
+                    "bb_low": float(bb_low),
+                    "bb_up": float(bb_up),
+                    "bb_width": float(bb_width),
+                    "range_expansion": float(range_expansion),
+                    "close": float(close_v),
+                    "atrp_out_of_range": bool(atrp_out_of_range),
+                    "adx_too_high": bool(adx_too_high),
+                    "bb_width_below_min": bool(bb_width_below_min),
+                    "range_expansion_below_min": bool(range_expansion_below_min),
                     "rsi_long_max": float(self.rsi_long_max),
                     "rsi_short_min": float(self.rsi_short_min),
                     "atrp_min": float(self.atrp_min),
@@ -159,6 +173,7 @@ class SolExtremeMrSignalEngine(SignalEngine):
                     "bb_short_mult": float(self.bb_short_mult),
                     "bb_width_min": float(self.bb_width_min),
                     "range_expansion_min": float(self.range_expansion_min),
+                    "regime_as_metadata": True,
                 },
             )
 
