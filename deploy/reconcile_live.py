@@ -14,7 +14,7 @@ from hf.execution.protective_orders import (
     should_keep_partial_tps,
 )
 
-APP = Path("/home/ubuntu/hedgefund-arch")
+APP = Path(__file__).resolve().parents[1]
 SECRET = json.loads((APP / "secret.json").read_text())["envelope"]
 
 LIVE_TRADING = os.getenv("LIVE_TRADING", "0") == "1"
@@ -37,21 +37,33 @@ def symbol_to_prefix(symbol: str) -> str:
 
 def build_runtime_symbols(df: pd.DataFrame) -> dict:
     out = {}
-    weight_cols = [c for c in df.columns if c.startswith("w_")]
-    for col in weight_cols:
-        sym = col[2:].replace("_usdt_usdt", "").upper() + "/USDT:USDT"
+
+    symbol_cols = sorted({
+        c.replace("_execution_target_weight", "")
+        for c in df.columns if c.endswith("_execution_target_weight")
+    } | {
+        c.replace("_cluster_target_weight", "")
+        for c in df.columns if c.endswith("_cluster_target_weight")
+    } | {
+        c.replace("_w_after_signal_gating", "")
+        for c in df.columns if c.endswith("_w_after_signal_gating")
+    } | {
+        c.replace("_w_after_smoothing", "")
+        for c in df.columns if c.endswith("_w_after_smoothing")
+    } | {
+        c.replace("_w_after_ml_position_sizing", "")
+        for c in df.columns if c.endswith("_w_after_ml_position_sizing")
+    } | {
+        c.replace("_w_raw_allocator", "")
+        for c in df.columns if c.endswith("_w_raw_allocator")
+    } | {
+        c[2:]
+        for c in df.columns if c.startswith("w_")
+    })
+
+    for base in symbol_cols:
+        sym = base.replace("_usdt_usdt", "").upper() + "/USDT:USDT"
         prefix = symbol_to_prefix(sym)
-
-        side_col = f"{prefix}_side"
-        cluster_side_col = f"{prefix}_cluster_side"
-
-        latest_w = float(df[col].fillna(0.0).iloc[-1]) if col in df.columns else 0.0
-        latest_side = "flat"
-        if cluster_side_col in df.columns:
-            latest_side = str(df[cluster_side_col].fillna("flat").iloc[-1]).lower()
-        elif side_col in df.columns:
-            latest_side = str(df[side_col].fillna("flat").iloc[-1]).lower()
-
 
         cfg = dict(DEFAULT_SYMBOL_CONFIG)
         cfg.update(SYMBOL_OVERRIDES.get(sym, {}))
@@ -594,7 +606,8 @@ def ensure_leverage(bitget, symbol: str, leverage: int = 2):
     except Exception as e:
         print(f"LEVERAGE_ERROR -> symbol={symbol} margin_mode=isolated leverage={leverage} error={e!r}")
 
-df = pd.read_csv(APP / "results/pipeline_allocations_prod_candidate_live.csv", low_memory=False)
+df = pd.read_csv(APP / "results/research_runtime_prod_v2_live_candidate.csv", low_memory=False)
+
 SYMBOLS = build_runtime_symbols(df)
 print("runtime_symbols:", list(SYMBOLS.keys()))
 row = df.iloc[-1]
@@ -619,11 +632,23 @@ for prefix, cfg in SYMBOLS.items():
     side = str(row.get(f"{csv_prefix}_side", "flat"))
     exec_weight = float(row.get(f"{csv_prefix}_execution_target_weight", 0.0) or 0.0)
     cluster_weight = float(row.get(f"{csv_prefix}_cluster_target_weight", 0.0) or 0.0)
+    signal_gating_weight = float(row.get(f"{csv_prefix}_w_after_signal_gating", 0.0) or 0.0)
+    smoothing_weight = float(row.get(f"{csv_prefix}_w_after_smoothing", 0.0) or 0.0)
+    ml_sizing_weight = float(row.get(f"{csv_prefix}_w_after_ml_position_sizing", 0.0) or 0.0)
+    raw_allocator_weight = float(row.get(f"{csv_prefix}_w_raw_allocator", 0.0) or 0.0)
     raw_weight = float(row.get(f"w_{csv_prefix}", 0.0) or 0.0)
 
     weight = exec_weight
     if abs(weight) <= 1e-12:
         weight = cluster_weight
+    if abs(weight) <= 1e-12:
+        weight = signal_gating_weight
+    if abs(weight) <= 1e-12:
+        weight = smoothing_weight
+    if abs(weight) <= 1e-12:
+        weight = ml_sizing_weight
+    if abs(weight) <= 1e-12:
+        weight = raw_allocator_weight
     if abs(weight) <= 1e-12:
         weight = raw_weight
 
