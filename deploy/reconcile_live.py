@@ -656,7 +656,14 @@ for prefix, cfg in SYMBOLS.items():
     cluster_side = str(row.get(f"{csv_prefix}_cluster_side", "") or "").lower()
     signal_side = str(row.get(f"{csv_prefix}_side", "") or "").lower()
 
-    if exec_side in {"long", "short"}:
+    if abs(weight) > 1e-12:
+        if weight > 0:
+            side = "long"
+        elif weight < 0:
+            side = "short"
+        else:
+            side = "flat"
+    elif exec_side in {"long", "short"}:
         side = exec_side
     elif cluster_side in {"long", "short"}:
         side = cluster_side
@@ -665,11 +672,7 @@ for prefix, cfg in SYMBOLS.items():
     else:
         side = "flat"
 
-    if abs(weight) > 1e-12 and side == "flat":
-        # fallback: if we have non-zero target weight but no valid side, infer long by sign convention
-        side = "long"
-
-    target_weight = signed_weight(side, weight)
+    target_weight = float(weight)
 
     max_target_weight = float(cfg.get("max_target_weight", 0.25) or 0.25)
     uncapped_target_weight = float(target_weight)
