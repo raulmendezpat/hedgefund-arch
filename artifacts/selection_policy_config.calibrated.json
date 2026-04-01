@@ -293,7 +293,63 @@
       }
     }
   },
-  "asset_side_overrides": {},
+  "asset_side_overrides": {
+    "BTC/USDT:USDT::short": {
+      "market_guard": {
+        "mode": "enforce",
+        "allowed_sides": [
+          "short"
+        ],
+        "min_adx": 18.0,
+        "min_ema_gap": 0.002,
+        "ema_gap_field": "ema_gap_fast_slow"
+      }
+    },
+    "LINK/USDT:USDT::short": {
+      "market_guard": {
+        "mode": "filter",
+        "allowed_sides": [
+          "short"
+        ],
+        "min_adx": 22.0,
+        "min_ema_gap": 0.003,
+        "ema_gap_field": "ema_gap_fast_slow"
+      }
+    },
+    "BNB/USDT:USDT::short": {
+      "market_guard": {
+        "mode": "enforce",
+        "allowed_sides": [
+          "short"
+        ],
+        "min_adx": 18.0,
+        "min_ema_gap": 0.0,
+        "ema_gap_field": "ema_gap_fast_slow"
+      }
+    },
+    "TRX/USDT:USDT::short": {
+      "market_guard": {
+        "mode": "enforce",
+        "allowed_sides": [
+          "short"
+        ],
+        "min_adx": 18.0,
+        "min_ema_gap": 0.0,
+        "ema_gap_field": "ema_gap_fast_slow"
+      }
+    },
+    "AVAX/USDT:USDT::short": {
+      "market_guard": {
+        "mode": "filter",
+        "allowed_sides": [
+          "short"
+        ],
+        "min_adx": 22.0,
+        "min_ema_gap": 0.003,
+        "ema_gap_field": "ema_gap_fast_slow"
+      }
+    }
+  },
   "asset_side_strategy_overrides": {
     "SOL/USDT:USDT::long::sol_trend_pullback": {
       "market_guard": {
@@ -340,24 +396,24 @@
     },
     "BTC/USDT:USDT::short::btc_trend": {
       "market_guard": {
-        "mode": "strict",
+        "mode": "filter",
         "allowed_sides": [
           "short"
         ],
-        "min_adx": 18.0,
-        "min_ema_gap": 0.0015,
-        "ema_gap_field": "ema_gap_pct"
+        "min_adx": 22.0,
+        "min_ema_gap": 0.003,
+        "ema_gap_field": "ema_gap_fast_slow"
       }
     },
     "BTC/USDT:USDT::short::btc_trend_loose": {
       "market_guard": {
-        "mode": "strict",
+        "mode": "filter",
         "allowed_sides": [
           "short"
         ],
-        "min_adx": 12.0,
-        "min_ema_gap": 0.0015,
-        "ema_gap_field": "ema_gap_pct"
+        "min_adx": 26.0,
+        "min_ema_gap": 0.004,
+        "ema_gap_field": "ema_gap_fast_slow"
       }
     },
     "SOL/USDT:USDT::long::sol_bbrsi": {
@@ -535,6 +591,18 @@
         "max_adx": 22.0,
         "min_bb_width": 0.035,
         "bb_width_field": "bb_width"
+      }
+    },
+    "LINK/USDT:USDT::short::link_trend": {
+      "market_guard": {
+        "mode": "filter",
+        "allowed_sides": [
+          "short"
+        ],
+        "min_adx": 24.0,
+        "min_ema_gap": 0.0025,
+        "ema_gap_field": "ema_gap_fast_slow",
+        "max_atrp": 0.02
       }
     }
   }
