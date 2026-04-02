@@ -599,7 +599,14 @@ def ensure_leverage(bitget, symbol: str, leverage: int = 2):
         bitget.set_margin_mode(symbol, "isolated")
         print(f"MARGIN_MODE_OK -> symbol={symbol} margin_mode=isolated")
     except Exception as e:
-        print(f"MARGIN_MODE_ERROR -> symbol={symbol} margin_mode=isolated error={e!r}")
+        _msg = str(e)
+        if "45117" in _msg or "margin mode cannot be adjusted" in _msg:
+            print(
+                f"MARGIN_MODE_OK_ALREADY_ACTIVE -> symbol={symbol} "
+                f"margin_mode=isolated reason=position_or_orders_active"
+            )
+        else:
+            print(f"MARGIN_MODE_ERROR -> symbol={symbol} margin_mode=isolated error={e!r}")
     try:
         bitget.set_leverage(symbol, "isolated", leverage)
         print(f"LEVERAGE_OK -> symbol={symbol} margin_mode=isolated leverage={leverage}")
