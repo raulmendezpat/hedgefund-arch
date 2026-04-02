@@ -774,7 +774,10 @@ for prefix, cfg in SYMBOLS.items():
                 _action = "open_long"
                 place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
         elif delta_qty < 0:
-            if current_qty > 0 and target_qty >= 0:
+            if current_qty == 0 and target_qty < 0:
+                _action = "open_short"
+                place_market(bitget, symbol, "sell", abs(target_qty), reduce=False)
+            elif current_qty > 0 and target_qty >= 0:
                 _action = "reduce_long"
                 if target_qty == 0:
                     active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
@@ -821,14 +824,27 @@ for prefix, cfg in SYMBOLS.items():
         effective_qty = current_qty if _effective_qty_override is not None else target_qty
         try:
             atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
+
+            refreshed_pos = bitget.fetch_open_positions(symbol)
+            refreshed_qty = current_signed_qty(refreshed_pos)
+
             if _blocked_reason == "active_profit_plans" and abs(current_qty) > 0:
                 print(
                     f"protective_action: preserve current protection due to active TP "
                     f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
                 )
                 ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
+            elif abs(refreshed_qty) > 0:
+                print(
+                    f"protective_action: confirmed position on exchange "
+                    f"(symbol={symbol}, refreshed_qty={refreshed_qty}, target_qty={target_qty})"
+                )
+                ensure_protective_orders(bitget, symbol, refreshed_qty, last, atr, cfg)
             else:
-                ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
+                print(
+                    f"protective_action: deferred until position is visible on exchange "
+                    f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
+                )
         except Exception as e:
             print(f"protective_action: skipped due to ATR/order error: {e}")
 
@@ -861,7 +877,19 @@ for prefix, cfg in SYMBOLS.items():
     effective_qty = target_qty
     try:
         atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
-        ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
+        refreshed_pos = bitget.fetch_open_positions(symbol)
+        refreshed_qty = current_signed_qty(refreshed_pos)
+        if abs(refreshed_qty) > 0:
+            print(
+                f"protective_action: confirmed flipped position on exchange "
+                f"(symbol={symbol}, refreshed_qty={refreshed_qty}, target_qty={target_qty})"
+            )
+            ensure_protective_orders(bitget, symbol, refreshed_qty, last, atr, cfg)
+        else:
+            print(
+                f"protective_action: deferred after flip until position is visible on exchange "
+                f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
+            )
     except Exception as e:
         print(f"protective_action: skipped due to ATR/order error: {e}")
 
