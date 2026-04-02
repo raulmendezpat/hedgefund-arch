@@ -109,6 +109,23 @@ def position_side_from_qty(qty: float) -> str:
     return "flat"
 
 
+def safe_amount_to_precision(bitget, symbol: str, amount: float) -> float:
+    amount = float(amount or 0.0)
+    if amount <= 0.0:
+        return 0.0
+    try:
+        return float(bitget.amount_to_precision(symbol, amount))
+    except Exception as e:
+        msg = str(e)
+        if "must be greater than minimum amount precision" in msg:
+            print(
+                f"AMOUNT_BELOW_MIN_PRECISION -> symbol={symbol} "
+                f"raw_amount={amount} action=coerce_to_zero"
+            )
+            return 0.0
+        raise
+
+
 def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False):
     qty = float(qty)
     if qty <= 0:
@@ -452,7 +469,7 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     tp1_price = float(bitget.price_to_precision(symbol, tp1_price))
 
     qty1 = 0.0
-    qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
+    qty2 = safe_amount_to_precision(bitget, symbol, qty) if qty > 0 else 0.0
 
     if partial_tp_enabled:
         raw_qty1 = max(0.0, float(qty) * partial_tp1_fraction)
@@ -686,7 +703,7 @@ for prefix, cfg in SYMBOLS.items():
         )
 
     target_qty = abs(usdt_total * target_weight) / last if last > 0 else 0.0
-    target_qty = float(bitget.amount_to_precision(symbol, target_qty)) if target_qty > 0 else 0.0
+    target_qty = safe_amount_to_precision(bitget, symbol, target_qty) if target_qty > 0 else 0.0
     if target_weight < 0:
         target_qty = -target_qty
 
@@ -794,24 +811,28 @@ for prefix, cfg in SYMBOLS.items():
                 else:
                     place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
             elif current_qty < 0 and target_qty <= 0:
-                _action = "reduce_short"
-                if target_qty == 0:
-                    active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
-                    if active_profit_plans:
-                        _action = "skip_due_to_active_tp"
-                        _blocked_reason = "active_profit_plans"
-                        _effective_qty_override = current_qty
-                        print(
-                            f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=short "
-                            f"reason=active_profit_plans count={len(active_profit_plans)} "
-                            f"current_qty={current_qty} target_qty={target_qty}"
-                        )
-                    else:
-                        print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
-                        if LIVE_TRADING:
-                            bitget.flash_close_position(symbol, side="short")
+                if abs(target_qty) > abs(current_qty):
+                    _action = "increase_short"
+                    place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
                 else:
-                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
+                    _action = "reduce_short"
+                    if target_qty == 0:
+                        active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
+                        if active_profit_plans:
+                            _action = "skip_due_to_active_tp"
+                            _blocked_reason = "active_profit_plans"
+                            _effective_qty_override = current_qty
+                            print(
+                                f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=short "
+                                f"reason=active_profit_plans count={len(active_profit_plans)} "
+                                f"current_qty={current_qty} target_qty={target_qty}"
+                            )
+                        else:
+                            print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
+                            if LIVE_TRADING:
+                                bitget.flash_close_position(symbol, side="short")
+                    else:
+                        place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             else:
                 _action = "none"
                 print("action: none")
