@@ -787,6 +787,28 @@ for prefix, cfg in SYMBOLS.items():
                 else:
                     _action = "open_long"
                     place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
+            elif current_qty < 0 and target_qty <= 0:
+                _action = "reduce_short"
+                if target_qty == 0:
+                    active_profit_plans = [
+                        o for o in fetch_open_profit_loss_orders(bitget, symbol)
+                        if get_plan_type(o) == "profit_plan"
+                    ]
+                    if active_profit_plans:
+                        _action = "skip_due_to_active_tp"
+                        _blocked_reason = "active_profit_plans"
+                        _effective_qty_override = current_qty
+                        print(
+                            f"CLOSE_POSITION_SKIPPED -> symbol={symbol} side=short "
+                            f"reason=active_profit_plans count={len(active_profit_plans)} "
+                            f"current_qty={current_qty} target_qty={target_qty}"
+                        )
+                    else:
+                        print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
+                        if LIVE_TRADING:
+                            bitget.flash_close_position(symbol, side="short")
+                else:
+                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             else:
                 _action = "open_long"
                 place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
