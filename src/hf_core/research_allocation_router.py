@@ -51,6 +51,7 @@ class ResearchAllocationRouter:
                     ),
                     selected_candidates=selected_candidates,
                     prev_allocation=prev_allocation,
+                    portfolio_context=portfolio_context,
                 )
                 meta = dict(getattr(alloc, "meta", {}) or {})
                 meta["allocation_mode"] = "production_like_snapshot"
