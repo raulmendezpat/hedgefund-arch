@@ -1275,7 +1275,7 @@ def _resolve_effective_shadow_weights(lifecycle_engine, desired_weights: dict, s
         if pos is None:
             continue
 
-        meta = dict(getattr(pos, "meta", {}) or {})
+        meta = dict(getattr(pos, "entry_meta", {}) or {})
         trace_target_weight = meta.get("trace_target_weight", None)
 
         try:
@@ -1497,6 +1497,7 @@ def main() -> None:
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--target-exposure", type=float, default=0.07)
     ap.add_argument("--symbol-cap", type=float, default=0.50)
+    ap.add_argument("--shadow-cooldown-after-close-bars", type=int, default=2)
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
     ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "production_like_snapshot", "legacy_multi_strategy"])
@@ -1699,7 +1700,7 @@ def main() -> None:
     lifecycle_engine = TradeLifecycleEngine(
         maker_fee=0.0002,
         taker_fee=0.0006,
-        cooldown_after_close_bars=2,
+        cooldown_after_close_bars=int(getattr(args, "shadow_cooldown_after_close_bars", 2) or 0),
     )
     target_lifecycle_engine = TargetPositionLifecycleEngine()
     lifecycle_exit_cfg = load_exit_registry("artifacts/exit_policy_registry.json")
@@ -2039,25 +2040,56 @@ def main() -> None:
                     }
                 )
 
+        shadow_entry_debug = {}
         if not bool(getattr(args, "enable_target_position_lifecycle", False)):
             # legacy shadow entries second
             opened_symbols = set()
             for c in selected_candidates:
                 sym = str(getattr(c, "symbol", "") or "")
                 strategy_id = str(getattr(c, "strategy_id", "") or "")
+
+                _dbg = {
+                    "candidate_seen": True,
+                    "opened": False,
+                    "reason": "",
+                }
+
                 if sym in opened_symbols:
-                    continue
-                if not lifecycle_engine.can_open(sym):
+                    _dbg["reason"] = "already_opened_this_bar"
+                    shadow_entry_debug[sym] = _dbg
                     continue
 
+                _current_pos = lifecycle_engine.get_open_position(sym)
+                _cooldown_left = int(getattr(lifecycle_engine, "cooldown_by_symbol", {}).get(sym, 0) or 0)
+                _can_open = bool(lifecycle_engine.can_open(sym))
+
+                _dbg["has_open_position"] = bool(_current_pos is not None)
+                _dbg["cooldown_left"] = int(_cooldown_left)
+                _dbg["can_open"] = bool(_can_open)
+
                 target_weight = float(desired_weights.get(sym, 0.0) or 0.0)
+                _dbg["target_weight"] = float(target_weight)
                 if abs(target_weight) <= 1e-12:
+                    _dbg["reason"] = "target_weight_zero"
+                    shadow_entry_debug[sym] = _dbg
+                    continue
+
+                if not _can_open:
+                    if _current_pos is not None:
+                        _dbg["reason"] = "already_has_open_position"
+                    elif _cooldown_left > 0:
+                        _dbg["reason"] = "cooldown_active"
+                    else:
+                        _dbg["reason"] = "can_open_false_other"
+                    shadow_entry_debug[sym] = _dbg
                     continue
 
                 side = "long" if target_weight > 0 else "short"
                 df = data_by_symbol[sym]
                 i = df.index.get_loc(ts)
                 if i <= 0:
+                    _dbg["reason"] = "insufficient_history"
+                    shadow_entry_debug[sym] = _dbg
                     continue
 
                 prev_raw = df.iloc[i - 1]
@@ -2075,7 +2107,16 @@ def main() -> None:
                 adx = _f(prev_feats.get("adx"), float("nan"))
                 atrp = _f(prev_feats.get("atrp"), float("nan"))
 
-                if entry_px <= 0.0 or atr <= 0.0:
+                if entry_px <= 0.0:
+                    _dbg["reason"] = "entry_px_invalid"
+                    _dbg["entry_px"] = float(entry_px)
+                    shadow_entry_debug[sym] = _dbg
+                    continue
+
+                if atr <= 0.0:
+                    _dbg["reason"] = "atr_invalid"
+                    _dbg["atr"] = float(atr)
+                    shadow_entry_debug[sym] = _dbg
                     continue
 
                 notional_frac = min(max(abs(target_weight), 0.01), 0.30)
@@ -2098,11 +2139,18 @@ def main() -> None:
                     entry_reason="shadow_allocator_target_weight",
                     entry_meta={
                         "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
-                        "cooldown_after_close_bars": 2,
+                        "cooldown_after_close_bars": int(getattr(args, "shadow_cooldown_after_close_bars", 2) or 0),
                         "trace_target_weight": float(target_weight),
                         "entry_notional_frac": float(notional_frac),
                     },
                 )
+
+                _dbg["opened"] = True
+                _dbg["reason"] = "opened"
+                _dbg["qty"] = float(qty)
+                _dbg["entry_px"] = float(entry_px)
+                _dbg["atr"] = float(atr)
+                shadow_entry_debug[sym] = _dbg
 
                 opened_symbols.add(sym)
                 lifecycle_event_rows.append(
@@ -2216,6 +2264,8 @@ def main() -> None:
         _ml_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_ml_position_sizing_weights", {}) or {}).items()}
         _smooth_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_smoothing_weights", {}) or {}).items()}
         _gate_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_signal_gating_weights", {}) or {}).items()}
+        _cluster_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_cluster_controls_weights", {}) or {}).items()}
+        _execution_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("performance_weights_by_symbol", {}) or {}).items()}
 
         _row = {
             "ts": ts,
@@ -2232,14 +2282,17 @@ def main() -> None:
             "pipeline_weight_order": str(_alloc_meta.get("pipeline_weight_order", "") or ""),
             "desired_gross_weight": float(sum(abs(float(v or 0.0)) for v in desired_weights.values())),
             "effective_gross_weight": float(gross_weight),
+            "shadow_entry_debug": str(shadow_entry_debug),
         }
 
         for sym in symbols:
             _sym_key = str(sym).replace("/", "_").replace(":", "_").lower()
-            _row[f"{_sym_key}_w_raw_allocator"] = float(_raw_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
-            _row[f"{_sym_key}_w_after_ml_position_sizing"] = float(_ml_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
-            _row[f"{_sym_key}_w_after_smoothing"] = float(_smooth_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
-            _row[f"{_sym_key}_w_after_signal_gating"] = float(_gate_stage_weights.get(sym, weights.get(sym, 0.0)) or 0.0)
+            _row[f"{_sym_key}_w_raw_allocator"] = float(_raw_stage_weights.get(sym, 0.0) or 0.0)
+            _row[f"{_sym_key}_w_after_ml_position_sizing"] = float(_ml_stage_weights.get(sym, 0.0) or 0.0)
+            _row[f"{_sym_key}_w_after_smoothing"] = float(_smooth_stage_weights.get(sym, 0.0) or 0.0)
+            _row[f"{_sym_key}_w_after_signal_gating"] = float(_gate_stage_weights.get(sym, 0.0) or 0.0)
+            _row[f"{_sym_key}_cluster_target_weight"] = float(_cluster_stage_weights.get(sym, 0.0) or 0.0)
+            _row[f"{_sym_key}_execution_target_weight"] = float(_execution_stage_weights.get(sym, 0.0) or 0.0)
 
         rows.append(_row)
 
