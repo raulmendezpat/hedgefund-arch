@@ -88,6 +88,9 @@
       "tp_atr_pct_pivot": 0.018,
       "max_delta_notional": 40.0,
       "max_target_weight": 0.15
+    },
+    "AAVE/USDT:USDT": {
+      "max_delta_notional": 70.0
     }
   }
 }
