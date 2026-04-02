@@ -33,6 +33,7 @@ from hf_core.score_projector import ScoreProjector
 from hf_core.production_like_allocation_postprocess import ProductionLikeAllocationPostProcessor
 from hf_core.production_like_allocation_ml_sizer import ProductionLikeAllocationMlSizer
 from hf_core.production_like_allocation_cluster_controls import ProductionLikeAllocationClusterControls
+from hf_core.portfolio_atrp_risk_scaler import PortfolioAtrpRiskScaler
 
 
 def _resolve_competitive_rank_score(candidate) -> float:
@@ -1263,6 +1264,38 @@ def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str
     }
 
 
+def _resolve_effective_shadow_weights(lifecycle_engine, desired_weights: dict, symbols) -> dict:
+    desired_weights = {str(k): float(v or 0.0) for k, v in dict(desired_weights or {}).items()}
+    out = {str(sym): 0.0 for sym in list(symbols or [])}
+
+    open_positions = dict(getattr(lifecycle_engine, "open_positions", {}) or {})
+    for sym in list(symbols or []):
+        sym = str(sym)
+        pos = open_positions.get(sym)
+        if pos is None:
+            continue
+
+        meta = dict(getattr(pos, "meta", {}) or {})
+        trace_target_weight = meta.get("trace_target_weight", None)
+
+        try:
+            if trace_target_weight is not None:
+                out[sym] = float(trace_target_weight or 0.0)
+                continue
+        except Exception:
+            pass
+
+        desired_w = float(desired_weights.get(sym, 0.0) or 0.0)
+        side = str(getattr(pos, "side", "") or "").lower()
+
+        if side == "long":
+            out[sym] = abs(desired_w) if abs(desired_w) > 1e-12 else 0.0
+        elif side == "short":
+            out[sym] = -abs(desired_w) if abs(desired_w) > 1e-12 else 0.0
+
+    return out
+
+
 def _apply_runtime_exit_profiles_to_selected_candidates(selected_candidates):
     projected_selected_candidates = []
     for _c in selected_candidates or []:
@@ -1507,6 +1540,9 @@ def main() -> None:
     ap.add_argument("--prodlike-allocator-smoothing-snap-eps", type=float, default=0.0)
     ap.add_argument("--prodlike-allocator-max-step-per-bar", type=float, default=1.0)
     ap.add_argument("--prodlike-allocator-apply-signal-gating", action="store_true")
+    ap.add_argument("--prodlike-portfolio-atrp-risk-low", type=float, default=0.0)
+    ap.add_argument("--prodlike-portfolio-atrp-risk-high", type=float, default=0.0)
+    ap.add_argument("--prodlike-portfolio-atrp-risk-floor", type=float, default=1.0)
     ap.add_argument("--prodlike-allocator-apply-ml-sizing", action="store_true")
     ap.add_argument("--prodlike-allocator-top-n-symbols", type=int, default=0)
     ap.add_argument("--prodlike-allocator-apply-cluster-caps", action="store_true")
@@ -1635,8 +1671,17 @@ def main() -> None:
         smoothing_snap_eps=float(getattr(args, "prodlike_allocator_smoothing_snap_eps", 0.0) or 0.0),
         max_step_per_bar=float(getattr(args, "prodlike_allocator_max_step_per_bar", 1.0) or 1.0),
         apply_signal_gating=bool(getattr(args, "prodlike_allocator_apply_signal_gating", False)),
+        regime_scaler=allocation_engine.regime_scaler,
+        risk_overlay=allocation_engine.portfolio_risk_overlay,
+        strategy_side_weight_overlay=allocation_engine.strategy_side_weight_overlay,
+        atrp_risk_scaler=PortfolioAtrpRiskScaler(
+            atrp_low=float(getattr(args, "prodlike_portfolio_atrp_risk_low", 0.0) or 0.0),
+            atrp_high=float(getattr(args, "prodlike_portfolio_atrp_risk_high", 0.0) or 0.0),
+            floor=float(getattr(args, "prodlike_portfolio_atrp_risk_floor", 1.0) or 1.0),
+        ),
         ml_sizer=production_like_ml_sizer,
         cluster_controls=production_like_cluster_controls,
+        execution_symbol_cap=float(getattr(args, "execution_symbol_cap", 0.25) or 0.25),
     )
 
     allocation_router = ResearchAllocationRouter(
@@ -1930,7 +1975,8 @@ def main() -> None:
             pass
 
         weights = dict(alloc.weights or {})
-        _gross_weight = float(sum(abs(float(v or 0.0)) for v in weights.values()))
+        performance_weights = dict((_alloc_meta.get("performance_weights_by_symbol", {}) or {}) or weights)
+        desired_weights = dict(performance_weights)
 
         lifecycle_engine.decrement_cooldowns()
 
@@ -1962,7 +2008,7 @@ def main() -> None:
                 except Exception:
                     pass
 
-            exit_context = _resolve_shadow_exit_context(selected_candidates, weights, sym)
+            exit_context = _resolve_shadow_exit_context(selected_candidates, desired_weights, sym)
             strat_cfg = resolve_exit_policy(lifecycle_exit_cfg, pos.strategy_id)
 
             decision = lifecycle_engine.evaluate_exit(
@@ -2004,7 +2050,7 @@ def main() -> None:
                 if not lifecycle_engine.can_open(sym):
                     continue
 
-                target_weight = float(weights.get(sym, 0.0) or 0.0)
+                target_weight = float(desired_weights.get(sym, 0.0) or 0.0)
                 if abs(target_weight) <= 1e-12:
                     continue
 
@@ -2077,6 +2123,12 @@ def main() -> None:
             # temporarily disabled; legacy branch remains the source of truth
             pass
 
+        effective_weights = _resolve_effective_shadow_weights(
+            lifecycle_engine=lifecycle_engine,
+            desired_weights=desired_weights,
+            symbols=symbols,
+        )
+
         lifecycle_mtm = 0.0
         for sym, pos in list(lifecycle_engine.open_positions.items()):
             df = data_by_symbol[sym]
@@ -2132,7 +2184,7 @@ def main() -> None:
         active_symbols = 0
 
         for sym in symbols:
-            w = float(weights.get(sym, 0.0) or 0.0)
+            w = float(effective_weights.get(sym, 0.0) or 0.0)
             gross_weight += abs(w)
             if abs(w) > 1e-12:
                 active_symbols += 1
@@ -2178,6 +2230,8 @@ def main() -> None:
             "port_ret": lifecycle_port_ret,
             "equity": lifecycle_equity_now,
             "pipeline_weight_order": str(_alloc_meta.get("pipeline_weight_order", "") or ""),
+            "desired_gross_weight": float(sum(abs(float(v or 0.0)) for v in desired_weights.values())),
+            "effective_gross_weight": float(gross_weight),
         }
 
         for sym in symbols:
