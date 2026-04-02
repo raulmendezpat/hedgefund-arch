@@ -1497,7 +1497,7 @@ def main() -> None:
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--target-exposure", type=float, default=0.07)
     ap.add_argument("--symbol-cap", type=float, default=0.50)
-    ap.add_argument("--shadow-cooldown-after-close-bars", type=int, default=2)
+    ap.add_argument("--shadow-cooldown-after-close-bars", type=int, default=1)
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
     ap.add_argument("--allocator-mode", default="snapshot", choices=["snapshot", "production_like_snapshot", "legacy_multi_strategy"])
@@ -1700,7 +1700,7 @@ def main() -> None:
     lifecycle_engine = TradeLifecycleEngine(
         maker_fee=0.0002,
         taker_fee=0.0006,
-        cooldown_after_close_bars=int(getattr(args, "shadow_cooldown_after_close_bars", 2) or 0),
+        cooldown_after_close_bars=int(getattr(args, "shadow_cooldown_after_close_bars", 1) or 0),
     )
     target_lifecycle_engine = TargetPositionLifecycleEngine()
     lifecycle_exit_cfg = load_exit_registry("artifacts/exit_policy_registry.json")
@@ -2139,7 +2139,7 @@ def main() -> None:
                     entry_reason="shadow_allocator_target_weight",
                     entry_meta={
                         "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
-                        "cooldown_after_close_bars": int(getattr(args, "shadow_cooldown_after_close_bars", 2) or 0),
+                        "cooldown_after_close_bars": int(getattr(args, "shadow_cooldown_after_close_bars", 1) or 0),
                         "trace_target_weight": float(target_weight),
                         "entry_notional_frac": float(notional_frac),
                     },
