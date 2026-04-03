@@ -134,18 +134,19 @@ def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = Fals
             f"ORDER_SKIPPED_BELOW_PRECISION -> symbol={symbol} side={side} "
             f"raw_qty={raw_qty} rounded_qty={qty} reduceOnly={reduce} live={LIVE_TRADING}"
         )
-        return None
+        return {"skipped": True, "executed": False, "rounded_qty": float(qty), "raw_qty": float(raw_qty)}
 
     print(f"ORDER -> symbol={symbol} side={side} qty={qty} reduceOnly={reduce} live={LIVE_TRADING}")
     if not LIVE_TRADING:
-        return None
+        return {"skipped": False, "executed": False, "rounded_qty": float(qty), "raw_qty": float(raw_qty)}
     try:
-        return bitget.place_market_order(symbol=symbol, side=side, amount=qty, reduce=reduce)
+        resp = bitget.place_market_order(symbol=symbol, side=side, amount=qty, reduce=reduce)
+        return {"skipped": False, "executed": True, "rounded_qty": float(qty), "raw_qty": float(raw_qty), "response": resp}
     except Exception as e:
         msg = str(e)
         if reduce and ("22002" in msg or "No position to close" in msg):
             print(f"ORDER_WARN -> benign reduce-only rejection for {symbol}: {msg}")
-            return None
+            return {"skipped": False, "executed": False, "rounded_qty": float(qty), "raw_qty": float(raw_qty), "benign_reject": True}
         raise
 
 
@@ -773,6 +774,7 @@ for prefix, cfg in SYMBOLS.items():
 
     if current_qty == 0 or (current_qty > 0 and target_qty >= 0) or (current_qty < 0 and target_qty <= 0):
         _effective_qty_override = None
+        _last_order_result = None
 
         if delta_qty > 0:
             if current_qty > 0 and target_qty >= 0:
@@ -841,7 +843,14 @@ for prefix, cfg in SYMBOLS.items():
             elif current_qty < 0 and target_qty <= 0:
                 if abs(target_qty) > abs(current_qty):
                     _action = "increase_short"
-                    place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
+                    _last_order_result = place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
+                    if isinstance(_last_order_result, dict) and _last_order_result.get("skipped"):
+                        _effective_qty_override = current_qty
+                        print(
+                            f"EFFECTIVE_QTY_OVERRIDE -> symbol={symbol} side=short "
+                            f"current_qty={current_qty} target_qty={target_qty} delta_qty={delta_qty} "
+                            f"effective_qty_for_protection={_effective_qty_override}"
+                        )
                 else:
                     _action = "reduce_short"
                     if target_qty == 0:
