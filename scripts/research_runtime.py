@@ -503,6 +503,7 @@ def _build_runtime_candidate_row(
     *,
     candidate,
     feature_row,
+    expanded_feature_row,
     score_obj,
     decision,
     portfolio_context,
@@ -516,6 +517,7 @@ def _build_runtime_candidate_row(
     mm_meta = dict(getattr(score_obj, "model_meta", {}) or {})
     pm_meta = dict(getattr(decision, "policy_meta", {}) or {})
     _feature_map = dict(getattr(feature_row, "values", {}) or {})
+    _expanded_feature_map = dict(expanded_feature_row or {})
 
     candidate_key = _candidate_observability_key(candidate)
     trace_candidate_id = str(sm.get("trace_candidate_id", candidate_key) or candidate_key)
@@ -597,24 +599,24 @@ def _build_runtime_candidate_row(
         "atrp_low": pm_meta.get("atrp_low", mm_meta.get("atrp_low", False)),
         "adx_low": pm_meta.get("adx_low", mm_meta.get("adx_low", False)),
         "range_expansion_low": pm_meta.get("range_expansion_low", mm_meta.get("range_expansion_low", False)),
-        "ret_1h_lag": float(_feature_map.get("ret_1h_lag", 0.0) or 0.0),
-        "ret_4h_lag": float(_feature_map.get("ret_4h_lag", 0.0) or 0.0),
-        "ret_12h_lag": float(_feature_map.get("ret_12h_lag", 0.0) or 0.0),
-        "ret_24h_lag": float(_feature_map.get("ret_24h_lag", 0.0) or 0.0),
-        "ema_gap_fast_slow": float(_feature_map.get("ema_gap_fast_slow", 0.0) or 0.0),
-        "dist_close_ema_fast": float(_feature_map.get("dist_close_ema_fast", 0.0) or 0.0),
-        "dist_close_ema_slow": float(_feature_map.get("dist_close_ema_slow", 0.0) or 0.0),
-        "range_pct": float(_feature_map.get("range_pct", 0.0) or 0.0),
-        "rolling_vol_24h": float(_feature_map.get("rolling_vol_24h", 0.0) or 0.0),
-        "rolling_vol_72h": float(_feature_map.get("rolling_vol_72h", 0.0) or 0.0),
-        "atrp_zscore": float(_feature_map.get("atrp_zscore", 0.0) or 0.0),
-        "breakout_distance_up": float(_feature_map.get("breakout_distance_up", 0.0) or 0.0),
-        "breakout_distance_down": float(_feature_map.get("breakout_distance_down", 0.0) or 0.0),
-        "pullback_depth": float(_feature_map.get("pullback_depth", 0.0) or 0.0),
-        "btc_ret_24h_lag": float(_feature_map.get("btc_ret_24h_lag", 0.0) or 0.0),
-        "btc_rolling_vol_24h": float(_feature_map.get("btc_rolling_vol_24h", 0.0) or 0.0),
-        "btc_atrp": float(_feature_map.get("btc_atrp", 0.0) or 0.0),
-        "btc_adx": float(_feature_map.get("btc_adx", 0.0) or 0.0),
+        "ret_1h_lag": float(_expanded_feature_map.get("ret_1h_lag", 0.0) or 0.0),
+        "ret_4h_lag": float(_expanded_feature_map.get("ret_4h_lag", 0.0) or 0.0),
+        "ret_12h_lag": float(_expanded_feature_map.get("ret_12h_lag", 0.0) or 0.0),
+        "ret_24h_lag": float(_expanded_feature_map.get("ret_24h_lag", 0.0) or 0.0),
+        "ema_gap_fast_slow": float(_expanded_feature_map.get("ema_gap_fast_slow", 0.0) or 0.0),
+        "dist_close_ema_fast": float(_expanded_feature_map.get("dist_close_ema_fast", 0.0) or 0.0),
+        "dist_close_ema_slow": float(_expanded_feature_map.get("dist_close_ema_slow", 0.0) or 0.0),
+        "range_pct": float(_expanded_feature_map.get("range_pct", 0.0) or 0.0),
+        "rolling_vol_24h": float(_expanded_feature_map.get("rolling_vol_24h", 0.0) or 0.0),
+        "rolling_vol_72h": float(_expanded_feature_map.get("rolling_vol_72h", 0.0) or 0.0),
+        "atrp_zscore": float(_expanded_feature_map.get("atrp_zscore", 0.0) or 0.0),
+        "breakout_distance_up": float(_expanded_feature_map.get("breakout_distance_up", 0.0) or 0.0),
+        "breakout_distance_down": float(_expanded_feature_map.get("breakout_distance_down", 0.0) or 0.0),
+        "pullback_depth": float(_expanded_feature_map.get("pullback_depth", 0.0) or 0.0),
+        "btc_ret_24h_lag": float(_expanded_feature_map.get("btc_ret_24h_lag", 0.0) or 0.0),
+        "btc_rolling_vol_24h": float(_expanded_feature_map.get("btc_rolling_vol_24h", 0.0) or 0.0),
+        "btc_atrp": float(_expanded_feature_map.get("btc_atrp", 0.0) or 0.0),
+        "btc_adx": float(_expanded_feature_map.get("btc_adx", 0.0) or 0.0),
     }
 
 
@@ -813,40 +815,13 @@ def build_feature_map(df: pd.DataFrame, symbol: str) -> dict[str, pd.Series]:
     atr = _atr(df, 14)
     atrp = atr / close.replace(0.0, np.nan)
 
-    out = {
+    return {
         "adx": _adx(df, 14),
         "atr": atr,
         "atrp": atrp,
         "ema_fast": _ema(close, 20),
         "ema_slow": _ema(close, 200),
     }
-
-    if symbol.upper().startswith("SOL/"):
-        bb_period = 20
-        bb_std = 2.0
-        delta = close.diff()
-        gain = delta.clip(lower=0.0)
-        loss = (-delta.clip(upper=0.0))
-        avg_gain = gain.rolling(bb_period, min_periods=bb_period).mean()
-        avg_loss = loss.rolling(bb_period, min_periods=bb_period).mean()
-        rs = avg_gain / avg_loss.replace(0.0, np.nan)
-        rsi = 100.0 - (100.0 / (1.0 + rs))
-        bb_mid = close.rolling(bb_period, min_periods=bb_period).mean()
-        bb_stddev = close.rolling(bb_period, min_periods=bb_period).std(ddof=0)
-        bb_up = bb_mid + bb_std * bb_stddev
-        bb_low = bb_mid - bb_std * bb_stddev
-        bb_width = (bb_up - bb_low) / bb_mid.replace(0.0, np.nan)
-
-        out.update({
-            "rsi": rsi,
-            "bb_mid": bb_mid,
-            "bb_up": bb_up,
-            "bb_low": bb_low,
-            "bb_width": bb_width,
-        })
-
-    return out
-
 
 def compute_common_ts(data_by_symbol: dict[str, pd.DataFrame]) -> list[pd.Timestamp]:
     common = None
@@ -1629,6 +1604,14 @@ def main() -> None:
             if hasattr(series, "reindex"):
                 base[k] = series.reindex(base.index)
         enriched_feature_frames[sym] = build_symbol_feature_frame(base)
+        enriched_feature_frames[sym]["adx"] = pd.to_numeric(
+            feature_series_by_symbol[sym].get("adx"),
+            errors="coerce",
+        )
+        enriched_feature_frames[sym]["atrp"] = pd.to_numeric(
+            feature_series_by_symbol[sym].get("atrp"),
+            errors="coerce",
+        )
 
     if "BTC/USDT:USDT" in enriched_feature_frames:
         btc_feat = enriched_feature_frames["BTC/USDT:USDT"]
@@ -1937,11 +1920,21 @@ def main() -> None:
         selection_meta["cross_sectional_ranking"] = dict(cross_sectional_meta or {})
 
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
+            _expanded_feature_row = {}
+            _extra_df = enriched_feature_frames.get(c.symbol)
+            if _extra_df is not None and ts in _extra_df.index:
+                _expanded_feature_row = {
+                    str(k): float(v)
+                    for k, v in _extra_df.loc[ts].items()
+                    if pd.notna(v)
+                }
+
             _obs_key = _candidate_observability_key(c)
             candidate_rows.append(
                 _build_runtime_candidate_row(
                     candidate=c,
                     feature_row=fr,
+                    expanded_feature_row=_expanded_feature_row,
                     score_obj=s,
                     decision=d,
                     portfolio_context=portfolio_context,
