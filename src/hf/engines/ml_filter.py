@@ -255,9 +255,14 @@ def predict_proba(model: Any, features: Dict[str, Any]) -> float:
     score += min(max(features.get("ema_gap_pct", 0.0), -0.05), 0.05) * 2.0
     score -= min(max(features.get("atrp", 0.0) - 0.02, -0.03), 0.03) * 3.0
 
-    if features.get("is_sol", 0.0) > 0.5:
-        rsi = features.get("rsi", 50.0)
-        bb_pos = features.get("bb_pos", 0.5)
+    rsi = features.get("rsi", 50.0)
+    bb_pos = features.get("bb_pos", 0.5)
+    has_bb_context = any(
+        abs(float(features.get(k, 0.0) or 0.0)) > 1e-12
+        for k in ("bb_mid", "bb_up", "bb_low", "bb_width", "bb_span", "bb_pos")
+    )
+
+    if has_bb_context:
         if features.get("side_long", 0.0) > 0.5:
             score += max(0.0, (35.0 - rsi)) * 0.004
             score += max(0.0, (0.25 - bb_pos)) * 0.30

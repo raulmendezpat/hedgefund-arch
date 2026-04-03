@@ -12,6 +12,7 @@ import pandas as pd
 from hf.data.ohlcv import fetch_ohlcv_ccxt, dt_to_ms_utc
 from hf.pipeline.run_portfolio import _adx, _atr, _ema
 from hf_core.trade_lifecycle import TradeLifecycleEngine
+from hf_core.ml.feature_expansion import build_bb_rsi_feature_frame
 
 
 def _f(x, default=0.0):
@@ -118,14 +119,10 @@ def load_symbol_df(symbol: str, start: str, end: str, exchange: str, cache_dir: 
     df["ema_fast"] = _ema(close, 20)
     df["ema_slow"] = _ema(close, 200)
 
-    if symbol.upper().startswith("SOL/"):
-        bb_period = 20
-        bb_std = 2.0
-        basis = close.rolling(bb_period, min_periods=bb_period).mean()
-        std = close.rolling(bb_period, min_periods=bb_period).std(ddof=0)
-        df["bb_mid"] = basis
-        df["bb_up"] = basis + bb_std * std
-        df["bb_low"] = basis - bb_std * std
+    _bb_rsi = build_bb_rsi_feature_frame(df)
+    for _col in ["rsi", "bb_mid", "bb_up", "bb_low", "bb_width"]:
+        if _col in _bb_rsi.columns:
+            df[_col] = _bb_rsi[_col]
 
     return df
 

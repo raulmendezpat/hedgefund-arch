@@ -8,6 +8,32 @@ def _safe_div(a: pd.Series, b: pd.Series) -> pd.Series:
     return a.astype(float) / b.astype(float).replace(0.0, np.nan)
 
 
+def build_bb_rsi_feature_frame(df: pd.DataFrame, *, bb_period: int = 20, bb_std: float = 2.0) -> pd.DataFrame:
+    x = df.copy().sort_index()
+    close = x["close"].astype(float)
+
+    out = pd.DataFrame(index=x.index)
+
+    delta = close.diff()
+    gain = delta.clip(lower=0.0)
+    loss = (-delta.clip(upper=0.0))
+    avg_gain = gain.rolling(bb_period, min_periods=bb_period).mean()
+    avg_loss = loss.rolling(bb_period, min_periods=bb_period).mean()
+    rs = avg_gain / avg_loss.replace(0.0, np.nan)
+    out["rsi"] = 100.0 - (100.0 / (1.0 + rs))
+
+    out["bb_mid"] = close.rolling(bb_period, min_periods=bb_period).mean()
+    bb_stddev = close.rolling(bb_period, min_periods=bb_period).std(ddof=0)
+    out["bb_up"] = out["bb_mid"] + bb_std * bb_stddev
+    out["bb_low"] = out["bb_mid"] - bb_std * bb_stddev
+    out["bb_width"] = _safe_div(out["bb_up"] - out["bb_low"], out["bb_mid"])
+
+    for c in out.columns:
+        out[c] = pd.to_numeric(out[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
+
+    return out
+
+
 def build_symbol_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     x = df.copy().sort_index()
 

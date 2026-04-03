@@ -18,6 +18,7 @@ from hf_core import (
     OpportunityCandidate,
     AssetContextEnricher,
 )
+from hf_core.ml.feature_expansion import build_bb_rsi_feature_frame
 
 
 def load_registry(path: str) -> list[dict]:
@@ -69,30 +70,7 @@ def build_feature_map(df: pd.DataFrame, symbol: str) -> dict[str, pd.Series]:
         "ema_slow": _ema(close, 200),
     }
 
-    # SOL-style features only where available/needed
-    if symbol.upper().startswith("SOL/"):
-        bb_period = 20
-        bb_std = 2.0
-        delta = close.diff()
-        gain = delta.clip(lower=0.0)
-        loss = (-delta.clip(upper=0.0))
-        avg_gain = gain.rolling(bb_period, min_periods=bb_period).mean()
-        avg_loss = loss.rolling(bb_period, min_periods=bb_period).mean()
-        rs = avg_gain / avg_loss.replace(0.0, pd.NA)
-        rsi = 100.0 - (100.0 / (1.0 + rs))
-        bb_mid = close.rolling(bb_period, min_periods=bb_period).mean()
-        bb_stddev = close.rolling(bb_period, min_periods=bb_period).std(ddof=0)
-        bb_up = bb_mid + bb_std * bb_stddev
-        bb_low = bb_mid - bb_std * bb_stddev
-        bb_width = (bb_up - bb_low) / bb_mid.replace(0.0, pd.NA)
-
-        out.update({
-            "rsi": rsi,
-            "bb_mid": bb_mid,
-            "bb_up": bb_up,
-            "bb_low": bb_low,
-            "bb_width": bb_width,
-        })
+    out.update(build_bb_rsi_feature_frame(df).to_dict(orient="series"))
 
     return out
 
