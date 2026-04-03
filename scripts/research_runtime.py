@@ -1497,6 +1497,7 @@ def main() -> None:
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--target-exposure", type=float, default=0.07)
     ap.add_argument("--symbol-cap", type=float, default=0.50)
+    ap.add_argument("--execution-symbol-cap", type=float, default=0.25)
     ap.add_argument("--shadow-cooldown-after-close-bars", type=int, default=1)
     ap.add_argument("--allocator-profile", default="symbol_net")
     ap.add_argument("--projection-profile", default="net_symbol")
