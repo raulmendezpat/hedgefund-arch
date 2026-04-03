@@ -779,7 +779,17 @@ for prefix, cfg in SYMBOLS.items():
         print()
         continue
 
-    if abs(delta_notional) > cfg["max_delta_notional"]:
+    reducing_existing_position = False
+    current_side = position_side_from_qty(current_qty)
+    target_side = position_side_from_qty(target_qty)
+
+    if abs(current_qty) > 1e-12:
+        if target_side == "flat":
+            reducing_existing_position = True
+        elif current_side == target_side and abs(target_qty) < abs(current_qty):
+            reducing_existing_position = True
+
+    if abs(delta_notional) > cfg["max_delta_notional"] and not reducing_existing_position:
         _action = "blocked_above_max_delta_notional"
         _blocked_reason = "above_max_delta_notional"
         print("action: BLOCKED (above max_delta_notional)")
@@ -796,6 +806,9 @@ for prefix, cfg in SYMBOLS.items():
         }
         print()
         continue
+
+    if abs(delta_notional) > cfg["max_delta_notional"] and reducing_existing_position:
+        print("action: ALLOW reduce-only rebalance (above max_delta_notional but reducing risk)")
 
     if current_qty > 0 and target_qty == 0:
         _effective_qty_override = None
@@ -814,6 +827,8 @@ for prefix, cfg in SYMBOLS.items():
             print(f"CLOSE_POSITION -> symbol={symbol} side=long live={LIVE_TRADING}")
             if LIVE_TRADING:
                 bitget.flash_close_position(symbol, side="long")
+                current_qty = refresh_current_qty(bitget, symbol)
+                print(f"POSITION_AFTER_CLOSE -> symbol={symbol} qty={current_qty}")
 
     elif current_qty < 0 and target_qty == 0:
         _effective_qty_override = None
@@ -832,6 +847,8 @@ for prefix, cfg in SYMBOLS.items():
             print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
             if LIVE_TRADING:
                 bitget.flash_close_position(symbol, side="short")
+                current_qty = refresh_current_qty(bitget, symbol)
+                print(f"POSITION_AFTER_CLOSE -> symbol={symbol} qty={current_qty}")
 
     elif current_qty == 0 or (current_qty > 0 and target_qty > 0) or (current_qty < 0 and target_qty < 0):
         _effective_qty_override = None
@@ -935,6 +952,40 @@ for prefix, cfg in SYMBOLS.items():
         ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
     except Exception as e:
         print(f"protective_action: skipped due to ATR/order error: {e}")
+
+    if abs(current_qty) > 1e-12:
+        refreshed_pos_side = position_side_from_qty(current_qty)
+        if refreshed_pos_side in {"long", "short"}:
+            try:
+                protective_orders_now = fetch_open_profit_loss_orders(bitget, symbol) or []
+            except Exception as e:
+                protective_orders_now = []
+                print(f"PROTECTIVE_FETCH_WARN -> symbol={symbol} error={e}")
+
+            print(
+                f"PROTECTIVE_RECHECK -> symbol={symbol} "
+                f"pos_side={refreshed_pos_side} qty={current_qty} count={len(protective_orders_now)}"
+            )
+
+            if len(protective_orders_now) == 0:
+                print(f"PROTECTIVE_MISSING -> symbol={symbol} recreating protection for live position")
+                try:
+                    maintain_partial_tp_and_sl(
+                        bitget=bitget,
+                        symbol=symbol,
+                        pos_side=refreshed_pos_side,
+                        qty=abs(current_qty),
+                        ref_price=last,
+                        atr=atr,
+                        sl_atr_mult=cfg["sl_atr_mult"],
+                        tp1_atr_mult=cfg["tp1_atr_mult"],
+                        tp2_atr_mult=cfg["tp2_atr_mult"],
+                        tp1_fraction=cfg["tp1_fraction"],
+                        sl_rel_tol=cfg["sl_rel_tol"],
+                        tp_rel_tol=cfg["tp_rel_tol"],
+                    )
+                except Exception as e:
+                    print(f"PROTECTIVE_RECREATE_ERROR -> symbol={symbol} error={e}")
 
     execution_snapshot[symbol] = {
         "side": str(side),
