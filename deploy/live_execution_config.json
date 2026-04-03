@@ -1,93 +1,93 @@
 {
   "default_symbol_config": {
-    "timeframe": "1h",
-    "ohlcv_limit": 120,
     "atr_period": 14,
-    "sl_atr_mult": 2.0,
-    "tp_atr_mult_min": 1.8,
-    "tp_atr_mult_max": 3.8,
-    "tp_atr_pct_pivot": 0.014,
-    "min_delta_notional": 5.0,
     "max_delta_notional": 60.0,
-    "stop_refresh_rel_tol": 0.003,
-    "tp_refresh_rel_tol": 0.004,
-    "partial_tp_enabled": true,
+    "min_delta_notional": 5.0,
+    "ohlcv_limit": 120,
     "partial_tp1_atr_mult": 1.0,
-    "partial_tp1_fraction": 0.5
+    "partial_tp1_fraction": 0.5,
+    "partial_tp_enabled": true,
+    "sl_atr_mult": 2.0,
+    "stop_refresh_rel_tol": 0.003,
+    "timeframe": "1h",
+    "tp_atr_mult_max": 3.8,
+    "tp_atr_mult_min": 1.8,
+    "tp_atr_pct_pivot": 0.014,
+    "tp_refresh_rel_tol": 0.004
   },
   "symbol_overrides": {
-    "BTC/USDT:USDT": {
-      "sl_atr_mult": 1.8,
-      "tp_atr_mult_min": 1.8,
+    "BCH/USDT:USDT": {
+      "max_delta_notional": 45.0,
+      "max_target_weight": 0.15,
+      "sl_atr_mult": 2.0,
       "tp_atr_mult_max": 3.8,
-      "tp_atr_pct_pivot": 0.012,
-      "max_delta_notional": 80.0,
-      "max_target_weight": 0.25,
-      "stop_refresh_rel_tol": 0.0025,
-      "tp_refresh_rel_tol": 0.0035
-    },
-    "SOL/USDT:USDT": {
-      "sl_atr_mult": 2.2,
-      "tp_atr_mult_min": 2.0,
-      "tp_atr_mult_max": 4.2,
-      "tp_atr_pct_pivot": 0.018,
-      "max_delta_notional": 50.0,
-      "max_target_weight": 0.25,
-      "stop_refresh_rel_tol": 0.004,
-      "tp_refresh_rel_tol": 0.005
-    },
-    "ETH/USDT:USDT": {
-      "sl_atr_mult": 1.9,
-      "tp_atr_mult_min": 1.8,
-      "tp_atr_mult_max": 3.6,
-      "tp_atr_pct_pivot": 0.012,
-      "max_delta_notional": 70.0,
-      "partial_tp_enabled": false
+      "tp_atr_mult_min": 1.9,
+      "tp_atr_pct_pivot": 0.014
     },
     "BNB/USDT:USDT": {
+      "max_delta_notional": 70.0,
       "sl_atr_mult": 2.0,
-      "tp_atr_mult_min": 1.9,
       "tp_atr_mult_max": 3.8,
-      "tp_atr_pct_pivot": 0.014,
-      "max_delta_notional": 60.0
-    },
-    "LINK/USDT:USDT": {
-      "sl_atr_mult": 2.1,
-      "tp_atr_mult_min": 2.0,
-      "tp_atr_mult_max": 4.0,
-      "tp_atr_pct_pivot": 0.018,
-      "max_delta_notional": 45.0
-    },
-    "XRP/USDT:USDT": {
-      "sl_atr_mult": 2.0,
       "tp_atr_mult_min": 1.9,
-      "tp_atr_mult_max": 3.8,
-      "tp_atr_pct_pivot": 0.014,
-      "max_delta_notional": 40.0
+      "tp_atr_pct_pivot": 0.014
     },
-    "TRX/USDT:USDT": {
-      "sl_atr_mult": 2.0,
-      "tp_atr_mult_min": 1.9,
-      "tp_atr_mult_max": 3.8,
-      "tp_atr_pct_pivot": 0.014,
+    "BTC/USDT:USDT": {
       "max_delta_notional": 80.0,
-      "max_target_weight": 0.25
-    },
-    "BCH/USDT:USDT": {
-      "sl_atr_mult": 2.0,
-      "tp_atr_mult_min": 1.9,
+      "max_target_weight": 0.25,
+      "sl_atr_mult": 1.8,
+      "stop_refresh_rel_tol": 0.0025,
       "tp_atr_mult_max": 3.8,
-      "tp_atr_pct_pivot": 0.014,
-      "max_delta_notional": 45.0,
-      "max_target_weight": 0.15
+      "tp_atr_mult_min": 1.8,
+      "tp_atr_pct_pivot": 0.012,
+      "tp_refresh_rel_tol": 0.0035
     },
     "DOGE/USDT:USDT": {
-      "sl_atr_mult": 2.1,
-      "tp_atr_mult_min": 2.0,
-      "tp_atr_mult_max": 4.0,
-      "tp_atr_pct_pivot": 0.018,
       "max_delta_notional": 40.0,
-      "max_target_weight": 0.15
+      "max_target_weight": 0.15,
+      "sl_atr_mult": 2.1,
+      "tp_atr_mult_max": 4.0,
+      "tp_atr_mult_min": 2.0,
+      "tp_atr_pct_pivot": 0.018
+    },
+    "ETH/USDT:USDT": {
+      "max_delta_notional": 70.0,
+      "partial_tp_enabled": false,
+      "sl_atr_mult": 1.9,
+      "tp_atr_mult_max": 3.6,
+      "tp_atr_mult_min": 1.8,
+      "tp_atr_pct_pivot": 0.012
+    },
+    "LINK/USDT:USDT": {
+      "max_delta_notional": 45.0,
+      "sl_atr_mult": 2.1,
+      "tp_atr_mult_max": 4.0,
+      "tp_atr_mult_min": 2.0,
+      "tp_atr_pct_pivot": 0.018
+    },
+    "SOL/USDT:USDT": {
+      "max_delta_notional": 50.0,
+      "max_target_weight": 0.25,
+      "sl_atr_mult": 2.2,
+      "stop_refresh_rel_tol": 0.004,
+      "tp_atr_mult_max": 4.2,
+      "tp_atr_mult_min": 2.0,
+      "tp_atr_pct_pivot": 0.018,
+      "tp_refresh_rel_tol": 0.005
+    },
+    "TRX/USDT:USDT": {
+      "max_delta_notional": 80.0,
+      "max_target_weight": 0.25,
+      "sl_atr_mult": 2.0,
+      "tp_atr_mult_max": 3.8,
+      "tp_atr_mult_min": 1.9,
+      "tp_atr_pct_pivot": 0.014
+    },
+    "XRP/USDT:USDT": {
+      "max_delta_notional": 40.0,
+      "sl_atr_mult": 2.0,
+      "tp_atr_mult_max": 3.8,
+      "tp_atr_mult_min": 1.9,
+      "tp_atr_pct_pivot": 0.014
     }
   }
 }
