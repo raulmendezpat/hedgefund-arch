@@ -36,6 +36,29 @@ from hf_core.production_like_allocation_cluster_controls import ProductionLikeAl
 from hf_core.portfolio_atrp_risk_scaler import PortfolioAtrpRiskScaler
 
 
+def _parse_runtime_ml_size_overrides(raw: str | None) -> dict[tuple[str, str], float]:
+    out: dict[tuple[str, str], float] = {}
+    if not raw:
+        return out
+
+    for chunk in str(raw).split(","):
+        item = str(chunk or "").strip()
+        if not item:
+            continue
+
+        parts = [p.strip() for p in item.split("|")]
+        if len(parts) != 3:
+            continue
+
+        strategy_id, side, mult = parts
+        try:
+            out[(str(strategy_id).lower(), str(side).lower())] = float(mult)
+        except Exception:
+            continue
+
+    return out
+
+
 def _resolve_competitive_rank_score(candidate) -> float:
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
     try:
@@ -407,12 +430,15 @@ def _apply_runtime_ml_position_sizing_semantics(
     candidate,
     score_obj,
     ml_position_sizer,
+    ml_size_overrides=None,
 ):
     if ml_position_sizer is None:
         return candidate
 
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
     _side = str(getattr(candidate, "side", sm.get("side", "flat")) or "flat").lower()
+    _strategy_id = str(getattr(candidate, "strategy_id", sm.get("strategy_id", "")) or "").lower()
+
     if _side not in {"long", "short"}:
         sm["ml_position_size_mult"] = 0.0
         candidate.signal_meta = sm
@@ -421,11 +447,22 @@ def _apply_runtime_ml_position_sizing_semantics(
     _p_win = float(getattr(score_obj, "p_win", sm.get("p_win", 0.0)) or 0.0)
     _mult = float(ml_position_sizer.size_from_pwin(_p_win))
 
+    _overrides = dict(ml_size_overrides or {})
+    _override_mult = _overrides.get((_strategy_id, _side))
+    if _override_mult is not None:
+        _mult = float(_mult) * float(_override_mult)
+
+    _min_mult = float(getattr(ml_position_sizer, "min_mult", 0.0) or 0.0)
+    _max_mult = float(getattr(ml_position_sizer, "max_mult", 1.0) or 1.0)
+    _mult = max(_min_mult, min(_max_mult, float(_mult)))
+
     sm["ml_position_size_mult"] = float(_mult)
     sm["ml_position_size_mode"] = str(getattr(ml_position_sizer, "mode", ""))
     sm["ml_position_size_scale"] = float(getattr(ml_position_sizer, "scale", 0.0))
     sm["ml_position_size_base"] = float(getattr(ml_position_sizer, "base_size", 0.0))
     sm["ml_position_size_pwin_threshold"] = float(getattr(ml_position_sizer, "pwin_threshold", 0.0))
+    sm["ml_position_size_override_applied"] = bool(_override_mult is not None)
+    sm["ml_position_size_override_value"] = float(_override_mult) if _override_mult is not None else 1.0
     candidate.signal_meta = sm
     return candidate
 
@@ -1559,6 +1596,7 @@ def main() -> None:
     ap.add_argument("--runtime-ml-size-max", type=float, default=1.50)
     ap.add_argument("--runtime-ml-size-base", type=float, default=0.50)
     ap.add_argument("--runtime-ml-size-pwin-threshold", type=float, default=0.50)
+    ap.add_argument("--runtime-ml-size-overrides", default="")
     ap.add_argument("--runtime-ml-size-artifact-path", default="artifacts/ml_position_size_map_v1.json")
     ap.add_argument(
         "--enable-target-position-lifecycle",
@@ -1653,6 +1691,9 @@ def main() -> None:
         pwin_threshold=float(getattr(args, "runtime_ml_size_pwin_threshold", 0.50)),
         artifact_path=str(getattr(args, "runtime_ml_size_artifact_path", "artifacts/ml_position_size_map_v1.json") or "artifacts/ml_position_size_map_v1.json"),
     ) if bool(getattr(args, "runtime_prod_ml_position_sizing", False)) else None
+    runtime_ml_size_overrides = _parse_runtime_ml_size_overrides(
+        str(getattr(args, "runtime_ml_size_overrides", "") or "")
+    )
     allocation_config = build_allocation_config_from_args(args)
     allocation_engine = build_allocation_engine(
         config=allocation_config,
@@ -1796,6 +1837,7 @@ def main() -> None:
                 candidate=c,
                 score_obj=s,
                 ml_position_sizer=runtime_ml_position_sizer,
+                ml_size_overrides=runtime_ml_size_overrides,
             )
             c = _enrich_candidate_for_selection_runtime(
                 candidate=c,
