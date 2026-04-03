@@ -863,8 +863,12 @@ for prefix, cfg in SYMBOLS.items():
                 _action = "reduce_long"
                 place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
             elif current_qty < 0 and target_qty < 0:
-                _action = "reduce_short"
-                place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
+                if abs(target_qty) > abs(current_qty):
+                    _action = "open_short"
+                    place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
+                else:
+                    _action = "reduce_short"
+                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
             elif current_qty == 0 and target_qty < 0:
                 _action = "open_short"
                 place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
