@@ -611,11 +611,44 @@ bitget = BitgetFutures(SECRET)
 
 
 def ensure_leverage(bitget, symbol: str, leverage: int = 2):
+    active_pos = []
+    active_orders = []
+    active_trigger_orders = []
+    active_tpsl_orders = []
+
     try:
-        bitget.set_margin_mode(symbol, "isolated")
-        print(f"MARGIN_MODE_OK -> symbol={symbol} margin_mode=isolated")
+        active_pos = bitget.fetch_open_positions(symbol) or []
     except Exception as e:
-        print(f"MARGIN_MODE_ERROR -> symbol={symbol} margin_mode=isolated error={e!r}")
+        print(f"MARGIN_MODE_PRECHECK_WARN -> symbol={symbol} source=open_positions error={e!r}")
+
+    try:
+        active_orders = bitget.fetch_open_orders(symbol) or []
+    except Exception as e:
+        print(f"MARGIN_MODE_PRECHECK_WARN -> symbol={symbol} source=open_orders error={e!r}")
+
+    try:
+        active_trigger_orders = bitget.fetch_open_trigger_orders(symbol) or []
+    except Exception as e:
+        print(f"MARGIN_MODE_PRECHECK_WARN -> symbol={symbol} source=open_trigger_orders error={e!r}")
+
+    try:
+        active_tpsl_orders = bitget.fetch_open_tpsl_orders(symbol) or []
+    except Exception as e:
+        print(f"MARGIN_MODE_PRECHECK_WARN -> symbol={symbol} source=open_tpsl_orders error={e!r}")
+
+    if active_pos or active_orders or active_trigger_orders or active_tpsl_orders:
+        print(
+            f"MARGIN_MODE_SKIP -> symbol={symbol} margin_mode=isolated "
+            f"reason=active_state positions={len(active_pos)} orders={len(active_orders)} "
+            f"trigger_orders={len(active_trigger_orders)} tpsl_orders={len(active_tpsl_orders)}"
+        )
+    else:
+        try:
+            bitget.set_margin_mode(symbol, "isolated")
+            print(f"MARGIN_MODE_OK -> symbol={symbol} margin_mode=isolated")
+        except Exception as e:
+            print(f"MARGIN_MODE_ERROR -> symbol={symbol} margin_mode=isolated error={e!r}")
+
     try:
         bitget.set_leverage(symbol, "isolated", leverage)
         print(f"LEVERAGE_OK -> symbol={symbol} margin_mode=isolated leverage={leverage}")
