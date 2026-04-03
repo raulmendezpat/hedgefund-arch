@@ -127,9 +127,15 @@ def safe_amount_to_precision(bitget, symbol: str, amount: float) -> float:
 
 
 def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False):
-    qty = float(qty)
-    if qty <= 0:
+    raw_qty = float(qty or 0.0)
+    qty = safe_amount_to_precision(bitget, symbol, raw_qty)
+    if qty <= 0.0:
+        print(
+            f"ORDER_SKIPPED_BELOW_PRECISION -> symbol={symbol} side={side} "
+            f"raw_qty={raw_qty} rounded_qty={qty} reduceOnly={reduce} live={LIVE_TRADING}"
+        )
         return None
+
     print(f"ORDER -> symbol={symbol} side={side} qty={qty} reduceOnly={reduce} live={LIVE_TRADING}")
     if not LIVE_TRADING:
         return None
