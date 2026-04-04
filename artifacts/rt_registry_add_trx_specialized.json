@@ -103,7 +103,7 @@
       "require_pullback_for_long": false,
       "require_pullback_for_short": false,
       "use_longs": true,
-      "use_shorts": true
+      "use_shorts": false
     }
   },
   {
@@ -131,7 +131,7 @@
       "require_pullback_for_long": false,
       "require_pullback_for_short": false,
       "use_longs": true,
-      "use_shorts": true
+      "use_shorts": false
     }
   },
   {
