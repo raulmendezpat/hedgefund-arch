@@ -61,7 +61,7 @@
     "strategy_id": "xrp_trend",
     "symbol": "XRP/USDT:USDT",
     "engine": "xrp_trend_signal",
-    "base_weight": 0.7,
+    "base_weight": 1.35,
     "params": {
       "adx_min": 24.0,
       "atrp_min": 0.003,
