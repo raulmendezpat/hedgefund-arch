@@ -59,6 +59,54 @@ def _parse_runtime_ml_size_overrides(raw: str | None) -> dict[tuple[str, str], f
     return out
 
 
+
+def _write_runtime_status(
+    *,
+    run_name: str,
+    start: str,
+    end: str | None,
+    ok: bool,
+    summary_lines: list[str] | None = None,
+) -> tuple[Path, Path]:
+    from datetime import datetime, timezone
+    import json
+
+    root = Path(__file__).resolve().parent.parent
+    state_dir = root / "runtime" / "state"
+    log_dir = root / "runtime" / "logs"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    ts_now = datetime.now(timezone.utc)
+    ts_token = ts_now.strftime("%Y%m%dT%H%M%SZ")
+    log_path = log_dir / f"run_{ts_token}.log"
+
+    lines = [
+        "RUNTIME_RUN",
+        f"name={str(run_name)}",
+        f"status={'ok' if ok else 'error'}",
+        f"start={str(start)}",
+        f"end={str(end or '')}",
+        f"written_at_utc={ts_now.isoformat()}",
+    ]
+    for line in list(summary_lines or []):
+        lines.append(str(line))
+
+    log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    payload = {
+        "ts": ts_token,
+        "status": "ok" if ok else "error",
+        "log": str(log_path),
+        "start": str(start),
+        "end": str(end or ""),
+        "live_trading": False,
+    }
+    status_path = state_dir / "last_run_status.json"
+    status_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    return status_path, log_path
+
+
 def _resolve_competitive_rank_score(candidate) -> float:
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
     try:
@@ -2428,6 +2476,29 @@ def main() -> None:
     print("\n=== METRICS ===")
     for k, v in metrics.items():
         print(f"{k}: {v}")
+
+    _run_name = str(args.name)
+    _metrics_path = Path(f"results/research_runtime_metrics_{_run_name}.json")
+    _runtime_csv_path = Path(f"results/research_runtime_{_run_name}.csv")
+    _candidates_csv_path = Path(f"results/research_runtime_candidates_{_run_name}.csv")
+
+    status_path, log_path = _write_runtime_status(
+        run_name=_run_name,
+        start=str(args.start),
+        end=str(getattr(args, "end", "") or ""),
+        ok=True,
+        summary_lines=[
+            f"metrics_path={_metrics_path}",
+            f"runtime_csv={_runtime_csv_path}",
+            f"candidates_csv={_candidates_csv_path}",
+            f"trade_count={metrics.get('trade_count', 0)}",
+            f"total_return_pct={metrics.get('total_return_pct', 0.0)}",
+            f"sharpe_annual={metrics.get('sharpe_annual', 0.0)}",
+            f"max_drawdown_pct={metrics.get('max_drawdown_pct', 0.0)}",
+        ],
+    )
+    print(f"saved: {status_path}")
+    print(f"saved: {log_path}")
 
 
 if __name__ == "__main__":
