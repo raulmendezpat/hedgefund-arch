@@ -40,7 +40,7 @@
       "tp_atr_pct_pivot": 0.014
     },
     "BTC/USDT:USDT": {
-      "max_delta_notional": 80.0,
+      "max_delta_notional": 100.0,
       "max_target_weight": 0.3,
       "sl_atr_mult": 1.8,
       "stop_refresh_rel_tol": 0.0025,
