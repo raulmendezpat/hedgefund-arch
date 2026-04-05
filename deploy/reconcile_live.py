@@ -125,6 +125,67 @@ def refresh_current_qty(bitget, symbol: str, attempts: int = 3, sleep_seconds: f
     return 0.0
 
 
+RECONCILE_HOLD_STATE_PATH = APP / "runtime" / "state" / "reconcile_hold_state.json"
+
+
+def load_reconcile_hold_state() -> dict:
+    try:
+        if RECONCILE_HOLD_STATE_PATH.exists():
+            data = json.loads(RECONCILE_HOLD_STATE_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        print(f"HOLD_STATE_LOAD_WARN -> error={e}")
+    return {}
+
+
+def save_reconcile_hold_state(state: dict) -> None:
+    try:
+        RECONCILE_HOLD_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        RECONCILE_HOLD_STATE_PATH.write_text(
+            json.dumps(state, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        print(f"HOLD_STATE_SAVE_WARN -> error={e}")
+
+
+def clear_hold_state_symbol(state: dict, symbol: str) -> None:
+    if symbol in state:
+        del state[symbol]
+
+
+def should_delay_flat_close(
+    *,
+    state: dict,
+    symbol: str,
+    current_qty: float,
+    target_qty: float,
+    hold_cycles: int,
+):
+    if abs(current_qty) <= 1e-12:
+        clear_hold_state_symbol(state, symbol)
+        return False, 0
+
+    if abs(target_qty) > 1e-12:
+        clear_hold_state_symbol(state, symbol)
+        return False, 0
+
+    if hold_cycles <= 0:
+        clear_hold_state_symbol(state, symbol)
+        return False, 0
+
+    rec = state.get(symbol, {})
+    flat_count = int(rec.get("flat_count", 0) or 0) + 1
+    state[symbol] = {"flat_count": flat_count}
+
+    if flat_count < hold_cycles:
+        return True, flat_count
+
+    clear_hold_state_symbol(state, symbol)
+    return False, flat_count
+
+
 def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False):
     qty = float(qty)
     if qty <= 0:
@@ -717,6 +778,7 @@ print("=== LIVE RECONCILIATION ===")
 print("live_trading:", LIVE_TRADING)
 
 execution_snapshot = {}
+hold_state = load_reconcile_hold_state()
 
 print("usdt_total:", usdt_total)
 print()
@@ -831,6 +893,42 @@ for prefix, cfg in SYMBOLS.items():
     reducing_existing_position = False
     current_side = position_side_from_qty(current_qty)
     target_side = position_side_from_qty(target_qty)
+
+    flat_close_hold_cycles = int(cfg.get("flat_close_hold_cycles", 2) or 0)
+    delay_flat_close, flat_count = should_delay_flat_close(
+        state=hold_state,
+        symbol=symbol,
+        current_qty=current_qty,
+        target_qty=target_qty,
+        hold_cycles=flat_close_hold_cycles,
+    )
+
+    if delay_flat_close:
+        _action = "hold_existing_on_flat_signal"
+        _blocked_reason = f"flat_close_grace_{flat_count}_of_{flat_close_hold_cycles}"
+        print(
+            f"FLAT_CLOSE_DELAY -> symbol={symbol} current_side={current_side} "
+            f"current_qty={current_qty} target_qty={target_qty} "
+            f"count={flat_count}/{flat_close_hold_cycles}"
+        )
+        try:
+            atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
+            ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
+        except Exception as e:
+            print(f"protective_action: skipped due to ATR/order error: {e}")
+        execution_snapshot[symbol] = {
+            "side": str(side),
+            "target_weight": float(target_weight),
+            "last": float(last),
+            "current_qty": float(current_qty),
+            "target_qty": float(target_qty),
+            "delta_qty": float(delta_qty),
+            "delta_notional": float(delta_notional),
+            "action": str(_action),
+            "blocked_reason": str(_blocked_reason),
+        }
+        print()
+        continue
 
     if abs(current_qty) > 1e-12:
         if target_side == "flat":
@@ -1019,20 +1117,7 @@ for prefix, cfg in SYMBOLS.items():
             if len(protective_orders_now) == 0:
                 print(f"PROTECTIVE_MISSING -> symbol={symbol} recreating protection for live position")
                 try:
-                    maintain_partial_tp_and_sl(
-                        bitget=bitget,
-                        symbol=symbol,
-                        pos_side=refreshed_pos_side,
-                        qty=abs(current_qty),
-                        ref_price=last,
-                        atr=atr,
-                        sl_atr_mult=cfg["sl_atr_mult"],
-                        tp1_atr_mult=cfg["tp1_atr_mult"],
-                        tp2_atr_mult=cfg["tp2_atr_mult"],
-                        tp1_fraction=cfg["tp1_fraction"],
-                        sl_rel_tol=cfg["sl_rel_tol"],
-                        tp_rel_tol=cfg["tp_rel_tol"],
-                    )
+                    ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
                 except Exception as e:
                     print(f"PROTECTIVE_RECREATE_ERROR -> symbol={symbol} error={e}")
 
@@ -1049,6 +1134,8 @@ for prefix, cfg in SYMBOLS.items():
     }
     print()
 
+
+save_reconcile_hold_state(hold_state)
 
 print("=== EXECUTION SNAPSHOT ===")
 import json
