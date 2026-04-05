@@ -1080,9 +1080,15 @@ for prefix, cfg in SYMBOLS.items():
                 else:
                     _action = "open_long"
                     place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
-            else:
+            elif current_qty < 0 and target_qty < 0:
+                _action = "reduce_short"
+                place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
+            elif is_flat_qty(current_qty) and target_qty > 0:
                 _action = "open_long"
                 place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
+            else:
+                _action = "none"
+                print("action: none")
         elif delta_qty < 0:
             if current_qty > 0 and target_qty > 0:
                 _action = "reduce_long"
@@ -1115,16 +1121,23 @@ for prefix, cfg in SYMBOLS.items():
                 ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
             else:
                 effective_qty_for_protection = effective_qty
-                if _action in {"open_long", "open_short"} and LIVE_TRADING:
+
+                if LIVE_TRADING and _action in {"reduce_long", "reduce_short", "open_long", "open_short"}:
                     refreshed_qty = refresh_current_qty(bitget, symbol, attempts=3, sleep_seconds=1.0)
-                    if abs(refreshed_qty) > 1e-12:
-                        effective_qty_for_protection = refreshed_qty
-                    else:
+                    print(
+                        f"POST_ORDER_REFRESH -> symbol={symbol} action={_action} "
+                        f"current_qty_before={current_qty} refreshed_qty={refreshed_qty} target_qty={target_qty}"
+                    )
+                    current_qty = refreshed_qty
+                    effective_qty_for_protection = refreshed_qty
+
+                    if _action in {"open_long", "open_short"} and abs(refreshed_qty) <= 1e-12:
                         effective_qty_for_protection = 0.0
                         print(
                             f"PROTECTIVE_WAIT_SKIP -> symbol={symbol} action={_action} "
                             f"target_qty={target_qty} reason=position_not_visible_after_retry"
                         )
+
                 ensure_protective_orders(bitget, symbol, effective_qty_for_protection, last, atr, cfg)
         except Exception as e:
             print(f"protective_action: skipped due to ATR/order error: {e}")
@@ -1161,7 +1174,12 @@ for prefix, cfg in SYMBOLS.items():
         effective_qty_for_protection = effective_qty
         if LIVE_TRADING:
             refreshed_qty = refresh_current_qty(bitget, symbol, attempts=3, sleep_seconds=1.0)
+            print(
+                f"POST_FLIP_REFRESH -> symbol={symbol} "
+                f"current_qty_before={current_qty} refreshed_qty={refreshed_qty} target_qty={target_qty}"
+            )
             if abs(refreshed_qty) > 1e-12:
+                current_qty = refreshed_qty
                 effective_qty_for_protection = refreshed_qty
             elif abs(current_qty) > 1e-12:
                 effective_qty_for_protection = current_qty
