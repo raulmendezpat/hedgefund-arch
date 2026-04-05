@@ -14,7 +14,8 @@
     "tp_atr_mult_max": 3.8,
     "tp_atr_mult_min": 1.8,
     "tp_atr_pct_pivot": 0.014,
-    "tp_refresh_rel_tol": 0.004
+    "tp_refresh_rel_tol": 0.004,
+    "flat_close_hold_cycles": 2
   },
   "symbol_overrides": {
     "AAVE/USDT:USDT": {

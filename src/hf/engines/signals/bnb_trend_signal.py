@@ -138,7 +138,7 @@ class BnbTrendSignalEngine:
                 out[sym] = self._build_flat(sym, meta)
                 continue
 
-            long_bias = (
+            long_entry_bias = (
                 self.use_longs
                 and ema_fast > ema_slow
                 and float(ret_12h or 0.0) > -0.02
@@ -146,7 +146,7 @@ class BnbTrendSignalEngine:
                 and breakout_up <= float(self.breakout_buffer_atr) * atrp
             )
 
-            short_bias = (
+            short_entry_bias = (
                 self.use_shorts
                 and ema_fast < ema_slow
                 and float(ret_12h or 0.0) < 0.02
@@ -154,11 +154,27 @@ class BnbTrendSignalEngine:
                 and breakout_down >= -float(self.breakout_buffer_atr) * atrp
             )
 
+            # Hold logic looser than entry logic:
+            # do not flatten a valid trend merely because the latest candle
+            # is no longer a fresh entry setup.
+            long_hold_bias = (
+                self.use_longs
+                and ema_fast > ema_slow
+            )
+
+            short_hold_bias = (
+                self.use_shorts
+                and ema_fast < ema_slow
+            )
+
             if self.require_pullback_for_long:
-                long_bias = long_bias and abs(dist_close_ema_fast) <= float(self.pullback_max_atr) * atrp
+                long_entry_bias = long_entry_bias and abs(dist_close_ema_fast) <= float(self.pullback_max_atr) * atrp
 
             if self.require_pullback_for_short:
-                short_bias = short_bias and abs(dist_close_ema_fast) <= float(self.pullback_max_atr) * atrp
+                short_entry_bias = short_entry_bias and abs(dist_close_ema_fast) <= float(self.pullback_max_atr) * atrp
+
+            long_bias = long_entry_bias or long_hold_bias
+            short_bias = short_entry_bias or short_hold_bias
 
             if long_bias and not short_bias:
                 strength = min(
