@@ -543,14 +543,63 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         return
 
     # ---- partial TP model ----
-    # Case A: one TP remains and it matches TP2 with full remaining qty => TP1 already executed; keep only TP2.
+    # Case A: one TP remains.
+    # If it matches TP2, assume TP1 already executed and keep only the final TP.
     if len(profit_plans) == 1:
         lone = profit_plans[0]
-        if _find_matching_plan([lone], "profit_plan", tp2_price, qty, "fill_price", price_tol):
-            print(f"tp_action: keep remaining TP2 after partial execution (qty={qty}, trigger={tp2_price})")
+
+        lone_trigger = get_plan_trigger_price(lone)
+        lone_size = get_plan_size(lone)
+
+        price_match = False
+        qty_match = False
+
+        if lone_trigger is not None and tp2_price > 0:
+            rel_diff = abs(float(lone_trigger) - float(tp2_price)) / max(abs(float(tp2_price)), 1e-9)
+            price_match = rel_diff <= price_tol
+
+        if lone_size is None:
+            # Bitget sometimes omits size on open TP/SL plan responses.
+            # In that case, if the remaining single TP matches TP2 by price, keep it.
+            qty_match = True
+        else:
+            qty_tol = max(1e-12, abs(float(qty)) * 0.05)
+            qty_match = abs(float(lone_size) - abs(float(qty))) <= qty_tol
+
+        if price_match and qty_match:
+            print(
+                f"tp_action: keep remaining TP2 after partial execution "
+                f"(plan_trigger={lone_trigger}, expected_tp2={tp2_price}, plan_size={lone_size}, qty={qty})"
+            )
             final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
             log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
             return
+
+        # If there is a single TP but it does not clearly match the desired final TP,
+        # refresh to a single final TP only. Do not recreate TP1.
+        oid = get_plan_order_id(lone)
+        if oid:
+            cancel_plan_order_safe(bitget, symbol, oid, "profit_plan")
+
+        print(
+            f"tp_action: replace ambiguous single TP with final-only TP "
+            f"(plan_trigger={lone_trigger}, expected_tp2={tp2_price}, plan_size={lone_size}, qty={qty})"
+        )
+
+        print(f"PLACE_TP2_PLAN -> symbol={symbol} hold_side={hold_side} qty={qty} trigger={tp2_price} live={LIVE_TRADING}")
+        if LIVE_TRADING:
+            bitget.place_pos_take_profit(
+                symbol=symbol,
+                hold_side=hold_side,
+                trigger_price=tp2_price,
+                size=qty,
+                client_oid=f"tp2-{symbol.replace('/', '').replace(':', '')}-{int(time.time()*1000)}",
+                trigger_type="fill_price",
+            )
+
+        final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+        log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
+        return
 
     # Case B: full split should exist on a fresh/full position
     tp1_match = _find_matching_plan(profit_plans, "profit_plan", tp1_price, qty1, "fill_price", price_tol) if qty1 > 0 else None
