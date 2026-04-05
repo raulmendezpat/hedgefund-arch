@@ -109,6 +109,13 @@ def position_side_from_qty(qty: float) -> str:
     return "flat"
 
 
+def is_flat_qty(qty: float, eps: float = 1.0e-12) -> bool:
+    try:
+        return abs(float(qty)) <= float(eps)
+    except Exception:
+        return True
+
+
 def refresh_current_qty(bitget, symbol: str, attempts: int = 3, sleep_seconds: float = 1.0) -> float:
     for attempt in range(1, attempts + 1):
         try:
@@ -896,6 +903,7 @@ for prefix, cfg in SYMBOLS.items():
         }
         print()
         continue
+        continue
 
     reducing_existing_position = False
     current_side = position_side_from_qty(current_qty)
@@ -964,7 +972,7 @@ for prefix, cfg in SYMBOLS.items():
     if abs(delta_notional) > cfg["max_delta_notional"] and reducing_existing_position:
         print("action: ALLOW reduce-only rebalance (above max_delta_notional but reducing risk)")
 
-    if current_qty > 0 and target_qty == 0:
+    if current_qty > 0 and is_flat_qty(target_qty):
         _effective_qty_override = None
         _action = "reduce_long"
         active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
@@ -977,6 +985,29 @@ for prefix, cfg in SYMBOLS.items():
                 f"reason=active_profit_plans count={len(active_profit_plans)} "
                 f"current_qty={current_qty} target_qty={target_qty}"
             )
+            try:
+                atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
+                print(
+                    f"protective_action: preserve current protection due to active TP "
+                    f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
+                )
+                ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
+            except Exception as e:
+                print(f"protective_action: skipped due to ATR/order error: {e}")
+
+            execution_snapshot[symbol] = {
+                "side": str(side),
+                "target_weight": float(target_weight),
+                "last": float(last),
+                "current_qty": float(current_qty),
+                "target_qty": float(target_qty),
+                "delta_qty": float(delta_qty),
+                "delta_notional": float(delta_notional),
+                "action": str(_action),
+                "blocked_reason": str(_blocked_reason),
+            }
+            print()
+            continue
         else:
             print(f"CLOSE_POSITION -> symbol={symbol} side=long live={LIVE_TRADING}")
             if LIVE_TRADING:
@@ -984,7 +1015,7 @@ for prefix, cfg in SYMBOLS.items():
                 current_qty = refresh_current_qty(bitget, symbol)
                 print(f"POSITION_AFTER_CLOSE -> symbol={symbol} qty={current_qty}")
 
-    elif current_qty < 0 and target_qty == 0:
+    elif current_qty < 0 and is_flat_qty(target_qty):
         _effective_qty_override = None
         _action = "reduce_short"
         active_profit_plans = [o for o in fetch_open_profit_loss_orders(bitget, symbol) if get_plan_type(o) == "profit_plan"]
@@ -997,6 +1028,29 @@ for prefix, cfg in SYMBOLS.items():
                 f"reason=active_profit_plans count={len(active_profit_plans)} "
                 f"current_qty={current_qty} target_qty={target_qty}"
             )
+            try:
+                atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
+                print(
+                    f"protective_action: preserve current protection due to active TP "
+                    f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
+                )
+                ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
+            except Exception as e:
+                print(f"protective_action: skipped due to ATR/order error: {e}")
+
+            execution_snapshot[symbol] = {
+                "side": str(side),
+                "target_weight": float(target_weight),
+                "last": float(last),
+                "current_qty": float(current_qty),
+                "target_qty": float(target_qty),
+                "delta_qty": float(delta_qty),
+                "delta_notional": float(delta_notional),
+                "action": str(_action),
+                "blocked_reason": str(_blocked_reason),
+            }
+            print()
+            continue
         else:
             print(f"CLOSE_POSITION -> symbol={symbol} side=short live={LIVE_TRADING}")
             if LIVE_TRADING:
@@ -1004,7 +1058,7 @@ for prefix, cfg in SYMBOLS.items():
                 current_qty = refresh_current_qty(bitget, symbol)
                 print(f"POSITION_AFTER_CLOSE -> symbol={symbol} qty={current_qty}")
 
-    elif current_qty == 0 or (current_qty > 0 and target_qty > 0) or (current_qty < 0 and target_qty < 0):
+    elif is_flat_qty(current_qty) or (current_qty > 0 and target_qty > 0) or (current_qty < 0 and target_qty < 0):
         _effective_qty_override = None
 
         if delta_qty > 0:
@@ -1057,6 +1111,7 @@ for prefix, cfg in SYMBOLS.items():
                     f"protective_action: preserve current protection due to active TP "
                     f"(symbol={symbol}, current_qty={current_qty}, target_qty={target_qty})"
                 )
+                print(f"TRACE_PRESERVE_PROTECTION -> symbol={symbol} blocked={_blocked_reason} action={_action}")
                 ensure_protective_orders(bitget, symbol, current_qty, last, atr, cfg)
             else:
                 effective_qty_for_protection = effective_qty
@@ -1103,7 +1158,14 @@ for prefix, cfg in SYMBOLS.items():
     effective_qty = target_qty
     try:
         atr = fetch_atr(bitget, symbol, cfg["timeframe"], cfg["ohlcv_limit"], cfg["atr_period"])
-        ensure_protective_orders(bitget, symbol, effective_qty, last, atr, cfg)
+        effective_qty_for_protection = effective_qty
+        if LIVE_TRADING:
+            refreshed_qty = refresh_current_qty(bitget, symbol, attempts=3, sleep_seconds=1.0)
+            if abs(refreshed_qty) > 1e-12:
+                effective_qty_for_protection = refreshed_qty
+            elif abs(current_qty) > 1e-12:
+                effective_qty_for_protection = current_qty
+        ensure_protective_orders(bitget, symbol, effective_qty_for_protection, last, atr, cfg)
     except Exception as e:
         print(f"protective_action: skipped due to ATR/order error: {e}")
 
