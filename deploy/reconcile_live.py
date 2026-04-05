@@ -200,6 +200,28 @@ def should_delay_flat_close(
     return False, count
 
 
+def fetch_live_qty_for_side(bitget, symbol: str, pos_side: str) -> float:
+    pos_side = str(pos_side).strip().lower()
+    try:
+        positions = bitget.fetch_open_positions(symbol) or []
+    except Exception as e:
+        print(f"FETCH_SIDE_QTY_WARN -> symbol={symbol} pos_side={pos_side} error={e}")
+        return 0.0
+
+    total = 0.0
+    for p in positions:
+        try:
+            side = str(p.get("side") or "").strip().lower()
+            contracts = float(p.get("contracts") or 0.0)
+        except Exception:
+            continue
+        if contracts <= 0:
+            continue
+        if side == pos_side:
+            total += contracts
+    return float(total)
+
+
 def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False):
     qty = float(qty)
     if qty <= 0:
@@ -212,6 +234,25 @@ def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = Fals
     except Exception as e:
         msg = str(e)
         if reduce and ("22002" in msg or "No position to close" in msg):
+            reduce_side = None
+            side_l = str(side).strip().lower()
+            if side_l == "buy":
+                reduce_side = "short"
+            elif side_l == "sell":
+                reduce_side = "long"
+
+            live_qty = fetch_live_qty_for_side(bitget, symbol, reduce_side) if reduce_side else 0.0
+            print(
+                f"ORDER_REDUCE_REJECT_CHECK -> symbol={symbol} order_side={side} "
+                f"reduce_side={reduce_side} requested_qty={qty} live_qty={live_qty}"
+            )
+
+            if live_qty > 1e-12:
+                raise RuntimeError(
+                    f"Reduce-only order rejected but exchange still shows live {reduce_side} position "
+                    f"for {symbol}: live_qty={live_qty}, requested_qty={qty}, raw_error={msg}"
+                ) from e
+
             print(f"ORDER_WARN -> benign reduce-only rejection for {symbol}: {msg}")
             return None
         raise
