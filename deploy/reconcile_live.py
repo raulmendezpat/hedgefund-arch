@@ -1260,6 +1260,10 @@ for prefix, cfg in SYMBOLS.items():
         "action": str(_action),
         "blocked_reason": str(_blocked_reason),
     }
+
+    if is_flat_qty(current_qty) and is_flat_qty(target_qty):
+        clear_hold_state_symbol(hold_state, symbol)
+
     print()
 
 
