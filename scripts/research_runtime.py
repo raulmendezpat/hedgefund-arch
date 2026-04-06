@@ -256,9 +256,13 @@ def _enrich_candidates_for_runtime(
     data_by_symbol,
     feature_series_by_symbol,
     disabled_strategy_side_pairs,
+    runtime_debug_counters=None,
 ):
     enriched_candidates = []
     disabled_candidates = []
+
+    if runtime_debug_counters is None:
+        runtime_debug_counters = {}
 
     for c in candidates or []:
         _c = context_enricher.enrich_candidate(
@@ -280,9 +284,57 @@ def _enrich_candidates_for_runtime(
             disabled_candidates.append(_c)
             continue
 
+        if _sid_now in {"btc_trend", "btc_trend_loose"} and _side_now == "short":
+            _sm = dict(getattr(_c, "signal_meta", {}) or {})
+            runtime_debug_counters["btc_short_guard_seen"] = int(runtime_debug_counters.get("btc_short_guard_seen", 0)) + 1
+
+            _ret_1h = _candidate_feature_value(_c, "ret_1h_lag", 0.0)
+            _ret_4h = _candidate_feature_value(_c, "ret_4h_lag", 0.0)
+            _dist_fast = _candidate_feature_value(_c, "dist_close_ema_fast", 0.0)
+
+            _block = False
+            _block_reasons = []
+
+            if _ret_1h > 0.0025 and _ret_4h > 0.0080:
+                _block = True
+                _block_reasons.append("btc_short_ret_1h_gt_0p0025_and_ret_4h_gt_0p0080")
+
+            if _ret_1h > 0.0025 and _dist_fast > 0.0050:
+                _block = True
+                _block_reasons.append("btc_short_ret_1h_gt_0p0025_and_dist_fast_gt_0p0050")
+
+            if _block:
+                runtime_debug_counters["btc_short_guard_blocked"] = int(runtime_debug_counters.get("btc_short_guard_blocked", 0)) + 1
+                _sm["reason"] = "guard_btc_short_recent_positive_momentum"
+                _sm["guard_btc_short_recent_positive_momentum"] = True
+                _sm["guard_btc_short_block_reasons"] = list(_block_reasons)
+                _sm["guard_ret_1h_lag"] = float(_ret_1h)
+                _sm["guard_ret_4h_lag"] = float(_ret_4h)
+                _c.signal_meta = _sm
+                disabled_candidates.append(_c)
+                continue
+
         enriched_candidates.append(_c)
 
     return enriched_candidates, disabled_candidates
+
+
+def _candidate_feature_value(candidate, key: str, default: float = 0.0) -> float:
+    sm = dict(getattr(candidate, "signal_meta", {}) or {})
+    meta = dict(getattr(candidate, "meta", {}) or {})
+
+    for src in (sm, meta):
+        if key in src:
+            try:
+                return float(src.get(key, default) or default)
+            except Exception:
+                pass
+
+    try:
+        v = getattr(candidate, key)
+        return float(v if v is not None else default)
+    except Exception:
+        return float(default)
 
 
 def _build_runtime_feature_rows(
@@ -547,6 +599,57 @@ def _candidate_observability_key(candidate) -> str:
     return f"{ts}|{symbol}|{strategy_id}|{side}"
 
 
+def _compute_btc_short_recent_positive_momentum_guard(
+    *,
+    candidate,
+    feature_row=None,
+    expanded_feature_row=None,
+):
+    sm = dict(getattr(candidate, "signal_meta", {}) or {})
+    _feature_map = dict(getattr(feature_row, "values", {}) or {})
+    _expanded_feature_map = dict(expanded_feature_row or {})
+
+    merged = {}
+    merged.update(_feature_map)
+    merged.update(_expanded_feature_map)
+    merged.update(sm)
+
+    def _f(v, default=0.0):
+        try:
+            if v is None:
+                return float(default)
+            return float(v)
+        except Exception:
+            return float(default)
+
+    strategy_id = str(getattr(candidate, "strategy_id", sm.get("strategy_id", "")) or "")
+    side = str(getattr(candidate, "side", sm.get("side", "")) or "").lower()
+
+    ret_1h = _f(merged.get("ret_1h_lag", 0.0))
+    ret_4h = _f(merged.get("ret_4h_lag", 0.0))
+    dist_fast = _f(merged.get("dist_close_ema_fast", 0.0))
+
+    guarded = False
+    block_reasons = []
+
+    if strategy_id in {"btc_trend", "btc_trend_loose"} and side == "short":
+        if ret_1h > 0.0025 and ret_4h > 0.0080:
+            guarded = True
+            block_reasons.append("ret1h_gt_0p0025_and_ret4h_gt_0p0080")
+
+        if ret_1h > 0.0025 and dist_fast > 0.0050:
+            guarded = True
+            block_reasons.append("ret1h_gt_0p0025_and_dist_fast_gt_0p0050")
+
+    return {
+        "guarded": bool(guarded),
+        "block_reasons": list(block_reasons),
+        "ret_1h_lag": float(ret_1h),
+        "ret_4h_lag": float(ret_4h),
+        "dist_close_ema_fast": float(dist_fast),
+    }
+
+
 def _build_runtime_candidate_row(
     *,
     candidate,
@@ -567,6 +670,14 @@ def _build_runtime_candidate_row(
     _feature_map = dict(getattr(feature_row, "values", {}) or {})
     _expanded_feature_map = dict(expanded_feature_row or {})
 
+    def _f(v, default=0.0):
+        try:
+            if v is None:
+                return float(default)
+            return float(v)
+        except Exception:
+            return float(default)
+
     candidate_key = _candidate_observability_key(candidate)
     trace_candidate_id = str(sm.get("trace_candidate_id", candidate_key) or candidate_key)
     selection_passed_stages = sm.get("selection_passed_stages", [])
@@ -576,9 +687,35 @@ def _build_runtime_candidate_row(
     selection_meta = dict(sm.get("selection_meta", {}) or {})
     best_per_symbol_meta = dict(selection_meta.get("best_per_symbol", {}) or {})
 
+    _guard_raw_reasons = sm.get("guard_btc_short_block_reasons", [])
+    if isinstance(_guard_raw_reasons, list):
+        _guard_btc_short_block_reasons = [str(x) for x in _guard_raw_reasons if str(x)]
+    elif isinstance(_guard_raw_reasons, str):
+        _guard_btc_short_block_reasons = [x for x in _guard_raw_reasons.split("|") if x]
+    else:
+        _guard_btc_short_block_reasons = []
+
+    _ret_1h_lag = float(sm.get("guard_ret_1h_lag", 0.0) or 0.0)
+    _ret_4h_lag = float(sm.get("guard_ret_4h_lag", 0.0) or 0.0)
+    _dist_close_ema_fast = float(sm.get("guard_dist_close_ema_fast", 0.0) or 0.0)
+    _guard_btc_short_recent_positive_momentum = bool(
+        sm.get("guard_btc_short_recent_positive_momentum", False)
+    )
+
+    _selected_final = bool(selected_final)
+    _selected_after_prod_selection = bool(selected_after_prod_selection)
+    _survived_selection_pipeline = bool(survived_selection_pipeline)
+
+    _reason = str(sm.get("reason", getattr(decision, "reason", "")) or "")
+
     return {
         "candidate_key": candidate_key,
         "trace_candidate_id": trace_candidate_id,
+        "guard_btc_short_recent_positive_momentum": bool(_guard_btc_short_recent_positive_momentum),
+        "guard_btc_short_block_reasons": "|".join(_guard_btc_short_block_reasons),
+        "guard_ret_1h_lag": float(_ret_1h_lag),
+        "guard_ret_4h_lag": float(_ret_4h_lag),
+        "guard_dist_close_ema_fast": float(_dist_close_ema_fast),
         "portfolio_regime": portfolio_context.get("portfolio_regime"),
         "portfolio_breadth": portfolio_context.get("portfolio_breadth"),
         "portfolio_avg_pwin": portfolio_context.get("portfolio_avg_pwin"),
@@ -608,7 +745,7 @@ def _build_runtime_candidate_row(
         "accept": getattr(decision, "accept", False),
         "size_mult": getattr(decision, "size_mult", 0.0),
         "band": getattr(decision, "band", ""),
-        "reason": getattr(decision, "reason", ""),
+        "reason": _reason,
         "policy_score": getattr(decision, "policy_score", 0.0),
         "policy_size_mult": float(sm.get("policy_size_mult", getattr(decision, "size_mult", 0.0)) or 0.0),
         "policy_reason": str(sm.get("policy_reason", getattr(decision, "reason", "")) or ""),
@@ -621,7 +758,7 @@ def _build_runtime_candidate_row(
         "selection_passed_stages": "|".join(selection_passed_stages),
         "selection_passed_stage_count": len(selection_passed_stages),
         "entered_selection_pipeline": bool(entered_selection_pipeline),
-        "survived_selection_pipeline": bool(survived_selection_pipeline),
+        "survived_selection_pipeline": _survived_selection_pipeline,
         "best_per_symbol_winner": bool(best_per_symbol_meta.get("winner", False)),
         "best_per_symbol_kept": bool(best_per_symbol_meta.get("kept", False)),
         "best_per_symbol_rank": int(best_per_symbol_meta.get("rank", -1) or -1),
@@ -637,8 +774,8 @@ def _build_runtime_candidate_row(
         "best_per_symbol_win_margin": float(best_per_symbol_meta.get("win_margin", 0.0) or 0.0),
         "best_per_symbol_reason": str(best_per_symbol_meta.get("reason", "") or ""),
         "selected_after_pipeline": bool(survived_selection_pipeline),
-        "selected_after_prod_selection": bool(selected_after_prod_selection),
-        "selected_final": bool(selected_final),
+        "selected_after_prod_selection": _selected_after_prod_selection,
+        "selected_final": _selected_final,
         "adx": sm.get("adx", mm_meta.get("adx", 0.0)),
         "atrp": sm.get("atrp", mm_meta.get("atrp", 0.0)),
         "rsi": sm.get("rsi", mm_meta.get("rsi", 0.0)),
@@ -1630,6 +1767,11 @@ def main() -> None:
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
     selection_trace_path = Path(f"results/selection_trace_{str(args.name)}.jsonl")
+
+    runtime_debug_counters = {
+        "btc_short_guard_seen": 0,
+        "btc_short_guard_blocked": 0,
+    }
     selection_pipeline = SelectionPipelineFactory.build(
         config=selection_cfg,
         profile=str(args.selection_policy_profile),
@@ -1781,6 +1923,7 @@ def main() -> None:
     lifecycle_equity_rows = []
     lifecycle_open_rows = []
     lifecycle_event_rows = []
+    shadow_entry_audit_rows = []
     alloc_trace_path = Path(f"results/allocation_trace_{str(args.name)}.jsonl")
     if alloc_trace_path.exists():
         alloc_trace_path.unlink()
@@ -1815,6 +1958,7 @@ def main() -> None:
             data_by_symbol=data_by_symbol,
             feature_series_by_symbol=feature_series_by_symbol,
             disabled_strategy_side_pairs=disabled_strategy_side_pairs,
+            runtime_debug_counters=runtime_debug_counters,
         )
 
         portfolio_context = build_portfolio_context(enriched_candidates, score_mode="early")
@@ -1956,6 +2100,40 @@ def main() -> None:
                 "enabled": False,
                 "selection_mode": "research",
             }
+
+        _guarded_selected_candidates = []
+        _btc_short_guard_blocked_selected = []
+
+        for _c in list(selected_candidates or []):
+            _sm = dict(getattr(_c, "signal_meta", {}) or {})
+
+            _guard_info = _compute_btc_short_recent_positive_momentum_guard(
+                candidate=_c,
+                feature_row=None,
+                expanded_feature_row=None,
+            )
+
+            _block = bool(_guard_info["guarded"])
+            _block_reasons = list(_guard_info["block_reasons"])
+            _ret_1h = float(_guard_info["ret_1h_lag"])
+            _ret_4h = float(_guard_info["ret_4h_lag"])
+            _dist_fast = float(_guard_info["dist_close_ema_fast"])
+
+            if _block:
+                _sm["reason"] = "guard_btc_short_recent_positive_momentum"
+                _sm["guard_btc_short_recent_positive_momentum"] = True
+                _sm["guard_btc_short_block_reasons"] = list(_block_reasons)
+                _sm["guard_ret_1h_lag"] = float(_ret_1h)
+                _sm["guard_ret_4h_lag"] = float(_ret_4h)
+                _sm["guard_dist_close_ema_fast"] = float(_dist_fast)
+                _c.signal_meta = _sm
+                _btc_short_guard_blocked_selected.append(_c)
+                continue
+
+            _guarded_selected_candidates.append(_c)
+
+        selected_candidates = list(_guarded_selected_candidates or [])
+        selection_meta["btc_short_guard_blocked_selected"] = int(len(_btc_short_guard_blocked_selected))
 
         selected_after_prod_selection_keys = {
             _candidate_observability_key(c)
@@ -2128,7 +2306,23 @@ def main() -> None:
         if not bool(getattr(args, "enable_target_position_lifecycle", False)):
             # legacy shadow entries second
             opened_symbols = set()
-            for c in selected_candidates:
+
+            selected_candidates_for_entry = []
+            blocked_selected_candidates_for_entry = []
+
+            for _entry_c in list(selected_candidates or []):
+                _entry_sm = dict(getattr(_entry_c, "signal_meta", {}) or {})
+                _entry_guarded = bool(_entry_sm.get("guard_btc_short_recent_positive_momentum", False))
+                if _entry_guarded:
+                    blocked_selected_candidates_for_entry.append(_entry_c)
+                    continue
+                selected_candidates_for_entry.append(_entry_c)
+
+            selection_meta["entry_loop_selected_candidates_in"] = int(len(list(selected_candidates or [])))
+            selection_meta["entry_loop_selected_candidates_blocked"] = int(len(blocked_selected_candidates_for_entry))
+            selection_meta["entry_loop_selected_candidates_used"] = int(len(selected_candidates_for_entry))
+
+            for c in selected_candidates_for_entry:
                 sym = str(getattr(c, "symbol", "") or "")
                 strategy_id = str(getattr(c, "strategy_id", "") or "")
 
@@ -2209,6 +2403,77 @@ def main() -> None:
                 fee = notional * lifecycle_engine.maker_fee
                 lifecycle_balance -= fee
 
+                _c_signal_meta = dict(getattr(c, "signal_meta", {}) or {})
+                _c_meta = dict(getattr(c, "meta", {}) or {})
+                _entry_ts_for_trace = int(pd.to_numeric(df.iloc[i]["timestamp"], errors="coerce"))
+                _trace_candidate_id = str(
+                    _c_signal_meta.get(
+                        "trace_candidate_id",
+                        _c_meta.get(
+                            "trace_candidate_id",
+                            f"{_entry_ts_for_trace}|{sym}|{strategy_id}|{side}",
+                        ),
+                    ) or f"{_entry_ts_for_trace}|{sym}|{strategy_id}|{side}"
+                )
+                _c_signal_meta["trace_candidate_id"] = _trace_candidate_id
+
+                for _k in [
+                    "policy_reason",
+                    "signal_strength",
+                    "score",
+                    "p_win",
+                    "policy_score",
+                    "policy_size_mult",
+                    "competitive_score",
+                    "post_ml_score",
+                    "post_ml_competitive_score",
+                    "portfolio_regime",
+                ]:
+                    if _k not in _c_signal_meta and _k in _c_meta:
+                        _c_signal_meta[_k] = _c_meta.get(_k)
+
+                _entry_obs_key = _candidate_observability_key(c)
+                _entry_guard_info = _compute_btc_short_recent_positive_momentum_guard(
+                    candidate=c,
+                    feature_row=None,
+                    expanded_feature_row=None,
+                )
+                _entry_guarded = bool(_entry_guard_info["guarded"])
+                if _entry_guarded:
+                    _c_signal_meta["guard_btc_short_recent_positive_momentum"] = True
+                    _c_signal_meta["guard_btc_short_block_reasons"] = list(_entry_guard_info["block_reasons"])
+                    _c_signal_meta["guard_ret_1h_lag"] = float(_entry_guard_info["ret_1h_lag"])
+                    _c_signal_meta["guard_ret_4h_lag"] = float(_entry_guard_info["ret_4h_lag"])
+                    _c_signal_meta["guard_dist_close_ema_fast"] = float(_entry_guard_info["dist_close_ema_fast"])
+                _entry_selected_after_prod = bool(_entry_obs_key in selected_after_prod_selection_keys)
+
+                _audit_row = {
+                    "ts": str(ts),
+                    "symbol": str(sym),
+                    "strategy_id": str(strategy_id),
+                    "side": str(side),
+                    "trace_candidate_id": str(_trace_candidate_id),
+                    "entry_obs_key": str(_entry_obs_key),
+                    "selected_after_prod": bool(_entry_selected_after_prod),
+                    "guarded": bool(_entry_guarded),
+                    "target_weight": float(target_weight),
+                    "opened": False,
+                    "blocked_reason": "",
+                }
+
+                if (not _entry_selected_after_prod) or _entry_guarded:
+                    _dbg["reason"] = "blocked_before_open"
+                    _dbg["blocked_selected_after_prod"] = bool(_entry_selected_after_prod)
+                    _dbg["blocked_guard"] = bool(_entry_guarded)
+                    _dbg["trace_candidate_id"] = str(_trace_candidate_id)
+                    _audit_row["blocked_reason"] = "blocked_before_open"
+                    shadow_entry_audit_rows.append(_audit_row)
+                    shadow_entry_debug[sym] = _dbg
+                    continue
+
+                _audit_row["opened"] = True
+                shadow_entry_audit_rows.append(_audit_row)
+
                 lifecycle_engine.open_position(
                     symbol=sym,
                     strategy_id=strategy_id,
@@ -2222,7 +2487,8 @@ def main() -> None:
                     entry_strength=_f(getattr(c, "signal_strength", 0.0), 0.0),
                     entry_reason="shadow_allocator_target_weight",
                     entry_meta={
-                        "signal_meta": dict(getattr(c, "signal_meta", {}) or {}),
+                        "signal_meta": _c_signal_meta,
+                        "trace_candidate_id": _trace_candidate_id,
                         "cooldown_after_close_bars": int(getattr(args, "shadow_cooldown_after_close_bars", 1) or 0),
                         "trace_target_weight": float(target_weight),
                         "entry_notional_frac": float(notional_frac),
@@ -2402,50 +2668,58 @@ def main() -> None:
 
     out_df.to_csv(out_csv, index=False)
     pd.DataFrame(candidate_rows).to_csv(out_candidates_csv, index=False)
-    lifecycle_trades_df = pd.DataFrame([{
-        "symbol": t.symbol,
-        "strategy_id": t.strategy_id,
-        "side": t.side,
-        "entry_ts": t.entry_ts,
-        "exit_ts": t.exit_ts,
-        "entry_px": t.entry_px,
-        "exit_px": t.exit_px,
-        "qty": t.qty,
-        "pnl": t.pnl,
-        "exit_reason": t.exit_reason,
-        "fee": t.fee,
-        "bars_held": t.bars_held,
-        "entry_adx": t.entry_adx,
-        "entry_atrp": t.entry_atrp,
-        "entry_atr": t.entry_atr,
-        "trace_candidate_id": str(dict((t.meta or {}).get("signal_meta", {}) or {}).get("trace_candidate_id", "")),
-        "entry_reason": str(dict(t.meta or {}).get("signal_meta", {}).get("policy_reason", "")),
-        "entry_strength": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("signal_strength", 0.0) or 0.0),
-        "entry_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("score", 0.0) or 0.0),
-        "entry_p_win": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("p_win", 0.0) or 0.0),
-        "entry_policy_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("policy_score", 0.0) or 0.0),
-        "entry_policy_size_mult": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("policy_size_mult", 0.0) or 0.0),
-        "entry_competitive_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("competitive_score", 0.0) or 0.0),
-        "entry_post_ml_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("post_ml_score", 0.0) or 0.0),
-        "entry_post_ml_competitive_score": float(dict((t.meta or {}).get("signal_meta", {}) or {}).get("post_ml_competitive_score", 0.0) or 0.0),
-        "entry_target_weight": float(dict(t.meta or {}).get("trace_target_weight", 0.0) or 0.0),
-        "entry_notional_frac": float(dict(t.meta or {}).get("entry_notional_frac", 0.0) or 0.0),
-        "entry_portfolio_regime": str(dict((t.meta or {}).get("signal_meta", {}) or {}).get("portfolio_regime", "")),
-    } for t in lifecycle_engine.trade_log])
+    lifecycle_trade_rows = []
+    for t in lifecycle_engine.trade_log:
+        _meta = dict(t.meta or {})
+        _sm = dict(_meta.get("signal_meta", {}) or {})
+        lifecycle_trade_rows.append({
+            "symbol": t.symbol,
+            "strategy_id": t.strategy_id,
+            "side": t.side,
+            "entry_ts": t.entry_ts,
+            "exit_ts": t.exit_ts,
+            "entry_px": t.entry_px,
+            "exit_px": t.exit_px,
+            "qty": t.qty,
+            "pnl": t.pnl,
+            "exit_reason": t.exit_reason,
+            "fee": t.fee,
+            "bars_held": t.bars_held,
+            "entry_adx": t.entry_adx,
+            "entry_atrp": t.entry_atrp,
+            "entry_atr": t.entry_atr,
+            "trace_candidate_id": str(_sm.get("trace_candidate_id", _meta.get("trace_candidate_id", ""))),
+            "entry_reason": str(_sm.get("policy_reason", _meta.get("policy_reason", _meta.get("entry_reason", "")))),
+            "entry_strength": float(_sm.get("signal_strength", _meta.get("signal_strength", 0.0)) or 0.0),
+            "entry_score": float(_sm.get("score", _meta.get("score", 0.0)) or 0.0),
+            "entry_p_win": float(_sm.get("p_win", _meta.get("p_win", 0.0)) or 0.0),
+            "entry_policy_score": float(_sm.get("policy_score", _meta.get("policy_score", 0.0)) or 0.0),
+            "entry_policy_size_mult": float(_sm.get("policy_size_mult", _meta.get("policy_size_mult", 0.0)) or 0.0),
+            "entry_competitive_score": float(_sm.get("competitive_score", _meta.get("competitive_score", 0.0)) or 0.0),
+            "entry_post_ml_score": float(_sm.get("post_ml_score", _meta.get("post_ml_score", 0.0)) or 0.0),
+            "entry_post_ml_competitive_score": float(_sm.get("post_ml_competitive_score", _meta.get("post_ml_competitive_score", 0.0)) or 0.0),
+            "entry_target_weight": float(_meta.get("trace_target_weight", 0.0) or 0.0),
+            "entry_notional_frac": float(_meta.get("entry_notional_frac", 0.0) or 0.0),
+            "entry_portfolio_regime": str(_sm.get("portfolio_regime", _meta.get("portfolio_regime", ""))),
+        })
+    lifecycle_trades_df = pd.DataFrame(lifecycle_trade_rows)
     lifecycle_equity_df = pd.DataFrame(lifecycle_equity_rows)
     lifecycle_open_df = pd.DataFrame(lifecycle_open_rows)
     lifecycle_events_df = pd.DataFrame(lifecycle_event_rows)
+    shadow_entry_audit_df = pd.DataFrame(shadow_entry_audit_rows)
 
     lifecycle_trades_csv = Path(f"results/research_runtime_lifecycle_trades_{args.name}.csv")
     lifecycle_equity_csv = Path(f"results/research_runtime_lifecycle_equity_{args.name}.csv")
     lifecycle_open_csv = Path(f"results/research_runtime_lifecycle_open_positions_{args.name}.csv")
     lifecycle_events_csv = Path(f"results/research_runtime_lifecycle_events_{args.name}.csv")
+    shadow_entry_audit_csv = Path(f"results/research_runtime_shadow_entry_audit_{args.name}.csv")
     lifecycle_metrics_json = Path(f"results/research_runtime_lifecycle_metrics_{args.name}.json")
 
     lifecycle_trades_df.to_csv(lifecycle_trades_csv, index=False)
     lifecycle_equity_df.to_csv(lifecycle_equity_csv, index=False)
     lifecycle_open_df.to_csv(lifecycle_open_csv, index=False)
     lifecycle_events_df.to_csv(lifecycle_events_csv, index=False)
+    shadow_entry_audit_df.to_csv(shadow_entry_audit_csv, index=False)
 
     lifecycle_metrics = _build_lifecycle_metrics(lifecycle_trades_df, lifecycle_equity_df)
     lifecycle_metrics_json.write_text(json.dumps(lifecycle_metrics, indent=2), encoding="utf-8")
@@ -2454,6 +2728,7 @@ def main() -> None:
     print(f"saved: {lifecycle_equity_csv}")
     print(f"saved: {lifecycle_open_csv}")
     print(f"saved: {lifecycle_events_csv}")
+    print(f"saved: {shadow_entry_audit_csv}")
     print(f"saved: {lifecycle_metrics_json}")
 
 
@@ -2473,6 +2748,18 @@ def main() -> None:
     print(f"saved: {out_csv}")
     print(f"saved: {out_candidates_csv}")
     print(f"saved: {out_json}")
+    print("runtime_debug_counters:", runtime_debug_counters)
+    try:
+        print(
+            "entry_loop_debug:",
+            {
+                "selected_candidates_in": selection_meta.get("entry_loop_selected_candidates_in", 0),
+                "selected_candidates_blocked": selection_meta.get("entry_loop_selected_candidates_blocked", 0),
+                "selected_candidates_used": selection_meta.get("entry_loop_selected_candidates_used", 0),
+            },
+        )
+    except Exception:
+        pass
     print("\n=== METRICS ===")
     for k, v in metrics.items():
         print(f"{k}: {v}")
