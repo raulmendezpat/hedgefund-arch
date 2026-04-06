@@ -550,6 +550,27 @@ class TargetPositionLifecycleEngine:
             )
 
         if abs_tgt > abs_prev:
+            block_increase_due_to_active_tp = bool(
+                meta.get("block_increase_due_to_active_tp", meta.get("has_active_profit_plans", False))
+            )
+            if block_increase_due_to_active_tp and prev_side == tgt_side and prev_side in {"long", "short"}:
+                return LifecycleAction(
+                    action="hold",
+                    symbol=symbol,
+                    strategy_id=strategy_id,
+                    family=family,
+                    side=tgt_side,
+                    reason="blocked_increase_due_to_active_tp",
+                    prev_weight=prev_w,
+                    target_weight=tgt_w,
+                    delta_weight=delta,
+                    meta={
+                        **meta,
+                        "blocked_reason": "active_profit_plans",
+                        "blocked_same_side_increase": True,
+                    },
+                )
+
             return LifecycleAction(
                 action="increase",
                 symbol=symbol,
