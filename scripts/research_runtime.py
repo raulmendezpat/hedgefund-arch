@@ -1435,6 +1435,8 @@ def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str
     portfolio_regime = ""
     portfolio_breadth = 0.0
     portfolio_avg_pwin = 0.0
+    has_active_profit_plans = False
+    block_increase_due_to_active_tp = False
 
     for c in selected_candidates:
         if str(getattr(c, "symbol", "") or "") != str(symbol):
@@ -1463,6 +1465,12 @@ def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str
         portfolio_regime = str(sm.get("portfolio_regime", "") or "")
         portfolio_breadth = float(sm.get("portfolio_breadth", 0.0) or 0.0)
         portfolio_avg_pwin = float(sm.get("portfolio_avg_pwin", 0.0) or 0.0)
+        has_active_profit_plans = bool(
+            sm.get("has_active_profit_plans", sm.get("active_profit_plans", False))
+        )
+        block_increase_due_to_active_tp = bool(
+            sm.get("block_increase_due_to_active_tp", has_active_profit_plans)
+        )
         break
 
     return {
@@ -1483,6 +1491,8 @@ def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str
         "portfolio_regime": str(portfolio_regime),
         "portfolio_breadth": float(portfolio_breadth),
         "portfolio_avg_pwin": float(portfolio_avg_pwin),
+        "has_active_profit_plans": bool(has_active_profit_plans),
+        "block_increase_due_to_active_tp": bool(block_increase_due_to_active_tp),
         "context_source": "research_runtime_shadow",
     }
 
@@ -2329,6 +2339,96 @@ def main() -> None:
                 )
 
         shadow_entry_debug = {}
+
+        # defensive cleanup: if runtime target is flat and a stale shadow position
+        # survives, force-close it so lifecycle state cannot drift from runtime/live
+        stale_shadow_cleanup_rows = []
+        for _sym in list(symbols or []):
+            _desired_w = float(desired_weights.get(_sym, 0.0) or 0.0)
+            _pos = lifecycle_engine.get_open_position(_sym)
+            if _pos is None:
+                continue
+
+            if abs(_desired_w) > 1e-12:
+                continue
+
+            _df = data_by_symbol[_sym]
+            _i = _df.index.get_loc(ts)
+            if _i <= 0:
+                continue
+
+            _current_raw = _df.iloc[_i]
+            _current_bar = dict(_current_raw.to_dict())
+            _current_bar["timestamp"] = int(pd.to_numeric(_current_raw["timestamp"], errors="coerce"))
+
+            _prev_raw = _df.iloc[_i - 1]
+            _prev_bar = dict(_prev_raw.to_dict())
+            _prev_bar["timestamp"] = int(pd.to_numeric(_prev_raw["timestamp"], errors="coerce"))
+
+            for _feat_name, _feat_series in feature_series_by_symbol[_sym].items():
+                try:
+                    _prev_bar[_feat_name] = float(_feat_series.iloc[_i - 1])
+                except Exception:
+                    pass
+                try:
+                    _current_bar[_feat_name] = float(_feat_series.iloc[_i])
+                except Exception:
+                    pass
+
+            _stale_side = str(getattr(_pos, "side", "") or "").lower()
+            _stale_qty = float(getattr(_pos, "qty", 0.0) or 0.0)
+            _stale_entry_px = float(getattr(_pos, "entry_px", 0.0) or 0.0)
+            _stale_bars_held = int(getattr(_pos, "bars_held", 0) or 0)
+            _stale_strategy_id = str(getattr(_pos, "strategy_id", "") or "")
+
+            _decision = lifecycle_engine.evaluate_exit(
+                symbol=_sym,
+                prev_bar=_prev_bar,
+                current_bar=_current_bar,
+                exit_policy_cfg={"sl_mult": 0.0, "tp_mult": 0.0, "time_stop_bars": 0},
+                context={
+                    "target_weight": 0.0,
+                    "signal_side": "flat",
+                    "strategy_id": _stale_strategy_id,
+                    "ctx_exit_profile": "force_flat_cleanup",
+                    "ctx_tp_mult": 0.0,
+                    "ctx_sl_mult": 0.0,
+                    "ctx_time_stop_bars": 0,
+                },
+                exit_ts=int(_current_bar["timestamp"]),
+            )
+
+            if str(getattr(_decision, "action", "")).lower() == "close":
+                _rec = lifecycle_engine.trade_log[-1]
+                lifecycle_balance += float(_rec.pnl)
+                lifecycle_event_rows.append(
+                    {
+                        "ts": str(ts),
+                        "symbol": _sym,
+                        "strategy_id": _stale_strategy_id,
+                        "event": "exit",
+                        "side": _stale_side,
+                        "exit_reason": "stale_shadow_cleanup",
+                        "entry_px": _rec.entry_px,
+                        "exit_px": _rec.exit_px,
+                        "qty": _rec.qty,
+                        "pnl": _rec.pnl,
+                        "bars_held": _rec.bars_held,
+                    }
+                )
+                stale_shadow_cleanup_rows.append(
+                    {
+                        "ts": str(ts),
+                        "symbol": _sym,
+                        "strategy_id": _stale_strategy_id,
+                        "side": _stale_side,
+                        "qty": _stale_qty,
+                        "entry_px": _stale_entry_px,
+                        "bars_held": _stale_bars_held,
+                        "cleanup_reason": "desired_weight_zero_with_stale_open_position",
+                    }
+                )
+
         if not bool(getattr(args, "enable_target_position_lifecycle", False)):
             # legacy shadow entries second
             opened_symbols = set()
@@ -2495,6 +2595,44 @@ def main() -> None:
                     _audit_row["blocked_reason"] = "blocked_before_open"
                     shadow_entry_audit_rows.append(_audit_row)
                     shadow_entry_debug[sym] = _dbg
+                    continue
+
+                _existing_pos = lifecycle_engine.get_open_position(sym)
+                _existing_side = str(getattr(_existing_pos, "side", "") or "").lower()
+                _existing_weight = float(getattr(_existing_pos, "target_weight", 0.0) or 0.0) if _existing_pos is not None else 0.0
+
+                _block_increase_due_to_active_tp = bool(
+                    _c_signal_meta.get(
+                        "block_increase_due_to_active_tp",
+                        _c_signal_meta.get("has_active_profit_plans", _c_signal_meta.get("active_profit_plans", False)),
+                    )
+                )
+
+                _same_side_increase_blocked = False
+                if _existing_pos is not None and _existing_side == str(side).lower():
+                    if _existing_side == "long" and float(target_weight) > float(_existing_weight):
+                        _same_side_increase_blocked = _block_increase_due_to_active_tp
+                    elif _existing_side == "short" and abs(float(target_weight)) > abs(float(_existing_weight)):
+                        _same_side_increase_blocked = _block_increase_due_to_active_tp
+
+                if _same_side_increase_blocked:
+                    _dbg["opened"] = False
+                    _dbg["reason"] = "blocked_increase_due_to_active_tp"
+                    _dbg["blocked_reason"] = "active_profit_plans"
+                    _dbg["existing_side"] = str(_existing_side)
+                    _dbg["existing_weight"] = float(_existing_weight)
+                    _dbg["requested_target_weight"] = float(target_weight)
+
+                    _audit_row["opened"] = False
+                    _audit_row["blocked_reason"] = "active_profit_plans"
+                    _audit_row["reason"] = "blocked_increase_due_to_active_tp"
+                    shadow_entry_audit_rows.append(_audit_row)
+                    shadow_entry_debug[sym] = _dbg
+
+                    print(
+                        f"SHADOW_BLOCK_INCREASE_DUE_TO_TP -> symbol={sym} side={side} "
+                        f"existing_weight={_existing_weight} target_weight={target_weight}"
+                    )
                     continue
 
                 _audit_row["opened"] = True
@@ -2733,12 +2871,14 @@ def main() -> None:
     lifecycle_open_df = pd.DataFrame(lifecycle_open_rows)
     lifecycle_events_df = pd.DataFrame(lifecycle_event_rows)
     shadow_entry_audit_df = pd.DataFrame(shadow_entry_audit_rows)
+    stale_shadow_cleanup_df = pd.DataFrame(stale_shadow_cleanup_rows)
 
     lifecycle_trades_csv = Path(f"results/research_runtime_lifecycle_trades_{args.name}.csv")
     lifecycle_equity_csv = Path(f"results/research_runtime_lifecycle_equity_{args.name}.csv")
     lifecycle_open_csv = Path(f"results/research_runtime_lifecycle_open_positions_{args.name}.csv")
     lifecycle_events_csv = Path(f"results/research_runtime_lifecycle_events_{args.name}.csv")
     shadow_entry_audit_csv = Path(f"results/research_runtime_shadow_entry_audit_{args.name}.csv")
+    stale_shadow_cleanup_csv = Path(f"results/research_runtime_stale_shadow_cleanup_{args.name}.csv")
     lifecycle_metrics_json = Path(f"results/research_runtime_lifecycle_metrics_{args.name}.json")
 
     lifecycle_trades_df.to_csv(lifecycle_trades_csv, index=False)
@@ -2746,6 +2886,7 @@ def main() -> None:
     lifecycle_open_df.to_csv(lifecycle_open_csv, index=False)
     lifecycle_events_df.to_csv(lifecycle_events_csv, index=False)
     shadow_entry_audit_df.to_csv(shadow_entry_audit_csv, index=False)
+    stale_shadow_cleanup_df.to_csv(stale_shadow_cleanup_csv, index=False)
 
     lifecycle_metrics = _build_lifecycle_metrics(lifecycle_trades_df, lifecycle_equity_df)
     lifecycle_metrics_json.write_text(json.dumps(lifecycle_metrics, indent=2), encoding="utf-8")
@@ -2755,6 +2896,7 @@ def main() -> None:
     print(f"saved: {lifecycle_open_csv}")
     print(f"saved: {lifecycle_events_csv}")
     print(f"saved: {shadow_entry_audit_csv}")
+    print(f"saved: {stale_shadow_cleanup_csv}")
     print(f"saved: {lifecycle_metrics_json}")
 
 
