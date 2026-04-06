@@ -4,6 +4,7 @@ import argparse
 import json
 import time
 from pathlib import Path
+from hf_core.pwin_asset_side_helper import override_candidate_pwin
 
 import numpy as np
 import pandas as pd
@@ -430,6 +431,23 @@ def _apply_runtime_prod_score_semantics(
     sm0 = dict(getattr(candidate, "signal_meta", {}) or {})
     _p_ml_raw = float(getattr(score_obj, "p_win", 0.0) or 0.0)
 
+    _asset_side_override = override_candidate_pwin(
+        candidate,
+        fallback=float(_p_ml_raw),
+    )
+    _asset_side_override_applied = bool(_asset_side_override.get("applied", False))
+    _asset_side_override_p = _asset_side_override.get("p_win_final", _p_ml_raw)
+    _p_ml_raw = float(_asset_side_override_p if _asset_side_override_p is not None else _p_ml_raw)
+
+    sm0["p_win_asset_side_override_enabled"] = bool(_asset_side_override.get("enabled", False))
+    sm0["p_win_asset_side_override_applied"] = bool(_asset_side_override_applied)
+    sm0["p_win_asset_side_override_reason"] = str(_asset_side_override.get("reason", "") or "")
+    sm0["p_win_asset_side_override_group_key"] = str(_asset_side_override.get("group_key", "") or "")
+    sm0["p_win_asset_side_override_model_name"] = str(_asset_side_override.get("model_name", "") or "")
+    sm0["p_win_asset_side_override_registry_version"] = str(_asset_side_override.get("registry_version", "") or "")
+    sm0["p_win_ml_raw_pre_asset_side_override"] = float(getattr(score_obj, "p_win", 0.0) or 0.0)
+    sm0["p_win_ml_raw_post_asset_side_override"] = float(_p_ml_raw)
+
     _p_cal = _calibrate_runtime_pwin(
         float(_p_ml_raw),
         mode=str(getattr(args, "pwin_calibration_mode", "off")),
@@ -730,6 +748,14 @@ def _build_runtime_candidate_row(
         "base_weight": candidate.base_weight,
         "p_win": float(sm.get("p_win", getattr(score_obj, "p_win", 0.0)) or 0.0),
         "p_win_base": float(sm.get("p_win_base", getattr(score_obj, "p_win", 0.0)) or 0.0),
+        "p_win_ml_raw_pre_asset_side_override": float(sm.get("p_win_ml_raw_pre_asset_side_override", float("nan"))),
+        "p_win_ml_raw_post_asset_side_override": float(sm.get("p_win_ml_raw_post_asset_side_override", float("nan"))),
+        "p_win_asset_side_override_enabled": bool(sm.get("p_win_asset_side_override_enabled", False)),
+        "p_win_asset_side_override_applied": bool(sm.get("p_win_asset_side_override_applied", False)),
+        "p_win_asset_side_override_reason": str(sm.get("p_win_asset_side_override_reason", "") or ""),
+        "p_win_asset_side_override_group_key": str(sm.get("p_win_asset_side_override_group_key", "") or ""),
+        "p_win_asset_side_override_model_name": str(sm.get("p_win_asset_side_override_model_name", "") or ""),
+        "p_win_asset_side_override_registry_version": str(sm.get("p_win_asset_side_override_registry_version", "") or ""),
         "p_win_math_v1": float(sm.get("p_win_math_v1", float("nan"))),
         "p_win_math_v2": float(sm.get("p_win_math_v2", float("nan"))),
         "p_win_math_v3": float(sm.get("p_win_math_v3", float("nan"))),
