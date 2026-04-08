@@ -20,9 +20,9 @@ class SelectionPipeline:
             meta_opp = dict(getattr(c, "opportunity_meta", {}) or {})
 
             meta = {}
-            meta.update(meta_signal)
             meta.update(meta_plain)
             meta.update(meta_opp)
+            meta.update(meta_signal)
 
             rows.append(
                 SelectionRow(
@@ -112,9 +112,9 @@ class SelectionPipeline:
             meta_opp = dict(getattr(c, "opportunity_meta", {}) or {})
 
             meta = {}
-            meta.update(meta_signal)
             meta.update(meta_plain)
             meta.update(meta_opp)
+            meta.update(meta_signal)
 
             rows.append(
                 SelectionRow(
