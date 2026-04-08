@@ -58,7 +58,6 @@ class MarketGuardStage:
             mode = str(gcfg.get("mode", "observe_only") or "observe_only").lower()
             allowed_sides = list(gcfg.get("allowed_sides", ["long", "short"]) or ["long", "short"])
 
-            min_adx = _safe_float(gcfg.get("min_adx", 0.0), 0.0)
             min_ema_gap = _safe_float(gcfg.get("min_ema_gap", 0.0), 0.0)
             ema_gap_field = str(gcfg.get("ema_gap_field", "ema_gap_fast_slow") or "ema_gap_fast_slow")
 

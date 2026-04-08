@@ -125,6 +125,10 @@ class AssetContextEnricher:
         atrp_s = feature_map.get("atrp")
         rsi_s = feature_map.get("rsi")
         bb_width_s = feature_map.get("bb_width")
+        bb_low_s = feature_map.get("bb_low")
+        bb_up_s = feature_map.get("bb_up")
+        donchian_high_s = feature_map.get("donchian_high")
+        donchian_low_s = feature_map.get("donchian_low")
         range_exp_s = feature_map.get("range_expansion")
 
         ema_fast = _safe_loc(ema_fast_s, ts, 0.0)
@@ -133,6 +137,10 @@ class AssetContextEnricher:
         atrp = _safe_loc(atrp_s, ts, 0.0)
         rsi = _safe_loc(rsi_s, ts, 0.0)
         bb_width = _safe_loc(bb_width_s, ts, 0.0)
+        bb_low = _safe_loc(bb_low_s, ts, 0.0)
+        bb_up = _safe_loc(bb_up_s, ts, 0.0)
+        donchian_high = _safe_loc(donchian_high_s, ts, 0.0)
+        donchian_low = _safe_loc(donchian_low_s, ts, 0.0)
         range_expansion = _safe_loc(range_exp_s, ts, 0.0)
 
         try:
@@ -166,6 +174,7 @@ class AssetContextEnricher:
         ret_30d = _ret_bars(24 * 30)
         slope_ema_fast_24h = _slope_pct(self.slope_lookback)
 
+        close_vs_ema_fast = 0.0 if ema_fast == 0.0 else float(close_now / ema_fast - 1.0)
         close_vs_ema_slow = 0.0 if ema_slow == 0.0 else float(close_now / ema_slow - 1.0)
         ema_fast_vs_ema_slow = 0.0 if ema_slow == 0.0 else float(ema_fast / ema_slow - 1.0)
 
@@ -268,6 +277,13 @@ class AssetContextEnricher:
             "atrp": float(atrp),
             "rsi": float(rsi),
             "bb_width": float(bb_width),
+            "ema_gap_fast_slow": float(ema_fast_vs_ema_slow),
+            "dist_close_ema_fast": float(close_vs_ema_fast),
+            "dist_close_ema_slow": float(close_vs_ema_slow),
+            "bb_low": float(bb_low),
+            "bb_up": float(bb_up),
+            "donchian_high": float(donchian_high),
+            "donchian_low": float(donchian_low),
             "ctx_close_vs_ema_slow": float(close_vs_ema_slow),
             "ctx_ema_fast_vs_ema_slow": float(ema_fast_vs_ema_slow),
             "ctx_ret_24h": float(ret_24h),
