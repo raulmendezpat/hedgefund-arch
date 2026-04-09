@@ -1,4 +1,5 @@
 import ccxt
+from decimal import Decimal, ROUND_HALF_UP
 import time
 import pandas as pd
 from typing import Any, Optional, Dict, List
@@ -50,10 +51,33 @@ class BitgetFutures():
         
     def amount_to_precision(self, symbol: str, amount: float) -> str:
         try:
+            market = self.session.market(symbol)
+            precision = ((market or {}).get("precision") or {}).get("amount", None)
+            limits = ((market or {}).get("limits") or {}).get("amount", {}) or {}
+            min_amount = limits.get("min", None)
+
+            amt_dec = Decimal(str(amount))
+
+            if precision is not None:
+                step_dec = Decimal(str(precision))
+                if step_dec > 0:
+                    nearest_steps = (amt_dec / step_dec).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                    snapped = nearest_steps * step_dec
+                    tolerance = max(step_dec * Decimal("1e-9"), Decimal("1e-12"))
+
+                    if abs(amt_dec - snapped) <= tolerance:
+                        amt_dec = snapped
+
+                    if min_amount is not None:
+                        min_dec = Decimal(str(min_amount))
+                        if amt_dec < min_dec and abs(amt_dec - min_dec) <= tolerance:
+                            amt_dec = min_dec
+
+                    amount = float(amt_dec)
+
             return self.session.amount_to_precision(symbol, amount)
         except Exception as e:
             raise Exception(f"Failed to convert amount {amount} {symbol} to precision: {e}")
-
     def price_to_precision(self, symbol: str, price: float) -> str:
         try:
             return self.session.price_to_precision(symbol, price)
