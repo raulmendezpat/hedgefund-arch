@@ -37,6 +37,7 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --policy-config artifacts/policy_config.json \
   --policy-profile symmetric_v1 \
   --selection-semantics-mode research \
+  --exit-registry-json artifacts/exit_policy_registry.runtime_overrides.json \
   --start "$START_TS" \
   --end "$END_TS" \
   --exchange binanceusdm \
