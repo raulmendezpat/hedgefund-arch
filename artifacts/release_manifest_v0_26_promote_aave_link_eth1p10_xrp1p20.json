@@ -1,0 +1,21 @@
+{
+  "release_tag": "v0.26_promote_aave_link_eth1p10_xrp1p20",
+  "created_utc": "2026-04-11T04:47:31Z",
+  "winner_stack": {
+    "aave_short": "1.15",
+    "link_short": "1.15",
+    "eth_short": "1.10",
+    "xrp_short": "1.20",
+    "bnb_short": "rejected_at_combined_level"
+  },
+  "frozen_registry": "artifacts/exit_policy_registry.promoted_frozen_aave_link_eth_xrp_short_sl_1_20.json",
+  "frozen_registry_snapshot_prefix": "artifacts/exit_policy_registry.promoted_frozen_aave_link_eth_xrp_short_sl_1_20.",
+  "combined_confirm_summary": "results/confirm_aave_link_eth_xrp_short_sl_1_20_summary.csv",
+  "combined_vs_base_summary": "results/confirm_aave_link_eth_xrp_short_sl_1_20_vs_base_1_10_summary.csv",
+  "bnb_rejection_summary": "results/confirm_aave_link_eth_xrp_bnb_short_sl_0_90_vs_base_1_20_summary.csv",
+  "notes": [
+    "Winner promoted for combined portfolio: AAVE+LINK+ETH(1.10)+XRP(1.20)",
+    "BNB isolated sweep was not sufficient; combined confirmation degraded portfolio and was rejected",
+    "This release is intended to be the production candidate baseline before next asset sweeps"
+  ]
+}

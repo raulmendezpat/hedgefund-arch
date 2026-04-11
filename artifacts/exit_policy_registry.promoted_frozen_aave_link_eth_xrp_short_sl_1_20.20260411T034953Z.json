@@ -1,0 +1,18 @@
+{
+  "default": {},
+  "strategies": {},
+  "strategy_sides": {
+    "aave_trend:short": {
+      "sl_mult": 1.15
+    },
+    "link_trend:short": {
+      "sl_mult": 1.15
+    },
+    "eth_trend:short": {
+      "sl_mult": 1.1
+    },
+    "xrp_trend:short": {
+      "sl_mult": 1.2
+    }
+  }
+}
