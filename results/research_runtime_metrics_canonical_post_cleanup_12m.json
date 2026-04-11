@@ -1,0 +1,18 @@
+{
+  "equity_start": 1000.0,
+  "equity_final": 2205.4087407286047,
+  "total_return_pct": 120.54087407286045,
+  "sharpe_annual": 3.1256381108149456,
+  "max_drawdown_pct": -11.293955815084345,
+  "vol_annual": 0.26420602185794423,
+  "trade_count": 2591,
+  "win_rate_pct": 48.12813585488229,
+  "rows": 8760,
+  "load_seconds": 48.71544219600037,
+  "run_seconds": 229.00261729300837,
+  "total_seconds": 277.71805948900874,
+  "avg_n_opps": 9.0,
+  "avg_n_accepts": 2.240296803652968,
+  "avg_active_symbols": 1.7707762557077626,
+  "avg_gross_weight": 0.3898043142622922
+}
