@@ -46,16 +46,15 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --projection-profile research \
   --target-exposure 0.40 \
   --symbol-cap 0.28 \
-  --execution-symbol-cap 0.30 \
+  --execution-symbol-cap 0.60 \
   --runtime-prod-ml-position-sizing \
   --prodlike-allocator-apply-ml-sizing \
   --runtime-ml-size-mode calibrated \
-  --runtime-ml-size-scale 6.0 \
-  --runtime-ml-size-min 0.70 \
-  --runtime-ml-size-max 1.30 \
-  --runtime-ml-size-base 0.85 \
+  --runtime-ml-size-scale 8.5 \
+  --runtime-ml-size-min 0.50 \
+  --runtime-ml-size-max 1.50 \
+  --runtime-ml-size-base 0.70 \
   --runtime-ml-size-pwin-threshold 0.46 \
-  --runtime-ml-size-overrides 'bnb_trend|short|1.08' \
   --pwin-calibration-artifact artifacts/pwin_calibration_strategy_side_baseline_prodsem_3m_v3.json \
   >> "$LOG_FILE" 2>&1
 then

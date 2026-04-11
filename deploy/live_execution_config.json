@@ -19,8 +19,8 @@
   },
   "symbol_overrides": {
     "AAVE/USDT:USDT": {
-      "max_target_weight": 0.3,
-      "max_delta_notional": 100.0
+      "max_target_weight": 0.6,
+      "max_delta_notional": 200.0
     },
     "AVAX/USDT:USDT": {
       "max_target_weight": 0.3,
