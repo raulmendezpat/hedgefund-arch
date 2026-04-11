@@ -35,6 +35,86 @@ from hf_core.production_like_allocation_postprocess import ProductionLikeAllocat
 from hf_core.production_like_allocation_ml_sizer import ProductionLikeAllocationMlSizer
 from hf_core.production_like_allocation_cluster_controls import ProductionLikeAllocationClusterControls
 from hf_core.portfolio_atrp_risk_scaler import PortfolioAtrpRiskScaler
+import joblib
+
+
+_PWIN_FINAL_RUNTIME_CACHE = None
+
+def _load_pwin_final_runtime_bundle():
+    global _PWIN_FINAL_RUNTIME_CACHE
+    if _PWIN_FINAL_RUNTIME_CACHE is not None:
+        return _PWIN_FINAL_RUNTIME_CACHE
+
+    artifact_path = Path("artifacts/pwin_final_6m_baseline_full_clean_logreg_l1.joblib")
+    meta_path = Path("artifacts/pwin_final_6m_baseline_full_clean_logreg_l1.json")
+
+    if not artifact_path.exists():
+        _PWIN_FINAL_RUNTIME_CACHE = {"enabled": False, "reason": f"missing_artifact:{artifact_path}"}
+        return _PWIN_FINAL_RUNTIME_CACHE
+
+    try:
+        obj = joblib.load(artifact_path)
+    except Exception as e:
+        _PWIN_FINAL_RUNTIME_CACHE = {"enabled": False, "reason": f"artifact_load_error:{e}"}
+        return _PWIN_FINAL_RUNTIME_CACHE
+
+    model = obj
+    if isinstance(obj, dict):
+        for key in ("model", "pipeline", "estimator", "clf"):
+            if key in obj and obj[key] is not None:
+                model = obj[key]
+                break
+
+    meta = {}
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            meta = {}
+
+    feature_cols = None
+    for key in ("feature_columns", "feature_cols", "features", "model_features", "columns_used"):
+        val = meta.get(key)
+        if isinstance(val, list) and val:
+            feature_cols = [str(x) for x in val]
+            break
+
+    if (not feature_cols) and hasattr(model, "feature_names_in_"):
+        feature_cols = [str(x) for x in list(model.feature_names_in_)]
+
+    if not feature_cols:
+        _PWIN_FINAL_RUNTIME_CACHE = {"enabled": False, "reason": "missing_feature_list"}
+        return _PWIN_FINAL_RUNTIME_CACHE
+
+    _PWIN_FINAL_RUNTIME_CACHE = {
+        "enabled": True,
+        "artifact_path": str(artifact_path),
+        "meta_path": str(meta_path),
+        "model": model,
+        "feature_cols": feature_cols,
+    }
+    return _PWIN_FINAL_RUNTIME_CACHE
+
+
+def _score_pwin_final_from_signal_meta(sm0):
+    bundle = _load_pwin_final_runtime_bundle()
+    if not bundle.get("enabled"):
+        return None
+
+    model = bundle["model"]
+    feature_cols = bundle["feature_cols"]
+
+    row = {}
+    for c in feature_cols:
+        row[c] = sm0.get(c, np.nan)
+
+    X = pd.DataFrame([row], columns=feature_cols)
+
+    try:
+        proba = model.predict_proba(X)[:, 1]
+        return float(proba[0])
+    except Exception:
+        return None
 
 
 def _parse_runtime_ml_size_overrides(raw: str | None) -> dict[tuple[str, str], float]:
@@ -229,6 +309,86 @@ def _build_runtime_trace_row(
         "allocation_portfolio_avg_strength": _allocation_ctx.get("portfolio_avg_strength"),
         "allocation_portfolio_conviction": _allocation_ctx.get("portfolio_conviction"),
     }
+
+
+
+    sm0 = dict(sm0 or {})
+    old_val = sm0.get("p_win", sm0.get("p_win_prod", sm0.get("p_win_ml_raw", 0.5)))
+    try:
+        old_val = float(old_val if old_val is not None else 0.5)
+    except Exception:
+        old_val = 0.5
+
+    new_val = sm0.get("p_win_new", None)
+    if new_val is None:
+        new_val = sm0.get("p_win_final", None)
+    if new_val is None:
+        new_val = sm0.get("p_win_override_value", None)
+    if new_val is None:
+        new_val = old_val
+
+    try:
+        new_val = float(new_val if new_val is not None else old_val)
+    except Exception:
+        new_val = old_val
+
+    if "p_win_old" not in sm0:
+        sm0["p_win_old"] = old_val
+
+    sm0["p_win_new"] = new_val
+    sm0["p_win"] = new_val
+    sm0["p_win_override_active"] = True
+    sm0["p_win_override_source"] = "p_win_new"
+    return sm0
+
+
+def _apply_pwin_final_override(sm0):
+    sm0 = dict(sm0 or {})
+
+    old_val = sm0.get("p_win_old", sm0.get("p_win", None))
+    if old_val is None:
+        old_val = sm0.get("p_win_prod", None)
+    if old_val is None:
+        old_val = sm0.get("p_win_ml_raw", None)
+    if old_val is None:
+        old_val = sm0.get("p_win_base", None)
+    if old_val is None:
+        old_val = 0.5
+
+    try:
+        old_val = float(old_val if old_val is not None else 0.5)
+    except Exception:
+        old_val = 0.5
+
+    new_val = sm0.get("p_win_new", None)
+    if new_val is None:
+        new_val = sm0.get("p_win_final", None)
+    if new_val is None:
+        new_val = _score_pwin_final_from_signal_meta(sm0)
+    if new_val is None:
+        new_val = sm0.get("p_win_override_value", None)
+    if new_val is None:
+        new_val = old_val
+
+    try:
+        new_val = float(new_val if new_val is not None else old_val)
+    except Exception:
+        new_val = old_val
+
+    if new_val < 0.0:
+        new_val = 0.0
+    if new_val > 1.0:
+        new_val = 1.0
+
+    if "p_win_old" not in sm0:
+        sm0["p_win_old"] = old_val
+
+    sm0["p_win_new"] = new_val
+    sm0["p_win"] = new_val
+    sm0["p_win_prod"] = new_val
+    sm0["p_win_override_active"] = True
+    sm0["p_win_override_source"] = "p_win_new"
+    return sm0
 
 
 def _build_candidates_from_opportunities(opps) -> list[OpportunityCandidate]:
@@ -510,6 +670,8 @@ def _apply_runtime_prod_score_semantics(
     candidate = score_projector.enrich_candidate(candidate)
 
     sm1 = dict(getattr(candidate, "signal_meta", {}) or {})
+    if bool(getattr(args, "enable_pwin_final_override", False)):
+        sm1 = _apply_pwin_final_override(sm1)
     _side_now = str(getattr(candidate, "side", sm1.get("side", "")) or "").lower()
     _active_flag = 1.0 if _side_now in {"long", "short"} else 0.0
     _strength = abs(float(getattr(candidate, "signal_strength", 0.0) or 0.0))
@@ -668,6 +830,7 @@ def _compute_btc_short_recent_positive_momentum_guard(
     }
 
 
+
 def _build_runtime_candidate_row(
     *,
     candidate,
@@ -681,29 +844,33 @@ def _build_runtime_candidate_row(
     survived_selection_pipeline=False,
     selected_after_prod_selection=False,
     selected_final=False,
+    selection_meta_override=None,
 ):
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
     mm_meta = dict(getattr(score_obj, "model_meta", {}) or {})
     pm_meta = dict(getattr(decision, "policy_meta", {}) or {})
-    _feature_map = dict(getattr(feature_row, "values", {}) or {})
     _expanded_feature_map = dict(expanded_feature_row or {})
-
-    def _f(v, default=0.0):
-        try:
-            if v is None:
-                return float(default)
-            return float(v)
-        except Exception:
-            return float(default)
 
     candidate_key = _candidate_observability_key(candidate)
     trace_candidate_id = str(sm.get("trace_candidate_id", candidate_key) or candidate_key)
+
     selection_passed_stages = sm.get("selection_passed_stages", [])
     if not isinstance(selection_passed_stages, list):
         selection_passed_stages = []
 
     selection_meta = dict(sm.get("selection_meta", {}) or {})
+    if selection_meta_override:
+        selection_meta = dict(selection_meta_override or {})
     best_per_symbol_meta = dict(selection_meta.get("best_per_symbol", {}) or {})
+    market_guard_meta = dict(selection_meta.get("market_guard", {}) or {})
+    alpha_selection_meta = dict(selection_meta.get("alpha_selection", {}) or {})
+    contextual_eligibility_meta = dict(selection_meta.get("contextual_eligibility", {}) or {})
+    strategy_regime_eligibility_meta = dict(selection_meta.get("strategy_regime_eligibility", {}) or {})
+
+    market_guard_inputs = dict(market_guard_meta.get("inputs", {}) or {})
+    alpha_selection_inputs = dict(alpha_selection_meta.get("inputs", {}) or {})
+    contextual_eligibility_inputs = dict(contextual_eligibility_meta.get("inputs", {}) or {})
+    strategy_regime_eligibility_inputs = dict(strategy_regime_eligibility_meta.get("inputs", {}) or {})
 
     _guard_raw_reasons = sm.get("guard_btc_short_block_reasons", [])
     if isinstance(_guard_raw_reasons, list):
@@ -768,7 +935,7 @@ def _build_runtime_candidate_row(
         "meta_competitive_score": float(sm.get("meta_competitive_score", 0.0) or 0.0),
         "meta_post_ml_score": float(sm.get("meta_post_ml_score", 0.0) or 0.0),
         "meta_post_ml_competitive_score": float(sm.get("meta_post_ml_competitive_score", 0.0) or 0.0),
-        "accept": getattr(decision, "accept", False),
+        "accept": bool(getattr(decision, "accept", False)),
         "size_mult": getattr(decision, "size_mult", 0.0),
         "band": getattr(decision, "band", ""),
         "reason": _reason,
@@ -799,9 +966,69 @@ def _build_runtime_candidate_row(
         "best_per_symbol_runner_up_score": float(best_per_symbol_meta.get("runner_up_score", 0.0) or 0.0),
         "best_per_symbol_win_margin": float(best_per_symbol_meta.get("win_margin", 0.0) or 0.0),
         "best_per_symbol_reason": str(best_per_symbol_meta.get("reason", "") or ""),
-        "selected_after_pipeline": bool(survived_selection_pipeline),
+
+        "market_guard_pass": bool(market_guard_meta.get("pass", False)),
+        "market_guard_kept": bool(market_guard_meta.get("kept", False)),
+        "market_guard_mode": str(market_guard_meta.get("mode", "") or ""),
+        "market_guard_reasons": "|".join(str(x) for x in list(market_guard_meta.get("reasons", []) or [])),
+        "market_guard_adx": float(market_guard_inputs.get("adx", 0.0) or 0.0),
+        "market_guard_atrp": float(market_guard_inputs.get("atrp", 0.0) or 0.0),
+        "market_guard_rsi": float(market_guard_inputs.get("rsi", 0.0) or 0.0),
+        "market_guard_bb_width": float(market_guard_inputs.get("bb_width", 0.0) or 0.0),
+        "market_guard_ema_gap": float(market_guard_inputs.get("ema_gap", 0.0) or 0.0),
+        "market_guard_ema_gap_field": str(market_guard_inputs.get("ema_gap_field", "") or ""),
+        "market_guard_min_adx": float(market_guard_inputs.get("min_adx", 0.0) or 0.0),
+        "market_guard_max_adx": float(market_guard_inputs.get("max_adx", 0.0) or 0.0),
+        "market_guard_min_atrp": float(market_guard_inputs.get("min_atrp", 0.0) or 0.0),
+        "market_guard_max_atrp": float(market_guard_inputs.get("max_atrp", 0.0) or 0.0),
+        "market_guard_min_bb_width": float(market_guard_inputs.get("min_bb_width", 0.0) or 0.0),
+        "market_guard_max_bb_width": float(market_guard_inputs.get("max_bb_width", 0.0) or 0.0),
+        "market_guard_min_ema_gap": float(market_guard_inputs.get("min_ema_gap", 0.0) or 0.0),
+        "market_guard_max_ema_pullback_dist": float(market_guard_inputs.get("max_ema_pullback_dist", 0.0) or 0.0),
+        "market_guard_require_setup_window": bool(market_guard_inputs.get("require_setup_window", False)),
+        "market_guard_require_bb_rsi_setup": bool(market_guard_inputs.get("require_bb_rsi_setup", False)),
+        "market_guard_require_directional_close": bool(market_guard_inputs.get("require_directional_close", False)),
+        "market_guard_require_trend_alignment": bool(market_guard_inputs.get("require_trend_alignment", False)),
+        "market_guard_require_donchian_break": bool(market_guard_inputs.get("require_donchian_break", False)),
+        "market_guard_use_rsi_exhaustion_guard": bool(market_guard_inputs.get("use_rsi_exhaustion_guard", False)),
+        "market_guard_use_extension_guard": bool(market_guard_inputs.get("use_extension_guard", False)),
+
+        "alpha_selection_pass": bool(alpha_selection_meta.get("pass", False)),
+        "alpha_selection_kept": bool(alpha_selection_meta.get("kept", False)),
+        "alpha_selection_score": float(alpha_selection_meta.get("score", 0.0) or 0.0),
+        "alpha_selection_penalty": float(alpha_selection_meta.get("penalty", 0.0) or 0.0),
+        "alpha_selection_reasons": "|".join(str(x) for x in list(alpha_selection_meta.get("reasons", []) or [])),
+        "alpha_selection_accept": bool(alpha_selection_inputs.get("accept", False)),
+        "alpha_selection_input_policy_score": float(alpha_selection_inputs.get("policy_score", 0.0) or 0.0),
+        "alpha_selection_input_p_win": float(alpha_selection_inputs.get("p_win", 0.0) or 0.0),
+        "alpha_selection_input_expected_return": float(alpha_selection_inputs.get("expected_return", 0.0) or 0.0),
+        "alpha_selection_input_policy_size_mult": float(alpha_selection_inputs.get("policy_size_mult", 0.0) or 0.0),
+        "alpha_selection_input_post_ml_score": float(alpha_selection_inputs.get("post_ml_score", 0.0) or 0.0),
+        "alpha_selection_input_competitive_score": float(alpha_selection_inputs.get("competitive_score", 0.0) or 0.0),
+        "alpha_selection_input_contextual_score": float(alpha_selection_inputs.get("contextual_score", 0.0) or 0.0),
+        "alpha_selection_input_contextual_penalty": float(alpha_selection_inputs.get("contextual_penalty", 0.0) or 0.0),
+        "alpha_selection_input_regime_score_mult": float(alpha_selection_inputs.get("regime_score_mult", 0.0) or 0.0),
+        "alpha_selection_input_regime_penalty": float(alpha_selection_inputs.get("regime_penalty", 0.0) or 0.0),
+
+        "contextual_eligibility_pass": bool(contextual_eligibility_meta.get("pass", False)),
+        "contextual_eligibility_kept": bool(contextual_eligibility_meta.get("kept", False)),
+        "contextual_eligibility_score": float(contextual_eligibility_meta.get("score", 0.0) or 0.0),
+        "contextual_eligibility_penalty": float(contextual_eligibility_meta.get("penalty", 0.0) or 0.0),
+        "contextual_eligibility_reasons": "|".join(str(x) for x in list(contextual_eligibility_meta.get("reasons", []) or [])),
+
+        "strategy_regime_eligibility_pass": bool(strategy_regime_eligibility_meta.get("pass", False)),
+        "strategy_regime_eligibility_kept": bool(strategy_regime_eligibility_meta.get("kept", False)),
+        "strategy_regime_eligibility_score_mult": float(strategy_regime_eligibility_meta.get("score_mult", 0.0) or 0.0),
+        "strategy_regime_eligibility_penalty": float(strategy_regime_eligibility_meta.get("penalty", 0.0) or 0.0),
+        "strategy_regime_eligibility_reasons": "|".join(str(x) for x in list(strategy_regime_eligibility_meta.get("reasons", []) or [])),
+
+        "selected_after_pipeline": _survived_selection_pipeline,
         "selected_after_prod_selection": _selected_after_prod_selection,
         "selected_final": _selected_final,
+        "cross_sectional_accept_ranked": bool(sm.get("cross_sectional_accept_ranked", False)),
+        "cross_sectional_enhanced_score": float(sm.get("cross_sectional_enhanced_score", 0.0) or 0.0),
+        "cross_sectional_side_rank_desc": int(sm.get("cross_sectional_side_rank_desc", 0) or 0),
+        "cross_sectional_side_rank_pct": float(sm.get("cross_sectional_side_rank_pct", 0.0) or 0.0),
         "adx": sm.get("adx", mm_meta.get("adx", 0.0)),
         "atrp": sm.get("atrp", mm_meta.get("atrp", 0.0)),
         "rsi": sm.get("rsi", mm_meta.get("rsi", 0.0)),
@@ -829,8 +1056,6 @@ def _build_runtime_candidate_row(
         "btc_atrp": float(_expanded_feature_map.get("btc_atrp", 0.0) or 0.0),
         "btc_adx": float(_expanded_feature_map.get("btc_adx", 0.0) or 0.0),
     }
-
-
 
 def _build_symbol_cluster_metadata(strategy_registry_rows) -> tuple[dict[str, str], dict[str, float]]:
     symbol_cluster_map: dict[str, str] = {}
@@ -1343,12 +1568,23 @@ def load_exit_registry(path: str) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def resolve_exit_policy(exit_cfg: dict, strategy_id: str) -> dict:
+def resolve_exit_policy(exit_cfg: dict, strategy_id: str, side: str = "") -> dict:
     strategy_id = str(strategy_id or "")
-    strategy_map = dict((exit_cfg or {}).get("strategies", {}) or {})
+    side = str(side or "").lower()
+
+    cfg = dict(exit_cfg or {})
+    resolved = dict(cfg.get("default", {}) or {})
+
+    strategy_map = dict(cfg.get("strategies", {}) or {})
     if strategy_id in strategy_map:
-        return dict(strategy_map.get(strategy_id, {}) or {})
-    return dict((exit_cfg or {}).get("default", {}) or {})
+        resolved.update(dict(strategy_map.get(strategy_id, {}) or {}))
+
+    strategy_side_map = dict(cfg.get("strategy_sides", {}) or {})
+    strategy_side_key = f"{strategy_id}:{side}" if strategy_id and side else ""
+    if strategy_side_key and strategy_side_key in strategy_side_map:
+        resolved.update(dict(strategy_side_map.get(strategy_side_key, {}) or {}))
+
+    return resolved
 
 
 
@@ -1362,6 +1598,7 @@ def _resolve_runtime_exit_profile_for_candidate(candidate) -> dict:
     base_sl = float(sm.get("ctx_sl_mult", 1.0) or 1.0)
     base_time_stop = int(sm.get("ctx_time_stop_bars", 12) or 12)
 
+    portfolio_regime = str(sm.get("portfolio_regime", "") or "").lower()
     portfolio_regime = str(sm.get("portfolio_regime", "") or "").lower()
     portfolio_breadth = float(sm.get("portfolio_breadth", 0.0) or 0.0)
     p_win = float(sm.get("p_win", 0.0) or 0.0)
@@ -1539,6 +1776,7 @@ def _apply_runtime_exit_profiles_to_selected_candidates(selected_candidates):
     return projected_selected_candidates
 
 
+
 def _apply_runtime_cross_sectional_ranking(
     *,
     candidates,
@@ -1558,6 +1796,7 @@ def _apply_runtime_cross_sectional_ranking(
         "dropped_count": 0,
         "kept": [],
         "dropped": [],
+        "selected_final_keys": [],
     }
 
     if not pairs:
@@ -1569,6 +1808,7 @@ def _apply_runtime_cross_sectional_ranking(
         rows.append(
             {
                 "idx": int(idx),
+                "obs_key": _candidate_observability_key(c),
                 "symbol": str(getattr(c, "symbol", "") or ""),
                 "strategy_id": str(getattr(c, "strategy_id", "") or ""),
                 "side": str(getattr(c, "side", "flat") or "flat"),
@@ -1591,39 +1831,44 @@ def _apply_runtime_cross_sectional_ranking(
     ranked = compute_enhanced_score(policy_df)
     ranked = apply_cross_sectional_ranking(ranked, top_pct=float(top_pct))
 
-    keep_idx = set(int(v) for v in ranked.loc[ranked["accept_ranked"].fillna(False), "idx"].tolist())
     meta["rows_ranked"] = int(len(ranked))
+
+    keep_idx = set(
+        int(v)
+        for v in ranked.loc[ranked["accept_ranked"].fillna(False), "idx"].tolist()
+    )
+
+    keep_obs_keys = set(
+        str(v)
+        for v in ranked.loc[ranked["accept_ranked"].fillna(False), "obs_key"].dropna().astype(str).tolist()
+    ) if "obs_key" in ranked.columns else set()
+
+    ranked_by_idx = {}
+    for _, rr in ranked.iterrows():
+        ranked_by_idx[int(rr["idx"])] = rr
 
     kept_candidates = []
     kept_decisions = []
 
     for idx, (c, d) in enumerate(pairs):
         sm = dict(getattr(c, "signal_meta", {}) or {})
-        if bool(getattr(d, "accept", False)):
-            ranked_row = ranked[ranked["idx"] == int(idx)]
-            if not ranked_row.empty:
-                rr = ranked_row.iloc[0]
-                sm["cross_sectional_enhanced_score"] = float(rr.get("enhanced_score", 0.0) or 0.0)
-                sm["cross_sectional_side_rank_desc"] = int(rr.get("side_rank_desc", 0) or 0)
-                sm["cross_sectional_side_rank_pct"] = float(rr.get("side_rank_pct", 0.0) or 0.0)
-                sm["cross_sectional_accept_ranked"] = bool(rr.get("accept_ranked", False))
-            else:
-                sm["cross_sectional_enhanced_score"] = 0.0
-                sm["cross_sectional_side_rank_desc"] = 0
-                sm["cross_sectional_side_rank_pct"] = 0.0
-                sm["cross_sectional_accept_ranked"] = False
+        accepted = bool(getattr(d, "accept", False))
+        rr = ranked_by_idx.get(int(idx))
+
+        if accepted and rr is not None:
+            ranked_flag = bool(rr.get("accept_ranked", False))
+            sm["cross_sectional_enhanced_score"] = float(rr.get("enhanced_score", 0.0) or 0.0)
+            sm["cross_sectional_side_rank_desc"] = int(rr.get("side_rank_desc", 0) or 0)
+            sm["cross_sectional_side_rank_pct"] = float(rr.get("side_rank_pct", 0.0) or 0.0)
+            sm["cross_sectional_accept_ranked"] = ranked_flag
         else:
+            ranked_flag = False
             sm["cross_sectional_enhanced_score"] = 0.0
             sm["cross_sectional_side_rank_desc"] = 0
             sm["cross_sectional_side_rank_pct"] = 0.0
             sm["cross_sectional_accept_ranked"] = False
 
         c.signal_meta = sm
-
-        if not bool(getattr(d, "accept", False)):
-            kept_candidates.append(c)
-            kept_decisions.append(d)
-            continue
 
         item = {
             "symbol": str(getattr(c, "symbol", "") or ""),
@@ -1632,27 +1877,36 @@ def _apply_runtime_cross_sectional_ranking(
             "enhanced_score": float(sm.get("cross_sectional_enhanced_score", 0.0) or 0.0),
             "side_rank_desc": int(sm.get("cross_sectional_side_rank_desc", 0) or 0),
             "side_rank_pct": float(sm.get("cross_sectional_side_rank_pct", 0.0) or 0.0),
+            "obs_key": _candidate_observability_key(c),
+            "accepted_upstream": bool(accepted),
+            "accept_ranked": bool(ranked_flag),
         }
 
-        if idx in keep_idx:
+        if not accepted:
+            meta["dropped"].append(item)
+            continue
+
+        if int(idx) in keep_idx:
             kept_candidates.append(c)
             kept_decisions.append(d)
             meta["kept"].append(item)
         else:
-            sm["accept"] = False
-            sm["policy_reason"] = str(sm.get("policy_reason", "") or "")
-            sm["cross_sectional_filtered"] = True
-            c.signal_meta = sm
             try:
                 d.accept = False
             except Exception:
                 pass
+            sm["accept"] = False
+            sm["policy_reason"] = "cross_sectional_ranking"
+            c.signal_meta = sm
             meta["dropped"].append(item)
 
-    meta["kept_count"] = int(len(meta["kept"]))
+    meta["kept_count"] = int(len(kept_candidates))
     meta["dropped_count"] = int(len(meta["dropped"]))
-    return kept_candidates, kept_decisions, meta
+    meta["selected_final_keys"] = sorted(
+        _candidate_observability_key(c) for c in kept_candidates
+    )
 
+    return kept_candidates, kept_decisions, meta
 
 def _build_lifecycle_metrics(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
     equity = pd.to_numeric(equity_df.get("equity", pd.Series(dtype=float)), errors="coerce").dropna()
@@ -1722,6 +1976,7 @@ def compute_metrics(port_ret: pd.Series, equity: pd.Series) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--exit-registry-json", default="", help="Optional exit policy registry JSON with default/strategy/strategy_side overrides")
     ap.add_argument("--name", required=True)
     ap.add_argument("--start", required=True)
     ap.add_argument("--end", default=None)
@@ -1764,6 +2019,7 @@ def main() -> None:
     ap.add_argument("--enable-strategy-side-pwin", action="store_true")
     ap.add_argument("--strategy-side-pwin-scale", type=float, default=1.0)
     ap.add_argument("--pwin-calibration-artifact", default="")
+    ap.add_argument("--enable-pwin-final-override", action="store_true")
     ap.add_argument("--pwin-calibration-key-mode", default="strategy_side", choices=["strategy_side", "symbol_side"])
     ap.add_argument("--selection-semantics-mode", default="research", choices=["research", "prod"])
     ap.add_argument("--prod-selection-mode", default="best_per_symbol", choices=["all", "best_per_symbol", "competitive", "top1_global", "top2_global", "top3_global"])
@@ -1800,6 +2056,12 @@ def main() -> None:
         help="Enable target-position lifecycle semantics in shadow trading runtime.",
     )
     args = ap.parse_args()
+
+    _exit_registry_cfg = {}
+    _exit_registry_path = str(getattr(args, "exit_registry_json", "") or "").strip()
+    lifecycle_exit_override_cfg = load_exit_registry(_exit_registry_path) if _exit_registry_path else {}
+    if _exit_registry_path:
+        _exit_registry_cfg = load_exit_registry(_exit_registry_path)
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
     selection_trace_path = Path(f"results/selection_trace_{str(args.name)}.jsonl")
@@ -2101,6 +2363,12 @@ def main() -> None:
 
         selected_candidates = score_projector.enrich_many(selected_candidates)
 
+        _exit_registry_cfg = load_exit_registry(str(getattr(args, "exit_registry_json", "") or ""))
+        if _exit_registry_cfg:
+            for _c in list(selected_candidates or []):
+                _sm = dict(getattr(_c, "signal_meta", {}) or {})
+                _c.signal_meta = _sm
+
         selected_candidates = _apply_runtime_exit_profiles_to_selected_candidates(
             selected_candidates
         )
@@ -2110,6 +2378,17 @@ def main() -> None:
             _candidate_observability_key(c)
             for c in selected_after_pipeline_candidates
         }
+
+        _selection_meta_by_obs_key = {}
+        for _c in list(selected_after_pipeline_candidates or []):
+            try:
+                _k = _candidate_observability_key(_c)
+                _sm = dict(getattr(_c, "signal_meta", {}) or {})
+                _sel_meta = dict(_sm.get("selection_meta", {}) or {})
+                if _k and _sel_meta:
+                    _selection_meta_by_obs_key[_k] = _sel_meta
+            except Exception:
+                pass
 
         if str(getattr(args, "selection_semantics_mode", "research")) == "prod":
             _prod_thresholds = {}
@@ -2176,6 +2455,20 @@ def main() -> None:
             for c in list(selected_candidates or [])
         }
 
+        selected_final_keys = set(selected_after_prod_selection_keys)
+
+        try:
+            _cross_meta = dict(cross_sectional_meta or {})
+            _cross_keep_keys = _cross_meta.get("selected_final_keys", None)
+            if _cross_keep_keys is not None:
+                _cross_keep_keys = set(str(v) for v in list(_cross_keep_keys or []))
+                selection_meta["cross_sectional_selected_final_keys_count"] = int(len(_cross_keep_keys))
+                selection_meta["cross_sectional_overlap_with_downstream_count"] = int(
+                    len(set(selected_after_prod_selection_keys) & _cross_keep_keys)
+                )
+        except Exception:
+            pass
+
         allocation_portfolio_context = build_portfolio_context(selected_candidates, score_mode="allocation")
         selection_meta["disabled_strategy_side_filtered"] = int(len(disabled_candidates))
         selection_meta["global_competition"] = dict(global_competition_meta or {})
@@ -2204,7 +2497,8 @@ def main() -> None:
                     entered_selection_pipeline=True,
                     survived_selection_pipeline=(_obs_key in selected_after_pipeline_keys),
                     selected_after_prod_selection=(_obs_key in selected_after_prod_selection_keys),
-                    selected_final=(_obs_key in selected_after_prod_selection_keys),
+                    selected_final=(_obs_key in selected_final_keys),
+                    selection_meta_override=_selection_meta_by_obs_key.get(_obs_key, {}),
                 )
             )
 
@@ -2308,7 +2602,33 @@ def main() -> None:
                     pass
 
             exit_context = _resolve_shadow_exit_context(selected_candidates, desired_weights, sym)
-            strat_cfg = resolve_exit_policy(lifecycle_exit_cfg, pos.strategy_id)
+            strat_cfg = dict(resolve_exit_policy(
+                lifecycle_exit_cfg,
+                strategy_id=pos.strategy_id,
+                side=getattr(pos, "side", ""),
+            ) or {})
+
+            _override_cfg = dict(resolve_exit_policy(
+                lifecycle_exit_override_cfg,
+                strategy_id=pos.strategy_id,
+                side=getattr(pos, "side", ""),
+            ) or {})
+
+            if _override_cfg:
+                _base_family = str(strat_cfg.get("family", "") or "")
+                _base_params = dict(strat_cfg.get("params", {}) or {})
+                _merged_params = dict(_base_params)
+
+                if "sl_mult" in _override_cfg:
+                    _merged_params["stop_atr_mult"] = float(_base_params.get("stop_atr_mult", 1.5) or 1.5) * float(_override_cfg["sl_mult"])
+                if "tp_mult" in _override_cfg:
+                    _merged_params["tp_atr_mult"] = float(_base_params.get("tp_atr_mult", 2.6) or 2.6) * float(_override_cfg["tp_mult"])
+                if "time_stop_bars" in _override_cfg:
+                    _merged_params["max_hold_bars"] = int(_override_cfg["time_stop_bars"])
+
+                if _base_family:
+                    strat_cfg["family"] = _base_family
+                strat_cfg["params"] = _merged_params
 
             decision = lifecycle_engine.evaluate_exit(
                 symbol=sym,
@@ -2429,26 +2749,30 @@ def main() -> None:
                     }
                 )
 
-        if not bool(getattr(args, "enable_target_position_lifecycle", False)):
-            # legacy shadow entries second
-            opened_symbols = set()
+        # NOTE:
+        # The target-aware branch below is still disabled ("pass"), so if we
+        # gate the legacy entry loop behind enable_target_position_lifecycle=False
+        # we end up with desired weights > 0 but no shadow opens at all.
+        # Until the target-aware entry branch is fully implemented, always run
+        # the legacy shadow entry loop as the source of truth for entries.
+        opened_symbols = set()
 
-            selected_candidates_for_entry = []
-            blocked_selected_candidates_for_entry = []
+        selected_candidates_for_entry = []
+        blocked_selected_candidates_for_entry = []
 
-            for _entry_c in list(selected_candidates or []):
-                _entry_sm = dict(getattr(_entry_c, "signal_meta", {}) or {})
-                _entry_guarded = bool(_entry_sm.get("guard_btc_short_recent_positive_momentum", False))
-                if _entry_guarded:
-                    blocked_selected_candidates_for_entry.append(_entry_c)
-                    continue
-                selected_candidates_for_entry.append(_entry_c)
+        for _entry_c in list(selected_candidates or []):
+            _entry_sm = dict(getattr(_entry_c, "signal_meta", {}) or {})
+            _entry_guarded = bool(_entry_sm.get("guard_btc_short_recent_positive_momentum", False))
+            if _entry_guarded:
+                blocked_selected_candidates_for_entry.append(_entry_c)
+                continue
+            selected_candidates_for_entry.append(_entry_c)
 
-            selection_meta["entry_loop_selected_candidates_in"] = int(len(list(selected_candidates or [])))
-            selection_meta["entry_loop_selected_candidates_blocked"] = int(len(blocked_selected_candidates_for_entry))
-            selection_meta["entry_loop_selected_candidates_used"] = int(len(selected_candidates_for_entry))
+        selection_meta["entry_loop_selected_candidates_in"] = int(len(list(selected_candidates or [])))
+        selection_meta["entry_loop_selected_candidates_blocked"] = int(len(blocked_selected_candidates_for_entry))
+        selection_meta["entry_loop_selected_candidates_used"] = int(len(selected_candidates_for_entry))
 
-            for c in selected_candidates_for_entry:
+        for c in selected_candidates_for_entry:
                 sym = str(getattr(c, "symbol", "") or "")
                 strategy_id = str(getattr(c, "strategy_id", "") or "")
 
@@ -2680,10 +3004,8 @@ def main() -> None:
                         "notional_frac": float(notional_frac),
                     }
                 )
-        else:
-            # shadow target-aware actions second
-            # temporarily disabled; legacy branch remains the source of truth
-            pass
+        # shadow target-aware actions second
+        # temporarily disabled; legacy branch remains the source of truth
 
         effective_weights = _resolve_effective_shadow_weights(
             lifecycle_engine=lifecycle_engine,

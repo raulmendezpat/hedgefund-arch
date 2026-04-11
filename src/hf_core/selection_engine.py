@@ -108,14 +108,13 @@ def apply_cross_sectional_ranking(
 
         top_k = max(1, int(math.ceil(n * float(top_pct))))
         score_floor = float(g["enhanced_score"].quantile(max(0.0, 1.0 - float(top_pct))))
-        pwin_floor = float(g["pwin_rank"].quantile(0.45))
-        postml_floor = float(g["postml_rank"].quantile(0.45))
 
+        # Single dynamic gate:
+        # accept only the top_pct by enhanced_score / side.
+        # No extra fixed p_win / post_ml quantile floors here.
         keep = (
             (g["side_rank_desc"] <= top_k) &
-            (g["enhanced_score"] >= score_floor) &
-            (g["pwin_rank"] >= pwin_floor) &
-            (g["postml_rank"] >= postml_floor)
+            (g["enhanced_score"] >= score_floor)
         )
 
         if not keep.any():

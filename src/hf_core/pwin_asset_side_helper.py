@@ -18,35 +18,53 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
 
 
 def _candidate_meta(candidate) -> dict[str, Any]:
-    meta = {}
-    try:
-        meta.update(dict(getattr(candidate, "meta", {}) or {}))
-    except Exception:
-        pass
-    try:
-        meta.update(dict(getattr(candidate, "signal_meta", {}) or {}))
-    except Exception:
-        pass
+    if isinstance(candidate, dict):
+        out = dict(candidate)
+    else:
+        meta = getattr(candidate, "meta", None)
+        out = dict(meta) if isinstance(meta, dict) else {}
 
-    for key in ["symbol", "side", "strategy_id", "signal_strength", "base_weight", "ts"]:
-        try:
-            if key not in meta:
-                meta[key] = getattr(candidate, key)
-        except Exception:
-            pass
+    direct_fields = [
+        "symbol",
+        "side",
+        "strategy_id",
+        "timestamp",
+        "ts",
+        "p_win",
+        "policy_score",
+        "post_ml_score",
+        "post_ml_competitive_score",
+    ]
+    for k in direct_fields:
+        if k not in out or out.get(k) in (None, ""):
+            v = getattr(candidate, k, None) if not isinstance(candidate, dict) else out.get(k)
+            if v not in (None, ""):
+                out[k] = v
 
-    return meta
+    return out
+
+
+def _normalize_side(value: Any) -> str:
+    side = str(value or "").strip().lower()
+    if side in {"long", "short"}:
+        return side
+    if side in {"flat", "", "none", "nan", "null"}:
+        return "flat"
+    return side
 
 
 @lru_cache(maxsize=4)
 def _load_registry_cached(registry_path: str) -> dict[str, Any]:
-    p = Path(registry_path)
-    if not p.exists():
+    path = Path(registry_path)
+    if not path.exists():
         return {}
 
-    data = json.loads(p.read_text(encoding="utf-8"))
-    groups = dict(data.get("groups", {}) or {})
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
 
+    groups = dict(data.get("groups", {}) or {})
     loaded = {
         "version": str(data.get("version", "")),
         "target_col": str(data.get("target_col", "")),
@@ -82,8 +100,17 @@ def load_registry(registry_path: str | None = None) -> dict[str, Any]:
 
 def resolve_group_key(candidate) -> str:
     meta = _candidate_meta(candidate)
-    symbol = str(meta.get("symbol", "") or "")
-    side = str(meta.get("side", "") or "").lower()
+
+    symbol = str(
+        meta.get("symbol", "")
+        or getattr(candidate, "symbol", "") if not isinstance(candidate, dict) else ""
+    ).strip()
+
+    candidate_side = getattr(candidate, "side", None)
+    if candidate_side is None and isinstance(candidate, dict):
+        candidate_side = candidate.get("side", None)
+
+    side = _normalize_side(candidate_side if candidate_side is not None else meta.get("side", ""))
     return f"{symbol}|{side}"
 
 
@@ -101,6 +128,18 @@ def predict_pwin_for_candidate(candidate, registry_path: str | None = None) -> d
         }
 
     group_key = resolve_group_key(candidate)
+    side_for_group = group_key.split("|", 1)[1] if "|" in group_key else ""
+    if side_for_group not in {"long", "short"}:
+        return {
+            "enabled": True,
+            "applied": False,
+            "reason": f"side_not_supported:{side_for_group}",
+            "group_key": group_key,
+            "p_win": None,
+            "model_name": "",
+            "registry_version": str(registry.get("version", "")),
+        }
+
     group_info = dict(registry.get("groups", {}).get(group_key, {}) or {})
     if not group_info:
         return {

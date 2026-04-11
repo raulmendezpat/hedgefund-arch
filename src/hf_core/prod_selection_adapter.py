@@ -77,17 +77,13 @@ def _apply_thresholds(candidates, decisions, thresholds: dict[str, float]):
         sm["prod_selection_threshold"] = float(threshold)
         sm["prod_selection_p_win"] = float(p_win)
 
-        if accepted and p_win < threshold:
-            try:
-                d.accept = False
-            except Exception:
-                pass
-            sm["accept"] = False
-            sm["prod_selection_filtered_by_threshold"] = True
-            sm["policy_reason"] = "prod_ml_threshold"
-            c.signal_meta = sm
-            dropped.append((c, d))
-            continue
+        # Observability only:
+        # no hard reject here; upstream policy / ranking already decide acceptance.
+        sm["prod_selection_filtered_by_threshold"] = bool(accepted and p_win < threshold)
+        if bool(sm["prod_selection_filtered_by_threshold"]):
+            sm["prod_selection_threshold_observed_only"] = True
+            if not str(sm.get("policy_reason", "") or ""):
+                sm["policy_reason"] = "prod_ml_threshold_observed_only"
 
         c.signal_meta = sm
         kept.append((c, d))

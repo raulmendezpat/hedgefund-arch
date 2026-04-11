@@ -1,21 +1,5 @@
 [
   {
-    "strategy_id": "btc_trend",
-    "symbol": "BTC/USDT:USDT",
-    "engine": "btc_trend_signal",
-    "base_weight": 1.0,
-    "params": {
-      "require_ema_gap_min": true,
-      "ema_gap_min": 0.0015,
-      "use_strength_tiers": false,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false,
-      "short_adx_min": 29.0,
-      "short_require_ema_gap_min": true,
-      "short_ema_gap_min": 0.0015
-    }
-  },
-  {
     "strategy_id": "btc_trend_loose",
     "symbol": "BTC/USDT:USDT",
     "engine": "btc_trend_signal",

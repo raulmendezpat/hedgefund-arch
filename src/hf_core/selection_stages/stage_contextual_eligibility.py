@@ -146,9 +146,10 @@ class ContextualEligibilityStage:
             if side not in allowed_sides:
                 passed = False
                 reasons.append("side_not_allowed")
+            # p_win hard gate removed here.
+            # Keep observability only; acceptance / cross-sectional ranking decide downstream.
             if p_win < min_p_win:
-                passed = False
-                reasons.append("p_win_below_min")
+                reasons.append("p_win_below_min_observed_only")
             if expected_return < min_expected_return:
                 passed = False
                 reasons.append("expected_return_below_min")
