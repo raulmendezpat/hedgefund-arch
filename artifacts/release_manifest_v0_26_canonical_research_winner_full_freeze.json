@@ -1,0 +1,47 @@
+{
+  "freeze_tag": "v0.26_canonical_research_winner_full_freeze",
+  "created_utc": "2026-04-11T05:57:26Z",
+  "git_head_before_commit": "3749594",
+  "command_window": {
+    "start": "2026-03-09 23:59:59",
+    "end": "2026-04-08 23:59:59"
+  },
+  "runtime_args": {
+    "selection_semantics_mode": "research",
+    "allocator_mode": "production_like_snapshot",
+    "allocator_profile": "blended",
+    "projection_profile": "research",
+    "target_exposure": 0.4,
+    "symbol_cap": 0.28,
+    "execution_symbol_cap": 0.6,
+    "runtime_ml_size_mode": "calibrated",
+    "runtime_ml_size_scale": 8.5,
+    "runtime_ml_size_min": 0.5,
+    "runtime_ml_size_max": 1.5,
+    "runtime_ml_size_base": 0.7,
+    "runtime_ml_size_pwin_threshold": 0.46,
+    "pwin_calibration_artifact": "artifacts/pwin_calibration_strategy_side_baseline_prodsem_3m_v3.json",
+    "exit_registry": "artifacts/exit_policy_registry.promoted_frozen_aave_link_eth_xrp_short_sl_1_20.json"
+  },
+  "sha1": {
+    "scripts/research_runtime.py": "f392362b17cb7d0067918b94e651e1118282f688",
+    "src/hf_core/prod_selection_adapter.py": "50116628bb45310aeabe6aaff9868b103e49fa55",
+    "src/hf_core/pwin_asset_side_helper.py": "5c54f849d7b72be291de4e67838a2266c5136948",
+    "src/hf_core/selection_engine.py": "298f8ad711b477a15d614bfb9db6b4e66bb39696",
+    "src/hf_core/selection_stages/stage_contextual_eligibility.py": "d7cddc4b2deac52be2a0a2cb4dfa71529d40d286",
+    "artifacts/rt_registry_add_trx_specialized.json": "828baeb7cf6ece7486361b9e86eea40c6d8df79e",
+    "artifacts/selection_policy_config.calibrated.json": "8bcd22efad0f4826851bf112fe4ce3a649437fc3",
+    "artifacts/selection_policy_config.json": "ab159cb30915953c71be1e555ab4f2b98593da4a",
+    "artifacts/policy_config.json": "3170995e2cb78007d1ebe9706e6dd05822e2f18b",
+    "artifacts/exit_policy_registry.promoted_frozen_aave_link_eth_xrp_short_sl_1_20.json": "84c3c4b69d654a4558d41958cb9f2742a475a6dc",
+    "data/cache/binanceusdm/1h/AAVE_USDT_USDT.csv.gz": "3b2b5af6bfe1faa8205962147d59d596497cc92b",
+    "data/cache/binanceusdm/1h/AVAX_USDT_USDT.csv.gz": "36c13d95009b4701e7b40e45308c50c7d2ce5d0c",
+    "data/cache/binanceusdm/1h/BNB_USDT_USDT.csv.gz": "152ee39afa1dcd4c96a6fdc0fe70a79ea22a0a90",
+    "data/cache/binanceusdm/1h/BTC_USDT_USDT.csv.gz": "5e33a484e4f8667421eb34347285ca27afcf5f69",
+    "data/cache/binanceusdm/1h/DOT_USDT_USDT.csv.gz": "4d080b02ddd2b4128113720984b37c17e3dbbe26",
+    "data/cache/binanceusdm/1h/ETH_USDT_USDT.csv.gz": "a2823bb8623be8e2c07b64037f9cffca9211e23d",
+    "data/cache/binanceusdm/1h/LINK_USDT_USDT.csv.gz": "085a3770e84b94919274937c0faf4a00b048ff97",
+    "data/cache/binanceusdm/1h/TRX_USDT_USDT.csv.gz": "1a3ec191901b850f28450b600f228a8f97d75f74",
+    "data/cache/binanceusdm/1h/XRP_USDT_USDT.csv.gz": "3d1c02e0fc64ac343654c6931dd1fa56f01f562d"
+  }
+}
