@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Protocol
 
 from .contracts import ExitDecision, PositionState
@@ -77,6 +78,50 @@ class TrendAtrDynamicExitPolicy:
         ctx_sl_mult = _f(context.get("sl_mult", context.get("ctx_sl_mult", 1.0)), 1.0)
         ctx_time_stop_bars = int(_f(context.get("time_stop_bars", context.get("ctx_time_stop_bars", self.max_hold_bars)), self.max_hold_bars))
 
+        # Dynamic stale-position kill switch:
+        # if no explicit time_stop_bars override is provided, allow a position to live
+        # up to 150% of the historical average hold time for its asset/side or strategy/side.
+        hist_avg_hold_bars = _f(
+            context.get(
+                "historical_avg_hold_bars",
+                context.get(
+                    "avg_hold_bars",
+                    context.get(
+                        "historical_mean_hold_bars",
+                        context.get("mean_hold_bars", 0.0),
+                    ),
+                ),
+            ),
+            0.0,
+        )
+
+        dynamic_max_hold_bars = int(ctx_time_stop_bars)
+
+        # Only treat time_stop as explicitly overridden when the caller says so.
+        # Default ctx_time_stop_bars from the runtime profile should not disable
+        # the dynamic stale-position kill switch.
+        explicit_time_stop_present = bool(context.get("explicit_time_stop_override", False))
+        dynamic_hold_multiplier = float(context.get("dynamic_hold_multiplier", 1.8))
+        close_now = _f(prev_bar.get("close"), position.entry_px)
+        unrealized_pnl = 0.0
+        if position.side == "long":
+            unrealized_pnl = float(close_now) - float(position.entry_px)
+        elif position.side == "short":
+            unrealized_pnl = float(position.entry_px) - float(close_now)
+
+        entry_notional = abs(float(position.entry_px) * float(position.qty))
+        loss_pct_notional = 0.0
+        if entry_notional > 0.0:
+            loss_pct_notional = max(0.0, (-unrealized_pnl / entry_notional) * 100.0)
+
+        if (
+            (not explicit_time_stop_present)
+            and hist_avg_hold_bars > 0
+            and unrealized_pnl < 0.0
+            and loss_pct_notional >= 2.5
+        ):
+            dynamic_max_hold_bars = max(1, int(__import__("math").ceil(hist_avg_hold_bars * dynamic_hold_multiplier)))
+
         atr_now = _f(prev_bar.get("atr"), position.entry_atr)
         close_now = _f(prev_bar.get("close"), position.entry_px)
         high_now = _f(current_bar.get("high"), close_now)
@@ -116,7 +161,7 @@ class TrendAtrDynamicExitPolicy:
                         breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
                     )
 
-            max_hold_bars = int(ctx_time_stop_bars if ctx_time_stop_bars > 0 else self.max_hold_bars)
+            max_hold_bars = int(dynamic_max_hold_bars if dynamic_max_hold_bars > 0 else self.max_hold_bars)
 
             if max_hold_bars > 0 and int(position.bars_held) >= int(max_hold_bars):
                 return ExitDecision(
@@ -188,7 +233,7 @@ class TrendAtrDynamicExitPolicy:
                         breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
                     )
 
-            max_hold_bars = int(ctx_time_stop_bars if ctx_time_stop_bars > 0 else self.max_hold_bars)
+            max_hold_bars = int(dynamic_max_hold_bars if dynamic_max_hold_bars > 0 else self.max_hold_bars)
 
             if max_hold_bars > 0 and int(position.bars_held) >= int(max_hold_bars):
                 return ExitDecision(

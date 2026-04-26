@@ -1908,6 +1908,52 @@ def _apply_runtime_cross_sectional_ranking(
 
     return kept_candidates, kept_decisions, meta
 
+def _historical_avg_hold_bars_for_position(lifecycle_engine, symbol: str, strategy_id: str, side: str) -> float:
+    trade_log = list(getattr(lifecycle_engine, "trade_log", []) or [])
+    if not trade_log:
+        return 0.0
+
+    def _bars(rec):
+        try:
+            v = getattr(rec, "bars_held", None)
+            if v is None and isinstance(rec, dict):
+                v = rec.get("bars_held")
+            return float(v or 0.0)
+        except Exception:
+            return 0.0
+
+    def _sym(rec):
+        if isinstance(rec, dict):
+            return str(rec.get("symbol", "") or "")
+        return str(getattr(rec, "symbol", "") or "")
+
+    def _sid(rec):
+        if isinstance(rec, dict):
+            return str(rec.get("strategy_id", "") or "")
+        return str(getattr(rec, "strategy_id", "") or "")
+
+    def _side(rec):
+        if isinstance(rec, dict):
+            return str(rec.get("side", "") or "")
+        return str(getattr(rec, "side", "") or "")
+
+    candidates = [r for r in trade_log if _bars(r) > 0]
+
+    exact = [_bars(r) for r in candidates if _sym(r) == symbol and _sid(r) == strategy_id and _side(r) == side]
+    if exact:
+        return float(sum(exact) / len(exact))
+
+    by_strategy_side = [_bars(r) for r in candidates if _sid(r) == strategy_id and _side(r) == side]
+    if by_strategy_side:
+        return float(sum(by_strategy_side) / len(by_strategy_side))
+
+    by_symbol_side = [_bars(r) for r in candidates if _sym(r) == symbol and _side(r) == side]
+    if by_symbol_side:
+        return float(sum(by_symbol_side) / len(by_symbol_side))
+
+    return 0.0
+
+
 def _build_lifecycle_metrics(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
     equity = pd.to_numeric(equity_df.get("equity", pd.Series(dtype=float)), errors="coerce").dropna()
 
@@ -2629,6 +2675,16 @@ def main() -> None:
                 if _base_family:
                     strat_cfg["family"] = _base_family
                 strat_cfg["params"] = _merged_params
+
+            _hist_avg_hold_bars = _historical_avg_hold_bars_for_position(
+                lifecycle_engine,
+                sym,
+                str(getattr(pos, "strategy_id", "") or ""),
+                str(getattr(pos, "side", "") or ""),
+            )
+            exit_context["historical_avg_hold_bars"] = float(_hist_avg_hold_bars)
+            exit_context["explicit_time_stop_override"] = bool("time_stop_bars" in (_override_cfg or {}))
+            exit_context["dynamic_time_stop_from_history"] = True
 
             decision = lifecycle_engine.evaluate_exit(
                 symbol=sym,
