@@ -15,15 +15,11 @@
       "short_size_bias": 1.0,
       "max_size_mult": 0.45,
       "disabled_strategy_sides": [
-        "aave_trend|long",
         "avax_trend|long",
         "bnb_trend|long",
         "btc_trend_loose|long",
         "btc_trend|long",
-        "dot_trend|long",
-        "eth_trend|long",
-        "link_trend|long",
-        "xrp_trend|long"
+        "link_trend|long"
       ],
       "extreme_pwin_reject_threshold": 0.595,
       "extreme_score_reject_threshold": 0.00017,
@@ -63,15 +59,11 @@
       "short_size_bias": 1.0,
       "max_size_mult": 0.45,
       "disabled_strategy_sides": [
-        "aave_trend|long",
         "avax_trend|long",
         "bnb_trend|long",
         "btc_trend_loose|long",
         "btc_trend|long",
-        "dot_trend|long",
-        "eth_trend|long",
-        "link_trend|long",
-        "xrp_trend|long"
+        "link_trend|long"
       ],
       "extreme_pwin_reject_threshold": 0.595,
       "extreme_score_reject_threshold": 0.00017,
@@ -112,15 +104,11 @@
       "short_size_bias": 1.0,
       "max_size_mult": 0.45,
       "disabled_strategy_sides": [
-        "aave_trend|long",
         "avax_trend|long",
         "bnb_trend|long",
         "btc_trend_loose|long",
         "btc_trend|long",
-        "dot_trend|long",
-        "eth_trend|long",
-        "link_trend|long",
-        "xrp_trend|long"
+        "link_trend|long"
       ],
       "extreme_pwin_reject_threshold": 0.595,
       "extreme_score_reject_threshold": 0.00017,
