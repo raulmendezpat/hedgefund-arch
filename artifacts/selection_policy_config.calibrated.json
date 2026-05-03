@@ -38,6 +38,9 @@
             "name": "market_guard"
           },
           {
+            "name": "trend_participation_gate"
+          },
+          {
             "name": "contextual_eligibility"
           },
           {
@@ -99,7 +102,49 @@
           }
         }
       },
-      "alpha_selection_min_alpha_score": 0.02
+      "alpha_selection_min_alpha_score": 0.02,
+      "trend_participation_gate": {
+        "mode": "filter",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "short"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        }
+      }
     }
   },
   "asset_overrides": {
@@ -122,6 +167,66 @@
         "pwin_max": 0.622047,
         "rows": 4693,
         "ml_share": 1.0
+      },
+      "trend_participation_gate": {
+        "mode": "filter",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "AVAX/USDT:USDT": {
@@ -143,6 +248,66 @@
         "pwin_max": 0.512,
         "rows": 4693,
         "ml_share": 0.0
+      },
+      "trend_participation_gate": {
+        "mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "BNB/USDT:USDT": {
@@ -164,6 +329,66 @@
         "pwin_max": 0.512,
         "rows": 4693,
         "ml_share": 0.0
+      },
+      "trend_participation_gate": {
+        "mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "BTC/USDT:USDT": {
@@ -185,6 +410,66 @@
         "pwin_max": 0.512,
         "rows": 9386,
         "ml_share": 0.0
+      },
+      "trend_participation_gate": {
+        "mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "DOT/USDT:USDT": {
@@ -206,6 +491,38 @@
         "pwin_max": 0.885808,
         "rows": 4693,
         "ml_share": 1.0
+      },
+      "trend_participation_gate": {
+        "mode": "filter",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 18.0,
+        "min_rvol20": 1.0,
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "ETH/USDT:USDT": {
@@ -227,6 +544,66 @@
         "pwin_max": 0.619189,
         "rows": 4693,
         "ml_share": 1.0
+      },
+      "trend_participation_gate": {
+        "mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "LINK/USDT:USDT": {
@@ -248,6 +625,66 @@
         "pwin_max": 0.512,
         "rows": 4693,
         "ml_share": 0.0
+      },
+      "trend_participation_gate": {
+        "mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "TRX/USDT:USDT": {
@@ -269,6 +706,38 @@
         "pwin_max": 0.512,
         "rows": 4693,
         "ml_share": 0.0
+      },
+      "trend_participation_gate": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     },
     "XRP/USDT:USDT": {
@@ -290,6 +759,66 @@
         "pwin_max": 0.657526,
         "rows": 4693,
         "ml_share": 1.0
+      },
+      "trend_participation_gate": {
+        "mode": "filter",
+        "min_adx": 20.0,
+        "min_rvol20": 1.0,
+        "require_trend_alignment": true,
+        "require_rvol_expansion": false,
+        "min_bar_ret_pct_long": 0.0,
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "ema_fast_field": "ema20",
+        "ema_slow_field": "ema50",
+        "adx_field": "adx14",
+        "rvol_field": "rvol20",
+        "close_field": "close",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "ema_slope_field": "ema_fast_slope_signed",
+        "score_weights": {
+          "trend_confirmed": 0.5,
+          "adx_confirmed": 0.25,
+          "volume_confirmed": 0.25
+        },
+        "penalty_weights": {
+          "side_not_allowed": 0.25,
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.15,
+          "ema_slope_not_negative": 0.15,
+          "adx_below_min": 0.1,
+          "rvol_below_min_observed_only": 0.05,
+          "rvol_missing_observed_only": 0.0,
+          "rvol_missing": 0.2,
+          "invalid_side": 0.25
+        },
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
+      },
+      "trend_participation_gate_long_observe": {
+        "mode": "observe_only",
+        "allowed_sides": [
+          "long"
+        ],
+        "require_close_vs_ema_fast": true,
+        "require_ema_stack": true,
+        "require_ema_slope": true,
+        "require_adx": true,
+        "require_rvol": false,
+        "allow_missing_rvol": true,
+        "min_adx": 20.0,
+        "min_rvol20": 1.0
       }
     }
   },

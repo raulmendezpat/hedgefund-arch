@@ -432,6 +432,21 @@ def _enrich_candidates_for_runtime(
             symbol_df=data_by_symbol[c.symbol],
             feature_map=feature_series_by_symbol[c.symbol],
         )
+
+        _sm_pre = dict(getattr(_c, "signal_meta", {}) or {})
+        _sym_df = data_by_symbol.get(c.symbol)
+        _feat_map = feature_series_by_symbol.get(c.symbol, {}) or {}
+
+        _sm_pre["rvol20"] = float(_safe_rvol20_from_symbol_df(_sym_df, ts))
+        _sm_pre["ema_fast_runtime"] = float(_safe_series_value_at_ts(_feat_map.get("ema_fast"), ts, 0.0))
+        _sm_pre["ema_slow_runtime"] = float(_safe_series_value_at_ts(_feat_map.get("ema_slow"), ts, 0.0))
+        _sm_pre["adx_runtime"] = float(_safe_series_value_at_ts(_feat_map.get("adx"), ts, 0.0))
+        _sm_pre["atrp_runtime"] = float(_safe_series_value_at_ts(_feat_map.get("atrp"), ts, 0.0))
+        _sm_pre["ema_fast_slope_signed"] = float(_safe_ema_slope_from_feature_map(_feat_map, ts, "ema_fast", 0.0))
+        _sm_pre["ema_slow_slope_signed"] = float(_safe_ema_slope_from_feature_map(_feat_map, ts, "ema_slow", 0.0))
+
+        _c.signal_meta = _sm_pre
+
         _c = seed_candidate_meta(_c)
 
         _sid_now = str(getattr(_c, "strategy_id", "") or "").lower()
@@ -494,6 +509,71 @@ def _candidate_feature_value(candidate, key: str, default: float = 0.0) -> float
     try:
         v = getattr(candidate, key)
         return float(v if v is not None else default)
+    except Exception:
+        return float(default)
+
+
+def _safe_rvol20_from_symbol_df(symbol_df, ts_value, volume_col: str = "volume", window: int = 20) -> float:
+    try:
+        if symbol_df is None or volume_col not in symbol_df.columns:
+            return 0.0
+        if ts_value not in symbol_df.index:
+            return 0.0
+        loc = symbol_df.index.get_loc(ts_value)
+        if isinstance(loc, slice):
+            loc = int(loc.stop) - 1
+        elif isinstance(loc, (list, tuple)):
+            loc = int(loc[-1])
+        elif hasattr(loc, "__len__") and not isinstance(loc, (int,)):
+            loc = int(list(loc)[-1])
+        else:
+            loc = int(loc)
+        start = max(0, loc - int(window) + 1)
+        vol = symbol_df.iloc[start:loc+1][volume_col].astype(float)
+        if vol.empty:
+            return 0.0
+        cur = float(vol.iloc[-1] or 0.0)
+        avg = float(vol.mean() or 0.0)
+        if avg <= 0.0:
+            return 0.0
+        return float(cur / avg)
+    except Exception:
+        return 0.0
+
+
+def _safe_series_value_at_ts(series, ts_value, default: float = 0.0) -> float:
+    try:
+        if series is None or ts_value not in series.index:
+            return float(default)
+        v = series.loc[ts_value]
+        if hasattr(v, "iloc"):
+            v = v.iloc[-1]
+        return float(v if v is not None else default)
+    except Exception:
+        return float(default)
+
+
+def _safe_ema_slope_from_feature_map(feature_map: dict, ts_value, ema_key: str = "ema_fast", default: float = 0.0) -> float:
+    try:
+        if not isinstance(feature_map, dict):
+            return float(default)
+        ema_series = feature_map.get(str(ema_key))
+        if ema_series is None or ts_value not in ema_series.index:
+            return float(default)
+        loc = ema_series.index.get_loc(ts_value)
+        if isinstance(loc, slice):
+            loc = int(loc.stop) - 1
+        elif isinstance(loc, (list, tuple)):
+            loc = int(loc[-1])
+        elif hasattr(loc, "__len__") and not isinstance(loc, (int,)):
+            loc = int(list(loc)[-1])
+        else:
+            loc = int(loc)
+        if loc <= 0:
+            return float(default)
+        cur = float(ema_series.iloc[loc])
+        prev = float(ema_series.iloc[loc - 1])
+        return float(cur - prev)
     except Exception:
         return float(default)
 
