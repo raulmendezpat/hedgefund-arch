@@ -114,6 +114,22 @@ def _donchian(df: pd.DataFrame, lookback: int):
     dc_high = high.shift(1).rolling(window=int(lookback), min_periods=int(lookback)).max()
     dc_low = low.shift(1).rolling(window=int(lookback), min_periods=int(lookback)).min()
     return dc_high, dc_low
+def _safe_rvol20(df, idx: int, volume_col: str = "volume", window: int = 20) -> float:
+    try:
+        if idx < 0 or volume_col not in df.columns:
+            return 0.0
+        start = max(0, int(idx) - int(window) + 1)
+        vol = df.iloc[start:int(idx)+1][volume_col].astype(float)
+        if vol.empty:
+            return 0.0
+        cur = float(vol.iloc[-1] or 0.0)
+        avg = float(vol.mean() or 0.0)
+        if avg <= 0.0:
+            return 0.0
+        return float(cur / avg)
+    except Exception:
+        return 0.0
+
 
 
 def _row_to_candle(ts: int, row: pd.Series, features: dict[str, float] | None = None) -> Candle:
@@ -901,6 +917,17 @@ def run(
                         continue
 
                     _meta["strategy_id"] = _strategy_id
+                    try:
+                        _sym_df = df_map.get(_sym)
+                        _rvol_idx = -1
+                        if _sym_df is not None and ts in _sym_df.index:
+                            try:
+                                _rvol_idx = int(_sym_df.index.get_loc(ts))
+                            except Exception:
+                                _rvol_idx = -1
+                        _meta["rvol20"] = float(_safe_rvol20(_sym_df, _rvol_idx)) if (_sym_df is not None and _rvol_idx >= 0) else 0.0
+                    except Exception:
+                        _meta["rvol20"] = 0.0
                     _meta["competitive_score"] = float(compute_competitive_score(_opp))
 
                     _tmp_sig = Signal(

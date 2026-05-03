@@ -9,6 +9,7 @@ from .stage_alpha_selection import AlphaSelectionStage
 from .stage_best_per_symbol import BestPerSymbolStage
 from .stage_contextual_eligibility import ContextualEligibilityStage
 from .stage_strategy_regime_eligibility import StrategyRegimeEligibilityStage
+from .stage_trend_participation_gate import TrendParticipationGateStage
 
 
 class SelectionPipelineFactory:
@@ -17,6 +18,7 @@ class SelectionPipelineFactory:
         "market_guard": MarketGuardStage,
         "contextual_eligibility": ContextualEligibilityStage,
         "strategy_regime_eligibility": StrategyRegimeEligibilityStage,
+        "trend_participation_gate": TrendParticipationGateStage,
         "alpha_selection": AlphaSelectionStage,
         "best_per_symbol": BestPerSymbolStage,
     }
@@ -26,6 +28,7 @@ class SelectionPipelineFactory:
         {"name": "market_guard"},
         {"name": "contextual_eligibility"},
         {"name": "strategy_regime_eligibility"},
+        {"name": "trend_participation_gate"},
         {"name": "alpha_selection"},
         {"name": "best_per_symbol", "kwargs": {"score_field": "alpha_score"}},
     ]
