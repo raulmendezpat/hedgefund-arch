@@ -129,20 +129,22 @@
         "allow_missing_rvol": true,
         "ema_slope_field": "ema_fast_slope_signed",
         "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
+          "trend_confirmed": 0.55,
+          "adx_confirmed": 0.2,
+          "volume_confirmed": 0.1,
+          "close_vs_ema_fast_ok": 0.1,
+          "ema_stack_ok": 0.05
         },
         "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
           "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
+          "close_above_ema_fast": 0.1,
+          "ema_stack_not_short": 0.08,
+          "adx_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04,
+          "rvol_below_min": 0.06,
+          "rvol_missing": 0.08,
+          "invalid_side": 0.25,
+          "side_not_allowed": 0.25
         }
       }
     }
@@ -170,21 +172,8 @@
       },
       "trend_participation_gate": {
         "mode": "filter",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
@@ -192,41 +181,12 @@
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 21.0,
+        "min_rvol20": 0.9,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "AVAX/USDT:USDT": {
@@ -250,64 +210,22 @@
         "ml_share": 0.0
       },
       "trend_participation_gate": {
-        "mode": "observe_only",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
+        "mode": "filter",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
-        "require_ema_slope": true,
+        "require_ema_slope": false,
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 17.0,
+        "min_rvol20": 0.8,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "BNB/USDT:USDT": {
@@ -331,64 +249,22 @@
         "ml_share": 0.0
       },
       "trend_participation_gate": {
-        "mode": "observe_only",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
+        "mode": "filter",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
-        "require_ema_slope": true,
+        "require_ema_slope": false,
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 17.0,
+        "min_rvol20": 0.8,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "BTC/USDT:USDT": {
@@ -412,22 +288,9 @@
         "ml_share": 0.0
       },
       "trend_participation_gate": {
-        "mode": "observe_only",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
+        "mode": "filter",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
@@ -435,41 +298,12 @@
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 18.0,
+        "min_rvol20": 0.85,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "DOT/USDT:USDT": {
@@ -493,24 +327,6 @@
         "ml_share": 1.0
       },
       "trend_participation_gate": {
-        "mode": "filter",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 18.0,
-        "min_rvol20": 1.0,
-        "long_probe_mode": "observe_only",
-        "long_probe_allowed_sides": [
-          "long"
-        ]
-      },
-      "trend_participation_gate_long_observe": {
         "mode": "observe_only",
         "allowed_sides": [
           "long"
@@ -522,7 +338,11 @@
         "require_rvol": false,
         "allow_missing_rvol": true,
         "min_adx": 20.0,
-        "min_rvol20": 1.0
+        "min_rvol20": 1.0,
+        "long_probe_mode": "observe_only",
+        "long_probe_allowed_sides": [
+          "long"
+        ]
       }
     },
     "ETH/USDT:USDT": {
@@ -546,22 +366,9 @@
         "ml_share": 1.0
       },
       "trend_participation_gate": {
-        "mode": "observe_only",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
+        "mode": "filter",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
@@ -569,41 +376,12 @@
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 18.0,
+        "min_rvol20": 0.85,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "LINK/USDT:USDT": {
@@ -627,22 +405,9 @@
         "ml_share": 0.0
       },
       "trend_participation_gate": {
-        "mode": "observe_only",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
+        "mode": "filter",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
@@ -650,41 +415,12 @@
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 22.0,
+        "min_rvol20": 0.9,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "TRX/USDT:USDT": {
@@ -724,20 +460,6 @@
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     },
     "XRP/USDT:USDT": {
@@ -762,21 +484,8 @@
       },
       "trend_participation_gate": {
         "mode": "filter",
-        "min_adx": 20.0,
-        "min_rvol20": 1.0,
-        "require_trend_alignment": true,
-        "require_rvol_expansion": false,
-        "min_bar_ret_pct_long": 0.0,
-        "max_bar_ret_pct_short": 0.0,
-        "max_extension_pct_long": 0.0,
-        "max_extension_pct_short": 0.0,
-        "ema_fast_field": "ema20",
-        "ema_slow_field": "ema50",
-        "adx_field": "adx14",
-        "rvol_field": "rvol20",
-        "close_field": "close",
         "allowed_sides": [
-          "long"
+          "short"
         ],
         "require_close_vs_ema_fast": true,
         "require_ema_stack": true,
@@ -784,41 +493,12 @@
         "require_adx": true,
         "require_rvol": false,
         "allow_missing_rvol": true,
-        "ema_slope_field": "ema_fast_slope_signed",
-        "score_weights": {
-          "trend_confirmed": 0.5,
-          "adx_confirmed": 0.25,
-          "volume_confirmed": 0.25
-        },
-        "penalty_weights": {
-          "side_not_allowed": 0.25,
-          "close_above_ema_fast": 0.1,
-          "ema_stack_not_short": 0.15,
-          "ema_slope_not_negative": 0.15,
-          "adx_below_min": 0.1,
-          "rvol_below_min_observed_only": 0.05,
-          "rvol_missing_observed_only": 0.0,
-          "rvol_missing": 0.2,
-          "invalid_side": 0.25
-        },
+        "min_adx": 22.0,
+        "min_rvol20": 0.9,
         "long_probe_mode": "observe_only",
         "long_probe_allowed_sides": [
           "long"
         ]
-      },
-      "trend_participation_gate_long_observe": {
-        "mode": "observe_only",
-        "allowed_sides": [
-          "long"
-        ],
-        "require_close_vs_ema_fast": true,
-        "require_ema_stack": true,
-        "require_ema_slope": true,
-        "require_adx": true,
-        "require_rvol": false,
-        "allow_missing_rvol": true,
-        "min_adx": 20.0,
-        "min_rvol20": 1.0
       }
     }
   },
