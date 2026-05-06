@@ -319,6 +319,147 @@ def desired_take_profit_price_fixed_mult(side: str, ref_price: float, atr: float
     return 0.0
 
 
+def extract_position_entry_price(position_obj) -> float | None:
+    if not isinstance(position_obj, dict):
+        return None
+
+    info = position_obj.get("info", {}) if isinstance(position_obj.get("info"), dict) else {}
+
+    keys = [
+        "entryPrice",
+        "entry_price",
+        "average",
+        "avgPrice",
+        "avg_price",
+        "openPrice",
+        "open_price",
+        "holdAvgPrice",
+        "breakEvenPrice",
+        "breakevenPrice",
+    ]
+
+    for k in keys:
+        v = position_obj.get(k, None)
+        if v not in (None, ""):
+            try:
+                out = float(v)
+                if out > 0:
+                    return out
+            except Exception:
+                pass
+
+        v = info.get(k, None)
+        if v not in (None, ""):
+            try:
+                out = float(v)
+                if out > 0:
+                    return out
+            except Exception:
+                pass
+
+    return None
+
+
+def fetch_position_entry_price_for_side(bitget, symbol: str, pos_side: str) -> float | None:
+    pos_side = str(pos_side or "").strip().lower()
+    try:
+        positions = bitget.fetch_open_positions(symbol) or []
+    except Exception as e:
+        print(f"TP_ENTRY_FETCH_WARN -> symbol={symbol} side={pos_side} error={e!r}")
+        return None
+
+    for pos in positions:
+        try:
+            contracts = float(pos.get("contracts") or 0.0)
+        except Exception:
+            contracts = 0.0
+        if contracts <= 0:
+            continue
+
+        side = str(pos.get("side") or "").strip().lower()
+        info = pos.get("info", {}) if isinstance(pos.get("info"), dict) else {}
+        hold_side = str(info.get("holdSide") or "").strip().lower()
+
+        if side != pos_side and hold_side != pos_side:
+            continue
+
+        entry = extract_position_entry_price(pos)
+        if entry and entry > 0:
+            return float(entry)
+
+    return None
+
+
+def enforce_take_profit_against_entry(
+    *,
+    bitget,
+    symbol: str,
+    pos_side: str,
+    raw_tp_price: float,
+    entry_price: float | None,
+    min_profit_bps: float,
+    label: str,
+) -> float | None:
+    try:
+        tp = float(raw_tp_price)
+    except Exception:
+        return None
+
+    if not (tp > 0):
+        return None
+
+    if entry_price is None or not (float(entry_price) > 0):
+        print(
+            f"TP_ENTRY_GUARD_WARN -> symbol={symbol} label={label} side={pos_side} "
+            f"entry_price_missing=True raw_tp={tp}; using raw TP"
+        )
+        return float(bitget.price_to_precision(symbol, tp))
+
+    entry = float(entry_price)
+    min_profit_bps = max(float(min_profit_bps or 0.0), 0.0)
+    min_profit_frac = min_profit_bps / 10000.0
+
+    guarded = tp
+    adjusted = False
+
+    if pos_side == "long":
+        min_profitable = entry * (1.0 + min_profit_frac)
+        if guarded <= min_profitable:
+            guarded = min_profitable
+            adjusted = True
+
+    elif pos_side == "short":
+        max_profitable = entry * (1.0 - min_profit_frac)
+        if guarded >= max_profitable:
+            guarded = max_profitable
+            adjusted = True
+
+    guarded = float(bitget.price_to_precision(symbol, guarded))
+
+    # Precision rounding can still collapse to entry or the wrong side.
+    if pos_side == "long" and guarded <= entry:
+        print(
+            f"TP_ENTRY_GUARD_BLOCK -> symbol={symbol} label={label} side={pos_side} "
+            f"entry={entry} raw_tp={tp} guarded={guarded} reason=not_above_entry"
+        )
+        return None
+
+    if pos_side == "short" and guarded >= entry:
+        print(
+            f"TP_ENTRY_GUARD_BLOCK -> symbol={symbol} label={label} side={pos_side} "
+            f"entry={entry} raw_tp={tp} guarded={guarded} reason=not_below_entry"
+        )
+        return None
+
+    if adjusted:
+        print(
+            f"TP_ENTRY_GUARD_ADJUST -> symbol={symbol} label={label} side={pos_side} "
+            f"entry={entry} raw_tp={tp} guarded_tp={guarded} min_profit_bps={min_profit_bps}"
+        )
+
+    return guarded
+
+
 def extract_trigger_order_id(o):
     if not isinstance(o, dict):
         return None
@@ -582,6 +723,50 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
         partial_tp1_atr_mult,
     )
     tp1_price = float(bitget.price_to_precision(symbol, tp1_price))
+
+    # TP safety guard:
+    # - LONG TP must always be above the actual position entry/open price.
+    # - SHORT TP must always be below the actual position entry/open price.
+    #
+    # This prevents ATR/ref-price refresh from moving a TP to a level that would
+    # close the deal at a loss. Missing entry price falls back to existing raw TP,
+    # but emits an explicit warning.
+    entry_price = fetch_position_entry_price_for_side(bitget, symbol, pos_side)
+    min_tp_profit_bps = float(cfg.get("min_tp_profit_bps", 2.0) or 2.0)
+
+    guarded_tp2_price = enforce_take_profit_against_entry(
+        bitget=bitget,
+        symbol=symbol,
+        pos_side=pos_side,
+        raw_tp_price=tp2_price,
+        entry_price=entry_price,
+        min_profit_bps=min_tp_profit_bps,
+        label="tp2",
+    )
+    guarded_tp1_price = enforce_take_profit_against_entry(
+        bitget=bitget,
+        symbol=symbol,
+        pos_side=pos_side,
+        raw_tp_price=tp1_price,
+        entry_price=entry_price,
+        min_profit_bps=min_tp_profit_bps,
+        label="tp1",
+    )
+
+    if guarded_tp2_price is None:
+        for o in plan_orders:
+            if get_plan_type(o) == "profit_plan":
+                cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "profit_plan")
+        print(
+            f"protective_action: skipped TP placement because guarded TP2 is not profitable "
+            f"(symbol={symbol}, side={pos_side}, entry={entry_price}, raw_tp2={tp2_price})"
+        )
+        final_plan_orders = fetch_open_profit_loss_orders(bitget, symbol)
+        log_plan_snapshot("PROTECTIVE_PLAN_AFTER", symbol, final_plan_orders)
+        return
+
+    tp2_price = guarded_tp2_price
+    tp1_price = guarded_tp1_price if guarded_tp1_price is not None else guarded_tp2_price
 
     qty1 = 0.0
     qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
