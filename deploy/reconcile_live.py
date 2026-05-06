@@ -613,12 +613,54 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     loss_plans = [o for o in plan_orders if get_plan_type(o) == "loss_plan"]
     profit_plans = [o for o in plan_orders if get_plan_type(o) == "profit_plan"]
 
-    # ---- ensure SL exactly matches current position size ----
-    sl_match = _find_matching_plan(loss_plans, "loss_plan", sl_price, qty, "mark_price", float(cfg.get("stop_refresh_rel_tol", 0.001) or 0.001))
-    if sl_match:
-        print(f"sl_action: keep existing loss_plan (qty={get_plan_size(sl_match)}, trigger={get_plan_trigger_price(sl_match)})")
+    # ---- ensure SL exactly matches current position size without increasing max loss ----
+    #
+    # Risk policy:
+    # - LONG: an existing SL may only move UP, never down.
+    # - SHORT: an existing SL may only move DOWN, never up.
+    #
+    # This prevents ATR/ref-price refresh from widening the maximum loss while still allowing
+    # breakeven/trailing-style improvements. If more than one loss_plan exists, keep the
+    # most protective one and cancel the rest.
+    stop_price_tol = float(cfg.get("stop_refresh_rel_tol", 0.001) or 0.001)
+    sl_match = _find_matching_plan(loss_plans, "loss_plan", sl_price, qty, "mark_price", stop_price_tol)
+
+    def _loss_plan_protection_key(o):
+        px = get_plan_trigger_price(o)
+        if px is None:
+            return float("-inf")
+        px = float(px)
+        # For long, higher SL protects more. For short, lower SL protects more.
+        return px if pos_side == "long" else -px
+
+    best_existing_sl = None
+    if loss_plans:
+        priced_loss_plans = [o for o in loss_plans if get_plan_trigger_price(o) is not None]
+        if priced_loss_plans:
+            best_existing_sl = max(priced_loss_plans, key=_loss_plan_protection_key)
+
+    keep_sl = sl_match
+    if keep_sl is None and best_existing_sl is not None:
+        existing_sl_price = float(get_plan_trigger_price(best_existing_sl))
+        desired_sl_price = float(sl_price)
+
+        if pos_side == "long" and desired_sl_price < existing_sl_price:
+            keep_sl = best_existing_sl
+            print(
+                "sl_action: keep existing loss_plan because desired SL would increase risk "
+                f"(side={pos_side}, existing={existing_sl_price}, desired={desired_sl_price})"
+            )
+        elif pos_side == "short" and desired_sl_price > existing_sl_price:
+            keep_sl = best_existing_sl
+            print(
+                "sl_action: keep existing loss_plan because desired SL would increase risk "
+                f"(side={pos_side}, existing={existing_sl_price}, desired={desired_sl_price})"
+            )
+
+    if keep_sl:
+        print(f"sl_action: keep existing loss_plan (qty={get_plan_size(keep_sl)}, trigger={get_plan_trigger_price(keep_sl)})")
         for o in loss_plans:
-            if get_plan_order_id(o) != get_plan_order_id(sl_match):
+            if get_plan_order_id(o) != get_plan_order_id(keep_sl):
                 cancel_plan_order_safe(bitget, symbol, get_plan_order_id(o), "loss_plan")
     else:
         for o in loss_plans:
