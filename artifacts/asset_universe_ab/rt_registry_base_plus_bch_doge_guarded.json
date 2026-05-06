@@ -1,0 +1,169 @@
+[
+  {
+    "base_weight": 0.9,
+    "engine": "btc_trend_signal",
+    "params": {
+      "adx_min": 12.0,
+      "ema_gap_min": 0.0015,
+      "require_ema_gap_min": true,
+      "soft_adx_gate": false,
+      "soft_ema_gap_gate": false,
+      "use_strength_tiers": false
+    },
+    "strategy_id": "btc_trend_loose",
+    "symbol": "BTC/USDT:USDT"
+  },
+  {
+    "base_weight": 1.0,
+    "engine": "link_trend_signal",
+    "params": {
+      "adx_min": 24.0,
+      "atrp_max": 0.03,
+      "atrp_min": 0.003,
+      "breakout_buffer_atr": 0.1,
+      "min_ema_sep_atr": 0.16,
+      "min_ema_slope_atr": 0.022,
+      "pullback_max_atr": 0.85,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
+    },
+    "strategy_id": "link_trend",
+    "symbol": "LINK/USDT:USDT"
+  },
+  {
+    "base_weight": 0.8,
+    "engine": "bnb_trend_signal",
+    "params": {
+      "adx_min": 18.0
+    },
+    "strategy_id": "bnb_trend",
+    "symbol": "BNB/USDT:USDT"
+  },
+  {
+    "base_weight": 1.35,
+    "engine": "xrp_trend_signal",
+    "params": {
+      "adx_min": 24.0,
+      "atrp_max": 0.025,
+      "atrp_min": 0.003,
+      "breakout_buffer_atr": 0.1,
+      "min_ema_sep_atr": 0.16,
+      "min_ema_slope_atr": 0.022,
+      "pullback_max_atr": 0.85,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": true
+    },
+    "strategy_id": "xrp_trend",
+    "symbol": "XRP/USDT:USDT"
+  },
+  {
+    "base_weight": 0.7,
+    "engine": "eth_trend_signal",
+    "params": {
+      "adx_min": 18.0
+    },
+    "strategy_id": "eth_trend",
+    "symbol": "ETH/USDT:USDT"
+  },
+  {
+    "base_weight": 0.7,
+    "engine": "trx_trend_signal",
+    "params": {
+      "adx_min": 30.0,
+      "atrp_max": 0.012,
+      "atrp_min": 0.0028,
+      "breakout_buffer_atr": 0.15,
+      "breakout_lookback": 20,
+      "ema_slope_lookback": 6,
+      "min_ema_sep_atr": 0.2,
+      "min_ema_slope_atr": 0.028,
+      "pullback_max_atr": 0.55,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": false
+    },
+    "strategy_id": "trx_trend",
+    "symbol": "TRX/USDT:USDT"
+  },
+  {
+    "base_weight": 1.0,
+    "engine": "aave_trend_signal",
+    "params": {
+      "adx_min": 18.0
+    },
+    "strategy_id": "aave_trend",
+    "symbol": "AAVE/USDT:USDT"
+  },
+  {
+    "base_weight": 0.7,
+    "engine": "dot_trend_signal",
+    "params": {
+      "adx_min": 28.0,
+      "atrp_max": 0.03,
+      "atrp_min": 0.004,
+      "breakout_buffer_atr": 0.12,
+      "min_ema_sep_atr": 0.2,
+      "min_ema_slope_atr": 0.028,
+      "pullback_max_atr": 0.75,
+      "require_pullback_for_long": false,
+      "require_pullback_for_short": false,
+      "use_longs": true,
+      "use_shorts": false
+    },
+    "strategy_id": "dot_trend",
+    "symbol": "DOT/USDT:USDT"
+  },
+  {
+    "base_weight": 0.8,
+    "engine": "btc_trend_signal",
+    "params": {
+      "adx_min": 18.0,
+      "ema_gap_min": 0.0015,
+      "require_ema_gap_min": true,
+      "soft_adx_gate": false,
+      "soft_ema_gap_gate": false,
+      "use_strength_tiers": false
+    },
+    "strategy_id": "avax_trend",
+    "symbol": "AVAX/USDT:USDT"
+  },
+  {
+    "base_weight": 0.75,
+    "cluster_cap": 0.15,
+    "cluster_id": "liquid_alt",
+    "enabled": true,
+    "engine": "btc_trend_signal",
+    "params": {
+      "adx_min": 18.0,
+      "ema_gap_min": 0.0015,
+      "require_ema_gap_min": true,
+      "soft_adx_gate": false,
+      "soft_ema_gap_gate": false,
+      "use_strength_tiers": false
+    },
+    "strategy_id": "bch_trend",
+    "symbol": "BCH/USDT:USDT"
+  },
+  {
+    "base_weight": 0.6,
+    "cluster_cap": 0.25,
+    "cluster_id": "high_beta",
+    "enabled": true,
+    "engine": "btc_trend_signal",
+    "params": {
+      "adx_min": 12.0,
+      "ema_gap_min": 0.0015,
+      "require_ema_gap_min": true,
+      "soft_adx_gate": false,
+      "soft_ema_gap_gate": false,
+      "use_strength_tiers": false
+    },
+    "strategy_id": "doge_trend_loose",
+    "symbol": "DOGE/USDT:USDT"
+  }
+]

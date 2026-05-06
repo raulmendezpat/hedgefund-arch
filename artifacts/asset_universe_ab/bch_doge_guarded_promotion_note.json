@@ -1,0 +1,63 @@
+{
+  "name": "bch_doge_guarded_asset_universe_candidate",
+  "base_commit": "67deb24",
+  "base_tag": "v0.29_live_tp_entry_profit_guard",
+  "status": "research_candidate_not_yet_live_default",
+  "added_symbols": [
+    "BCH/USDT:USDT",
+    "DOGE/USDT:USDT"
+  ],
+  "registry": "artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json",
+  "selection_policy_config": "artifacts/asset_universe_ab/selection_policy_config.base_plus_bch_doge_guarded.json",
+  "guards": {
+    "registry": {
+      "engine": "btc_trend_signal",
+      "require_ema_gap_min": true,
+      "ema_gap_min": 0.0015,
+      "soft_adx_gate": false,
+      "soft_ema_gap_gate": false,
+      "use_strength_tiers": false
+    },
+    "selection_policy": {
+      "trend_participation_gate": {
+        "mode": "filter",
+        "allowed_sides": ["short", "long"],
+        "require_rvol": true,
+        "min_rvol20": 0.4,
+        "long_probe_mode": "observe_only"
+      }
+    }
+  },
+  "validation_windows": {
+    "1m": {
+      "alt_minus_base_return_pct": 0.968071,
+      "alt_minus_base_sharpe": -0.040152
+    },
+    "3m": {
+      "alt_minus_base_return_pct": 10.327977,
+      "alt_minus_base_sharpe": 0.049446
+    },
+    "6m": {
+      "alt_minus_base_return_pct": 40.511700,
+      "alt_minus_base_sharpe": 0.179030
+    },
+    "12m": {
+      "alt_minus_base_return_pct": 903.905034,
+      "alt_minus_base_sharpe": 1.355597
+    },
+    "24m": {
+      "alt_minus_base_return_pct": 32199.295656,
+      "alt_minus_base_sharpe": 1.379707
+    }
+  },
+  "pnl_attribution_summary": {
+    "note": "BCH and DOGE contributed positive PnL across 3m, 6m, 12m and 24m. In 1m, BCH long and DOGE short were weak, but the combined multi-window result remained positive.",
+    "bch_doge_positive_return_windows": "5/5"
+  },
+  "risk_notes": [
+    "avg_gross_weight increases materially versus baseline",
+    "trade_count increases materially versus baseline",
+    "24m max drawdown worsens versus baseline, but return and Sharpe improve strongly",
+    "Before live default promotion, inspect production exposure caps and symbol-level live limits"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "base_policy": "artifacts/selection_policy_config.calibrated.json",
+  "base_registry": "artifacts/rt_registry_add_trx_specialized.json",
+  "experiments": {
+    "base_plus_bch_doge_guarded": {
+      "added_symbols": [
+        "BCH/USDT:USDT",
+        "DOGE/USDT:USDT"
+      ],
+      "policy": "artifacts/asset_universe_ab/selection_policy_config.base_plus_bch_doge_guarded.json",
+      "registry": "artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json"
+    },
+    "base_plus_bch_doge_sol_guarded": {
+      "added_symbols": [
+        "BCH/USDT:USDT",
+        "DOGE/USDT:USDT",
+        "SOL/USDT:USDT"
+      ],
+      "policy": "artifacts/asset_universe_ab/selection_policy_config.base_plus_bch_doge_sol_guarded.json",
+      "registry": "artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_sol_guarded.json"
+    },
+    "base_plus_sol_isolated": {
+      "added_symbols": [
+        "SOL/USDT:USDT"
+      ],
+      "policy": "artifacts/asset_universe_ab/selection_policy_config.base_plus_sol_isolated.json",
+      "registry": "artifacts/asset_universe_ab/rt_registry_base_plus_sol_isolated.json"
+    }
+  },
+  "notes": [
+    "BCH/DOGE use btc_trend_signal with BTC-style guards.",
+    "SOL remains isolated because sol_trend_pullback_signal is a different signal family.",
+    "All new assets use TPG require_rvol=True min_rvol20=0.4."
+  ]
+}

@@ -1,0 +1,885 @@
+{
+  "asset_overrides": {
+    "AAVE/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 1.0,
+        "pwin_max": 0.622047,
+        "pwin_min": 0.102132,
+        "pwin_p50": 0.502883,
+        "pwin_p75": 0.574983,
+        "pwin_p85": 0.587733,
+        "pwin_p90": 0.594722,
+        "pwin_p93": 0.599498,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 21.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "AVAX/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 0.0,
+        "pwin_max": 0.512,
+        "pwin_min": 0.5,
+        "pwin_p50": 0.512,
+        "pwin_p75": 0.512,
+        "pwin_p85": 0.512,
+        "pwin_p90": 0.512,
+        "pwin_p93": 0.512,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 17.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": false,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "BCH/USDT:USDT": {
+      "trend_participation_gate": {
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "require_rvol": true
+      }
+    },
+    "BNB/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 0.0,
+        "pwin_max": 0.512,
+        "pwin_min": 0.5,
+        "pwin_p50": 0.512,
+        "pwin_p75": 0.512,
+        "pwin_p85": 0.512,
+        "pwin_p90": 0.512,
+        "pwin_p93": 0.512,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 17.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": false,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "BTC/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 0.0,
+        "pwin_max": 0.512,
+        "pwin_min": 0.5,
+        "pwin_p50": 0.512,
+        "pwin_p75": 0.512,
+        "pwin_p85": 0.512,
+        "pwin_p90": 0.512,
+        "pwin_p93": 0.512,
+        "rows": 9386
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 18.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "DOGE/USDT:USDT": {
+      "trend_participation_gate": {
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "require_rvol": true
+      }
+    },
+    "DOT/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 1.0,
+        "pwin_max": 0.885808,
+        "pwin_min": 0.198276,
+        "pwin_p50": 0.536052,
+        "pwin_p75": 0.55694,
+        "pwin_p85": 0.607314,
+        "pwin_p90": 0.637868,
+        "pwin_p93": 0.644503,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "ETH/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 1.0,
+        "pwin_max": 0.619189,
+        "pwin_min": 0.261818,
+        "pwin_p50": 0.509818,
+        "pwin_p75": 0.556103,
+        "pwin_p85": 0.563794,
+        "pwin_p90": 0.566557,
+        "pwin_p93": 0.572166,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 18.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "LINK/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 0.0,
+        "pwin_max": 0.512,
+        "pwin_min": 0.5,
+        "pwin_p50": 0.512,
+        "pwin_p75": 0.512,
+        "pwin_p85": 0.512,
+        "pwin_p90": 0.512,
+        "pwin_p93": 0.512,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 22.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "TRX/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 0.0,
+        "pwin_max": 0.512,
+        "pwin_min": 0.5,
+        "pwin_p50": 0.512,
+        "pwin_p75": 0.512,
+        "pwin_p85": 0.512,
+        "pwin_p90": 0.512,
+        "pwin_p93": 0.512,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 20.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    },
+    "XRP/USDT:USDT": {
+      "asset_gate": {
+        "min_competitive_rank": 0.55,
+        "min_policy_score": 1e-06,
+        "min_postml_rank": 0.6,
+        "min_pwin_contextual": 0.57,
+        "min_pwin_rank": 0.7,
+        "min_pwin_strong": 0.59
+      },
+      "diagnostics": {
+        "ml_share": 1.0,
+        "pwin_max": 0.657526,
+        "pwin_min": 0.339574,
+        "pwin_p50": 0.516447,
+        "pwin_p75": 0.564397,
+        "pwin_p85": 0.589314,
+        "pwin_p90": 0.601759,
+        "pwin_p93": 0.607148,
+        "rows": 4693
+      },
+      "trend_participation_gate": {
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short",
+          "long"
+        ],
+        "long_probe_allowed_sides": [
+          "long"
+        ],
+        "long_probe_mode": "observe_only",
+        "min_adx": 22.0,
+        "min_rvol20": 0.4,
+        "mode": "filter",
+        "penalty_weights": {
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": true
+      }
+    }
+  },
+  "asset_side_overrides": {
+    "AVAX/USDT:USDT::short": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_fast_slow",
+        "min_adx": 22.0,
+        "min_ema_gap": 0.003,
+        "mode": "filter"
+      }
+    },
+    "BNB/USDT:USDT::short": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_fast_slow",
+        "min_adx": 18.0,
+        "min_ema_gap": 0.0,
+        "mode": "enforce"
+      }
+    },
+    "BTC/USDT:USDT::short": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_fast_slow",
+        "min_adx": 18.0,
+        "min_ema_gap": 0.002,
+        "mode": "enforce"
+      }
+    },
+    "LINK/USDT:USDT::short": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_fast_slow",
+        "min_adx": 22.0,
+        "min_ema_gap": 0.003,
+        "mode": "filter"
+      }
+    },
+    "TRX/USDT:USDT::short": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_fast_slow",
+        "min_adx": 18.0,
+        "min_ema_gap": 0.0,
+        "mode": "enforce"
+      }
+    }
+  },
+  "asset_side_strategy_overrides": {
+    "BTC/USDT:USDT::short::btc_trend": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_pct",
+        "min_adx": 22.0,
+        "min_ema_gap": 0.003,
+        "mode": "filter"
+      }
+    },
+    "BTC/USDT:USDT::short::btc_trend_loose": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_pct",
+        "min_adx": 26.0,
+        "min_ema_gap": 0.004,
+        "mode": "filter"
+      }
+    },
+    "LINK/USDT:USDT::short::link_trend": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "ema_gap_field": "ema_gap_fast_slow",
+        "max_atrp": 0.02,
+        "min_adx": 24.0,
+        "min_ema_gap": 0.0025,
+        "mode": "filter"
+      }
+    },
+    "SOL/USDT:USDT::long::sol_bbrsi": {
+      "alpha_selection_min_alpha_score": 0.02,
+      "market_guard": {
+        "allowed_sides": [
+          "long"
+        ],
+        "bb_low_field": "bb_low",
+        "bb_up_field": "bb_up",
+        "bb_width_field": "bb_width",
+        "close_field": "close",
+        "max_adx": 26.0,
+        "max_atrp": 0.035,
+        "max_bb_width": 0.25,
+        "min_atrp": 0.003279,
+        "min_bb_width": 0.0041,
+        "mode": "strict",
+        "require_bb_rsi_setup": true,
+        "rsi_field": "rsi",
+        "rsi_long_max": 36.0,
+        "rsi_short_min": 64.0
+      }
+    },
+    "SOL/USDT:USDT::long::sol_extreme_mr": {
+      "market_guard": {
+        "allowed_sides": [
+          "long"
+        ],
+        "bb_width_field": "bb_width",
+        "max_adx": 22.0,
+        "max_atrp": 0.08,
+        "min_atrp": 0.008,
+        "min_bb_width": 0.035,
+        "mode": "observe_only"
+      }
+    },
+    "SOL/USDT:USDT::long::sol_trend_pullback": {
+      "alpha_selection_min_alpha_score": 0.02,
+      "market_guard": {
+        "allowed_sides": [
+          "long"
+        ],
+        "close_field": "close",
+        "ema_fast_field": "ema_fast",
+        "ema_slow_field": "ema_slow",
+        "max_atrp": 0.05,
+        "max_ema_pullback_dist": 0.015,
+        "min_adx": 16.0,
+        "min_atrp": 0.004,
+        "mode": "strict",
+        "require_setup_window": true,
+        "rsi_field": "rsi",
+        "rsi_long_max": 55.0,
+        "rsi_long_min": 40.0,
+        "rsi_short_max": 60.0,
+        "rsi_short_min": 45.0
+      }
+    },
+    "SOL/USDT:USDT::long::sol_vol_breakout": {
+      "market_guard": {
+        "allowed_sides": [
+          "long"
+        ],
+        "close_field": "close",
+        "ema_fast_field": "ema_fast",
+        "ema_slow_field": "ema_slow",
+        "max_atrp": 0.08,
+        "min_adx": 18.0,
+        "min_atrp": 0.008,
+        "mode": "strict",
+        "require_trend_alignment": true
+      }
+    },
+    "SOL/USDT:USDT::long::sol_vol_compression": {
+      "market_guard": {
+        "allowed_sides": [
+          "long"
+        ],
+        "bb_width_field": "bb_width",
+        "max_adx": 22.0,
+        "max_bb_width": 0.035,
+        "mode": "observe_only"
+      }
+    },
+    "SOL/USDT:USDT::long::sol_vol_expansion": {
+      "market_guard": {
+        "allowed_sides": [
+          "long"
+        ],
+        "bb_low_field": "bb_low",
+        "bb_up_field": "bb_up",
+        "close_field": "close",
+        "donchian_high_field": "donchian_high",
+        "donchian_low_field": "donchian_low",
+        "ema_fast_field": "ema_fast",
+        "ema_slow_field": "ema_slow",
+        "max_breakdown_extension_pct": 0.02,
+        "max_breakout_extension_pct": 0.02,
+        "min_adx": 18.0,
+        "min_atrp": 0.01,
+        "mode": "strict",
+        "open_field": "open",
+        "require_directional_close": true,
+        "require_donchian_break": true,
+        "require_trend_alignment": true,
+        "rsi_field": "rsi",
+        "rsi_long_max": 72.0,
+        "rsi_short_min": 28.0,
+        "use_extension_guard": true,
+        "use_rsi_exhaustion_guard": true
+      }
+    },
+    "SOL/USDT:USDT::short::sol_bbrsi": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "bb_low_field": "bb_low",
+        "bb_up_field": "bb_up",
+        "bb_width_field": "bb_width",
+        "close_field": "close",
+        "max_adx": 26.0,
+        "max_atrp": 0.035,
+        "max_bb_width": 0.25,
+        "min_atrp": 0.003279,
+        "min_bb_width": 0.0041,
+        "mode": "strict",
+        "require_bb_rsi_setup": true,
+        "rsi_field": "rsi",
+        "rsi_long_max": 36.0,
+        "rsi_short_min": 64.0
+      }
+    },
+    "SOL/USDT:USDT::short::sol_extreme_mr": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "bb_width_field": "bb_width",
+        "max_adx": 22.0,
+        "max_atrp": 0.08,
+        "min_atrp": 0.008,
+        "min_bb_width": 0.035,
+        "mode": "observe_only"
+      }
+    },
+    "SOL/USDT:USDT::short::sol_trend_pullback": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "close_field": "close",
+        "ema_fast_field": "ema_fast",
+        "ema_slow_field": "ema_slow",
+        "max_atrp": 0.05,
+        "max_ema_pullback_dist": 0.015,
+        "min_adx": 16.0,
+        "min_atrp": 0.004,
+        "mode": "strict",
+        "require_setup_window": true,
+        "rsi_field": "rsi",
+        "rsi_long_max": 55.0,
+        "rsi_long_min": 40.0,
+        "rsi_short_max": 60.0,
+        "rsi_short_min": 45.0
+      }
+    },
+    "SOL/USDT:USDT::short::sol_vol_breakout": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "close_field": "close",
+        "ema_fast_field": "ema_fast",
+        "ema_slow_field": "ema_slow",
+        "max_atrp": 0.08,
+        "min_adx": 18.0,
+        "min_atrp": 0.008,
+        "mode": "strict",
+        "require_trend_alignment": true
+      }
+    },
+    "SOL/USDT:USDT::short::sol_vol_compression": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "bb_width_field": "bb_width",
+        "max_adx": 22.0,
+        "max_bb_width": 0.035,
+        "mode": "observe_only"
+      }
+    },
+    "SOL/USDT:USDT::short::sol_vol_expansion": {
+      "market_guard": {
+        "allowed_sides": [
+          "short"
+        ],
+        "bb_low_field": "bb_low",
+        "bb_up_field": "bb_up",
+        "close_field": "close",
+        "donchian_high_field": "donchian_high",
+        "donchian_low_field": "donchian_low",
+        "ema_fast_field": "ema_fast",
+        "ema_slow_field": "ema_slow",
+        "max_breakdown_extension_pct": 0.02,
+        "max_breakout_extension_pct": 0.02,
+        "min_adx": 18.0,
+        "min_atrp": 0.01,
+        "mode": "strict",
+        "open_field": "open",
+        "require_directional_close": true,
+        "require_donchian_break": true,
+        "require_trend_alignment": true,
+        "rsi_field": "rsi",
+        "rsi_long_max": 72.0,
+        "rsi_short_min": 28.0,
+        "use_extension_guard": true,
+        "use_rsi_exhaustion_guard": true
+      }
+    }
+  },
+  "default_profile": "research",
+  "profiles": {
+    "research": {
+      "alpha_selection_min_alpha_score": 0.02,
+      "alpha_selection_min_expected_return": 0.0,
+      "alpha_selection_min_p_win": 0.0,
+      "alpha_selection_min_policy_score": 5e-06,
+      "alpha_selection_min_size_mult": 0.1,
+      "alpha_selection_require_accept": true,
+      "asset_gate": {
+        "min_competitive_rank": 0.0,
+        "min_policy_score": 0.0,
+        "min_postml_rank": 0.0,
+        "min_pwin_contextual": 0.0,
+        "min_pwin_rank": 0.0,
+        "min_pwin_strong": 0.0,
+        "mode": "off"
+      },
+      "asset_rank": {
+        "top_k_per_symbol": 1
+      },
+      "contextual_eligibility": {
+        "allowed_sides": [
+          "long",
+          "short"
+        ],
+        "min_expected_return": 0.0,
+        "min_p_win": 0.505,
+        "min_policy_score": 5e-06,
+        "min_size_mult": 0.1,
+        "mode": "observe_only",
+        "require_accept": true
+      },
+      "pipeline": {
+        "stages": [
+          {
+            "name": "asset_gate"
+          },
+          {
+            "name": "market_guard"
+          },
+          {
+            "name": "trend_participation_gate"
+          },
+          {
+            "name": "contextual_eligibility"
+          },
+          {
+            "name": "strategy_regime_eligibility"
+          },
+          {
+            "name": "alpha_selection"
+          },
+          {
+            "kwargs": {
+              "score_field": "post_ml_score"
+            },
+            "name": "best_per_symbol"
+          }
+        ]
+      },
+      "strategy_regime_eligibility": {
+        "allowed_regimes": [],
+        "min_portfolio_avg_pwin": 0.0,
+        "min_portfolio_avg_strength": 0.0,
+        "min_portfolio_breadth": 0.0,
+        "min_portfolio_conviction": 0.0,
+        "min_portfolio_risk_scale": 0.0,
+        "mode": "observe_only",
+        "require_regime_on": false
+      },
+      "symbols": {
+        "BTC/USDT:USDT": {
+          "sides": {
+            "short": {
+              "contextual_eligibility": {
+                "ema_gap_field": "ema_gap_fast_slow",
+                "min_adx": 18.0,
+                "min_ema_gap": 0.002,
+                "mode": "observe_only"
+              },
+              "market_guard": {
+                "allowed_sides": [
+                  "short"
+                ],
+                "ema_gap_field": "ema_gap_fast_slow",
+                "min_adx": 18.0,
+                "min_ema_gap": 0.002,
+                "mode": "observe_only"
+              }
+            }
+          }
+        }
+      },
+      "trace": {
+        "enabled": true
+      },
+      "trend_participation_gate": {
+        "adx_field": "adx14",
+        "allow_missing_rvol": true,
+        "allowed_sides": [
+          "short"
+        ],
+        "close_field": "close",
+        "ema_fast_field": "ema20",
+        "ema_slope_field": "ema_fast_slope_signed",
+        "ema_slow_field": "ema50",
+        "max_bar_ret_pct_short": 0.0,
+        "max_extension_pct_long": 0.0,
+        "max_extension_pct_short": 0.0,
+        "min_adx": 20.0,
+        "min_bar_ret_pct_long": 0.0,
+        "min_rvol20": 1.0,
+        "mode": "filter",
+        "penalty_weights": {
+          "adx_below_min": 0.06,
+          "close_above_ema_fast": 0.1,
+          "ema_slope_not_negative": 0.15,
+          "ema_stack_not_short": 0.08,
+          "invalid_side": 0.25,
+          "rvol_below_min": 0.06,
+          "rvol_below_min_observed_only": 0.04,
+          "rvol_missing": 0.08,
+          "side_not_allowed": 0.25
+        },
+        "require_adx": true,
+        "require_close_vs_ema_fast": true,
+        "require_ema_slope": true,
+        "require_ema_stack": true,
+        "require_rvol": false,
+        "require_rvol_expansion": false,
+        "require_trend_alignment": true,
+        "rvol_field": "rvol20",
+        "score_weights": {
+          "adx_confirmed": 0.2,
+          "close_vs_ema_fast_ok": 0.1,
+          "ema_stack_ok": 0.05,
+          "trend_confirmed": 0.55,
+          "volume_confirmed": 0.1
+        }
+      },
+      "universe_gate": {
+        "min_global_score_rank": 0.65
+      },
+      "universe_rank": {
+        "min_keep": 1,
+        "top_frac": 0.35
+      }
+    }
+  }
+}
