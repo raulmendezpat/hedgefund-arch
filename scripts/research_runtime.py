@@ -943,12 +943,30 @@ def _build_runtime_candidate_row(
         selection_meta = dict(selection_meta_override or {})
     best_per_symbol_meta = dict(selection_meta.get("best_per_symbol", {}) or {})
     market_guard_meta = dict(selection_meta.get("market_guard", {}) or {})
+    trend_participation_gate_meta = dict(selection_meta.get("trend_participation_gate", {}) or {})
     alpha_selection_meta = dict(selection_meta.get("alpha_selection", {}) or {})
     contextual_eligibility_meta = dict(selection_meta.get("contextual_eligibility", {}) or {})
     strategy_regime_eligibility_meta = dict(selection_meta.get("strategy_regime_eligibility", {}) or {})
 
     market_guard_inputs = dict(market_guard_meta.get("inputs", {}) or {})
+    trend_participation_gate_inputs = dict(trend_participation_gate_meta.get("inputs", {}) or {})
+    trend_participation_gate_fields = dict(trend_participation_gate_meta.get("fields", {}) or {})
+    trend_participation_gate_flags = dict(trend_participation_gate_meta.get("flags", {}) or {})
+    trend_participation_gate_thresholds = dict(trend_participation_gate_meta.get("thresholds", {}) or {})
     alpha_selection_inputs = dict(alpha_selection_meta.get("inputs", {}) or {})
+
+    def _tpg_value(key, default=None):
+        if key in trend_participation_gate_meta:
+            return trend_participation_gate_meta.get(key, default)
+        if key in trend_participation_gate_inputs:
+            return trend_participation_gate_inputs.get(key, default)
+        if key in trend_participation_gate_fields:
+            return trend_participation_gate_fields.get(key, default)
+        if key in trend_participation_gate_flags:
+            return trend_participation_gate_flags.get(key, default)
+        if key in trend_participation_gate_thresholds:
+            return trend_participation_gate_thresholds.get(key, default)
+        return default
     contextual_eligibility_inputs = dict(contextual_eligibility_meta.get("inputs", {}) or {})
     strategy_regime_eligibility_inputs = dict(strategy_regime_eligibility_meta.get("inputs", {}) or {})
 
@@ -1072,6 +1090,28 @@ def _build_runtime_candidate_row(
         "market_guard_require_donchian_break": bool(market_guard_inputs.get("require_donchian_break", False)),
         "market_guard_use_rsi_exhaustion_guard": bool(market_guard_inputs.get("use_rsi_exhaustion_guard", False)),
         "market_guard_use_extension_guard": bool(market_guard_inputs.get("use_extension_guard", False)),
+
+        "trend_participation_gate_pass": bool(trend_participation_gate_meta.get("pass", trend_participation_gate_meta.get("passed", False))),
+        "trend_participation_gate_kept": bool(trend_participation_gate_meta.get("kept", False)),
+        "trend_participation_gate_mode": str(_tpg_value("mode", "") or ""),
+        "trend_participation_gate_reasons": "|".join(str(x) for x in list(_tpg_value("reasons", []) or [])),
+        "trend_participation_gate_hard_fail_reasons": "|".join(str(x) for x in list(_tpg_value("hard_fail_reasons", []) or [])),
+        "trend_participation_gate_score": float(_tpg_value("score", 0.0) or 0.0),
+        "trend_participation_gate_penalty": float(_tpg_value("penalty", 0.0) or 0.0),
+        "trend_participation_gate_rvol20": float(_tpg_value("rvol20", 0.0) or 0.0),
+        "trend_participation_gate_min_rvol20": float(_tpg_value("min_rvol20", 0.0) or 0.0),
+        "trend_participation_gate_min_adx": float(_tpg_value("min_adx", 0.0) or 0.0),
+        "trend_participation_gate_rvol_field": str(_tpg_value("rvol_field", "") or ""),
+        "trend_participation_gate_volume_confirmed": bool(_tpg_value("volume_confirmed", False)),
+        "trend_participation_gate_volume_missing": bool(_tpg_value("volume_missing", False)),
+        "trend_participation_gate_trend_confirmed": bool(_tpg_value("trend_confirmed", False)),
+        "trend_participation_gate_adx_confirmed": bool(_tpg_value("adx_confirmed", False)),
+        "trend_participation_gate_close_vs_ema_fast_ok": bool(_tpg_value("close_vs_ema_fast_ok", False)),
+        "trend_participation_gate_ema_stack_ok": bool(_tpg_value("ema_stack_ok", False)),
+        "trend_participation_gate_ema_slope_ok": bool(_tpg_value("ema_slope_ok", False)),
+        "trend_participation_gate_adx": float(_tpg_value("adx", 0.0) or 0.0),
+        "trend_participation_gate_ema_slope": float(_tpg_value("ema_slope", 0.0) or 0.0),
+        "trend_participation_gate_entry_bar_ret_pct": float(_tpg_value("entry_bar_ret_pct", 0.0) or 0.0),
 
         "alpha_selection_pass": bool(alpha_selection_meta.get("pass", False)),
         "alpha_selection_kept": bool(alpha_selection_meta.get("kept", False)),
@@ -1642,9 +1682,14 @@ def _resolve_pwin(meta: dict, mode: str) -> tuple[float, float, float]:
     return float(p_ml), float(p_math), float(p_hybrid if p_hybrid <= 1.0 else 1.0)
 
 def load_exit_registry(path: str) -> dict:
-    p = Path(path)
-    if not p.exists():
+    raw_path = str(path or "").strip()
+    if not raw_path:
         return {}
+
+    p = Path(raw_path)
+    if not p.exists() or p.is_dir():
+        return {}
+
     return json.loads(p.read_text(encoding="utf-8"))
 
 

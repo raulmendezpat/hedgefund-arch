@@ -1,0 +1,40 @@
+{
+  "baseline_24m": {
+    "max_drawdown_pct": -7.2596767059864735,
+    "sharpe_annual": 7.15668780525073,
+    "total_return_pct": 3157.902009387595,
+    "trade_count": 4512,
+    "win_rate_pct": 55.40780141843972
+  },
+  "combo_24m": {
+    "max_drawdown_pct": -4.430937211791807,
+    "sharpe_annual": 8.42543291323765,
+    "total_return_pct": 6765.25589419646,
+    "trade_count": 5057,
+    "win_rate_pct": 55.25014830927427
+  },
+  "delta_24m": {
+    "max_drawdown_pct": 2.828739494194666,
+    "sharpe_annual": 1.2687451079869199,
+    "total_return_pct": 3607.3538848088647,
+    "trade_count": 545,
+    "win_rate_pct": -0.1576531091654445
+  },
+  "notes": [
+    "TPG RVOL0.4 winner validated across 1m/3m/6m/12m/24m.",
+    "Candidate CSV export now includes trend_participation_gate observability fields.",
+    "load_exit_registry now ignores empty or directory paths safely.",
+    "Do not mix SL policy change into this promotion commit."
+  ],
+  "promoted_at_utc": "2026-05-06T09:53:25.546617+00:00",
+  "promoted_to": "artifacts/selection_policy_config.calibrated.json",
+  "validation_windows": [
+    "1m",
+    "3m",
+    "6m",
+    "12m",
+    "24m"
+  ],
+  "winner_config": "artifacts/tpg_long_rvol_ab/selection_policy_config.combo_all_long_rvol0p4.json",
+  "winner_name": "tpg_rvol0p4_combo_all_long"
+}

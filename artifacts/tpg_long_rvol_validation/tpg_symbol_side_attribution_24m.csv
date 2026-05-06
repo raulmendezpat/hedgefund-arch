@@ -1,0 +1,13 @@
+symbol,side,strategy_id,baseline_rows,combo_rows,delta_rows
+AAVE/USDT:USDT,long,aave_trend,0.0,137,137.0
+XRP/USDT:USDT,long,xrp_trend,0.0,50,50.0
+ETH/USDT:USDT,long,eth_trend,0.0,47,47.0
+DOT/USDT:USDT,long,dot_trend,77.0,77,0.0
+TRX/USDT:USDT,long,trx_trend,134.0,132,-2.0
+LINK/USDT:USDT,short,link_trend,2591.0,2411,-180.0
+AAVE/USDT:USDT,short,aave_trend,3402.0,3163,-239.0
+BNB/USDT:USDT,short,bnb_trend,3223.0,2942,-281.0
+XRP/USDT:USDT,short,xrp_trend,3047.0,2741,-306.0
+AVAX/USDT:USDT,short,avax_trend,4017.0,3692,-325.0
+BTC/USDT:USDT,short,btc_trend_loose,2578.0,2149,-429.0
+ETH/USDT:USDT,short,eth_trend,4019.0,3437,-582.0
