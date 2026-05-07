@@ -13,6 +13,39 @@ def _safe_float(x, default: float = 0.0) -> float:
         return float(default)
 
 
+def _effective_pwin(meta: dict, default: float = 0.5) -> float:
+    """
+    Resolve the effective runtime p_win used for score projection.
+
+    Priority:
+    1) p_win_prod
+    2) p_win_calibrated
+    3) p_win
+    4) p_win_ml_raw
+    5) p_win_ml
+    6) ml_p_win
+    7) p_win_effective_runtime as last fallback only
+    8) default
+
+    p_win_effective_runtime is primarily an output/observability field.
+    Never promotes invalid or zero p_win to 1.0.
+    """
+    m = dict(meta or {})
+    for key in (
+        "p_win_prod",
+        "p_win_calibrated",
+        "p_win",
+        "p_win_ml_raw",
+        "p_win_ml",
+        "ml_p_win",
+        "p_win_effective_runtime",
+    ):
+        if key in m and m.get(key) is not None:
+            out = _safe_float(m.get(key), default)
+            return max(0.0, min(1.0, float(out)))
+
+    return max(0.0, min(1.0, float(default)))
+
 class ScoreProjector:
     """
     Proyecta score-style metadata sobre OpportunityCandidate ya seleccionado,
@@ -51,9 +84,8 @@ class ScoreProjector:
 
         competitive_score = float(active_flag * strength * base_weight_for_score)
 
-        p_win = _safe_float(meta.get("p_win", meta.get("ml_p_win", 1.0)), 1.0)
-        if p_win <= 0.0:
-            p_win = 1.0
+        p_win = _effective_pwin(meta, default=0.5)
+        meta["p_win_effective_runtime"] = float(p_win)
 
         ml_position_size_mult = _safe_float(meta.get("ml_position_size_mult", 1.0), 1.0)
         if ml_position_size_mult <= 0.0:
@@ -129,7 +161,7 @@ class ScoreProjector:
                 opportunity.meta = dict(getattr(opportunity, "meta", {}) or {})
                 opportunity.meta.update(meta)
                 opportunity.meta["competitive_score"] = float(competitive_score)
-                opportunity.meta["post_ml_score"] = float(competitive_score) * float(meta.get("p_win", 0.0) or 0.0)
+                opportunity.meta["post_ml_score"] = float(competitive_score) * float(_effective_pwin(meta, default=0.5))
                 post_ml_score = float(compute_post_ml_competitive_score(opportunity))
             except Exception:
                 pass
@@ -142,7 +174,7 @@ class ScoreProjector:
             competitive_score = float(fallback_strength * fallback_base_weight)
 
         if accept_flag and post_ml_score <= 0.0 and competitive_score > 0.0:
-            fallback_pwin = max(0.0, float(meta.get("p_win", 0.0) or 0.0))
+            fallback_pwin = _effective_pwin(meta, default=0.5)
             fallback_size_mult = float(getattr(decision, "size_mult", meta.get("policy_size_mult", 1.0)) or 1.0)
             fallback_size_mult = max(0.50, min(1.50, fallback_size_mult))
             post_ml_score = float(competitive_score * fallback_pwin * fallback_size_mult)

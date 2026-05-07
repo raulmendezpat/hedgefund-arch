@@ -657,6 +657,43 @@ def _calibrate_runtime_pwin(
     return float(out)
 
 
+def _resolve_effective_runtime_pwin(meta: dict, score_obj=None, default: float = 0.5) -> float:
+    """
+    Resolve the single effective runtime p_win.
+
+    Used for:
+    - ML position sizing
+    - post-ML score projection
+    - selection ranking observability
+
+    This intentionally prefers calibrated/runtime fields over raw score_obj.p_win.
+    """
+    m = dict(meta or {})
+    for key in (
+        "p_win_prod",
+        "p_win_calibrated",
+        "p_win",
+        "p_win_ml_raw",
+        "p_win_ml",
+        "ml_p_win",
+        "p_win_effective_runtime",
+    ):
+        if key in m and m.get(key) is not None:
+            try:
+                out = float(m.get(key))
+            except Exception:
+                out = float(default)
+            return max(0.0, min(1.0, float(out)))
+
+    if score_obj is not None:
+        try:
+            out = float(getattr(score_obj, "p_win", default) or default)
+        except Exception:
+            out = float(default)
+        return max(0.0, min(1.0, float(out)))
+
+    return max(0.0, min(1.0, float(default)))
+
 def _apply_runtime_prod_score_semantics(
     *,
     candidate,
@@ -752,6 +789,7 @@ def _apply_runtime_prod_score_semantics(
     sm1 = dict(getattr(candidate, "signal_meta", {}) or {})
     if bool(getattr(args, "enable_pwin_final_override", False)):
         sm1 = _apply_pwin_final_override(sm1)
+        sm1.pop("p_win_effective_runtime", None)
     _side_now = str(getattr(candidate, "side", sm1.get("side", "")) or "").lower()
     _active_flag = 1.0 if _side_now in {"long", "short"} else 0.0
     _strength = abs(float(getattr(candidate, "signal_strength", 0.0) or 0.0))
@@ -762,7 +800,8 @@ def _apply_runtime_prod_score_semantics(
 
     _competitive_score = float(_active_flag * _strength * _base_weight)
 
-    _prod_pwin = float(sm1.get("p_win_prod", sm1.get("p_win_ml_raw", sm1.get("p_win", 0.0))) or 0.0)
+    _prod_pwin = _resolve_effective_runtime_pwin(sm1, score_obj=score_obj, default=0.5)
+    sm1["p_win_effective_runtime"] = float(_prod_pwin)
     try:
         _size_factor = float(sm1.get("ml_position_size_mult", 1.0) or 1.0)
     except Exception:
@@ -791,11 +830,23 @@ def _apply_runtime_ml_position_sizing_semantics(
     score_obj,
     ml_position_sizer,
     ml_size_overrides=None,
+    args=None,
 ):
     if ml_position_sizer is None:
         return candidate
 
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
+
+    # Ensure ML position sizing uses the same final/asset-side p_win
+    # contract as scoring and downstream selection.
+    #
+    # This must be unconditional: the final p_win override is part of the
+    # runtime p_win contract, not only an optional observability mode.
+    # Otherwise sizing can consume a stale/pre-final p_win while later
+    # scoring/export correctly shows p_win_prod.
+    sm = _apply_pwin_final_override(sm)
+    sm.pop("p_win_effective_runtime", None)
+    sm.pop("ml_position_size_pwin_input", None)
     _side = str(getattr(candidate, "side", sm.get("side", "flat")) or "flat").lower()
     _strategy_id = str(getattr(candidate, "strategy_id", sm.get("strategy_id", "")) or "").lower()
 
@@ -804,7 +855,9 @@ def _apply_runtime_ml_position_sizing_semantics(
         candidate.signal_meta = sm
         return candidate
 
-    _p_win = float(getattr(score_obj, "p_win", sm.get("p_win", 0.0)) or 0.0)
+    _p_win = _resolve_effective_runtime_pwin(sm, score_obj=score_obj, default=0.5)
+    sm["ml_position_size_pwin_input"] = float(_p_win)
+    sm["p_win_effective_runtime"] = float(_p_win)
     _mult = float(ml_position_sizer.size_from_pwin(_p_win))
 
     _overrides = dict(ml_size_overrides or {})
@@ -1013,6 +1066,13 @@ def _build_runtime_candidate_row(
         "base_weight": candidate.base_weight,
         "p_win": float(sm.get("p_win", getattr(score_obj, "p_win", 0.0)) or 0.0),
         "p_win_base": float(sm.get("p_win_base", getattr(score_obj, "p_win", 0.0)) or 0.0),
+        "p_win_prod": float(sm.get("p_win_prod", float("nan"))),
+        "p_win_calibrated": float(sm.get("p_win_calibrated", float("nan"))),
+        "p_win_ml_raw": float(sm.get("p_win_ml_raw", sm.get("p_win_ml_raw_post_asset_side_override", float("nan")))),
+        "p_win_effective_runtime": float(sm.get("p_win_effective_runtime", float("nan"))),
+        "ml_position_size_pwin_input": float(sm.get("ml_position_size_pwin_input", float("nan"))),
+        "ml_position_size_mult": float(sm.get("ml_position_size_mult", float("nan"))),
+
         "p_win_ml_raw_pre_asset_side_override": float(sm.get("p_win_ml_raw_pre_asset_side_override", float("nan"))),
         "p_win_ml_raw_post_asset_side_override": float(sm.get("p_win_ml_raw_post_asset_side_override", float("nan"))),
         "p_win_asset_side_override_enabled": bool(sm.get("p_win_asset_side_override_enabled", False)),
@@ -2477,12 +2537,9 @@ def main() -> None:
 
         enriched_candidates_scored = []
         for c, fr, s, d in zip(enriched_candidates, feature_rows, scores, decisions):
-            c = _apply_runtime_ml_position_sizing_semantics(
-                candidate=c,
-                score_obj=s,
-                ml_position_sizer=runtime_ml_position_sizer,
-                ml_size_overrides=runtime_ml_size_overrides,
-            )
+            # 1) First enrich/resolve the final runtime p_win contract.
+            #    This is where asset-side overrides and calibrated p_win fields
+            #    become available in candidate.signal_meta.
             c = _enrich_candidate_for_selection_runtime(
                 candidate=c,
                 score_obj=s,
@@ -2493,6 +2550,29 @@ def main() -> None:
                 portfolio_context=portfolio_context,
                 score_projector=score_projector,
             )
+
+            # 2) Then size using the already-final p_win.
+            c = _apply_runtime_ml_position_sizing_semantics(
+                candidate=c,
+                score_obj=s,
+                ml_position_sizer=runtime_ml_position_sizer,
+                ml_size_overrides=runtime_ml_size_overrides,
+                args=args,
+            )
+
+            # 3) Re-enrich/re-project so post_ml_score reflects the corrected
+            #    ml_position_size_mult produced from the final p_win.
+            c = _enrich_candidate_for_selection_runtime(
+                candidate=c,
+                score_obj=s,
+                decision=d,
+                args=args,
+                pwin_math_v2=pwin_math_v2,
+                pwin_math_v3=pwin_math_v3,
+                portfolio_context=portfolio_context,
+                score_projector=score_projector,
+            )
+
             enriched_candidates_scored.append(c)
 
         enriched_candidates = enriched_candidates_scored

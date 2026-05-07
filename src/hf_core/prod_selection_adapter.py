@@ -25,6 +25,26 @@ class ProdSelectionResult:
     meta: dict
 
 
+def _effective_pwin(signal_meta: dict, default: float = 0.5) -> float:
+    """
+    Resolve the effective p_win used by production selection ranking.
+    Keeps selection aligned with runtime scoring and sizing.
+    """
+    sm = dict(signal_meta or {})
+    for key in (
+        "p_win_prod",
+        "p_win_calibrated",
+        "p_win",
+        "p_win_ml_raw",
+        "p_win_ml",
+        "ml_p_win",
+        "p_win_effective_runtime",
+    ):
+        if key in sm and sm.get(key) is not None:
+            out = _safe_float(sm.get(key), default)
+            return max(0.0, min(1.0, float(out)))
+    return max(0.0, min(1.0, float(default)))
+
 def _score_competitive(candidate) -> float:
     side = str(getattr(candidate, "side", "flat") or "flat").lower()
     active_flag = 1.0 if side in {"long", "short"} else 0.0
@@ -42,10 +62,8 @@ def _score_post_ml(candidate) -> float:
     if competitive_score <= 0.0:
         competitive_score = _score_competitive(candidate)
 
-    p_win = _safe_float(
-        sm.get("p_win_prod", sm.get("p_win_ml_raw", sm.get("p_win", 0.0))),
-        0.0,
-    )
+    p_win = _effective_pwin(sm, default=0.5)
+    sm["p_win_effective_runtime"] = float(p_win)
 
     size_mult = _safe_float(
         sm.get("ml_position_size_mult", sm.get("policy_size_mult", 1.0)),
@@ -71,9 +89,10 @@ def _apply_thresholds(candidates, decisions, thresholds: dict[str, float]):
     for c, d in zip(candidates or [], decisions or []):
         sm = dict(getattr(c, "signal_meta", {}) or {})
         accepted = _safe_bool(getattr(d, "accept", False))
-        p_win = _safe_float(sm.get("p_win", 0.0), 0.0)
+        p_win = _effective_pwin(sm, default=0.5)
         threshold = _threshold_for_candidate(c, thresholds)
 
+        sm["p_win_effective_runtime"] = float(p_win)
         sm["prod_selection_threshold"] = float(threshold)
         sm["prod_selection_p_win"] = float(p_win)
 
@@ -122,6 +141,9 @@ def _annotate_scores(candidates, preserve_upstream_post_ml_scores: bool = False)
         else:
             competitive_score = _score_competitive(c)
             post_ml_score = _score_post_ml(c)
+
+        effective_pwin = _effective_pwin(sm, default=0.5)
+        sm["p_win_effective_runtime"] = float(effective_pwin)
 
         sm["competitive_score"] = float(competitive_score)
         sm["meta_competitive_score"] = float(competitive_score)
