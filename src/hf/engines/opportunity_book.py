@@ -9,6 +9,7 @@ from hf.core.interfaces import SignalEngine
 from hf.core.types import Candle, Signal
 from hf.core.opportunity import Opportunity
 from hf.engines.signals.btc_trend_signal import BtcTrendSignalEngine
+from hf.engines.signals.doge_dot_trend import make_doge_trend_signal, make_dot_trend_signal
 from hf.engines.signals.sol_bbrsi_signal import SolBbrsiSignalEngine
 from hf.engines.signals.sol_vol_breakout_signal import SolVolBreakoutSignalEngine
 from hf.engines.signals.sol_trend_pullback_signal import SolTrendPullbackSignalEngine
@@ -24,6 +25,7 @@ from hf.engines.signals.trx_trend_signal import TrxTrendSignalEngine
 from hf.engines.signals.btc_short_trend_signal import BtcShortTrendSignalEngine
 from hf.engines.signals.avax_trend_signal import AvaxTrendSignalEngine
 from hf.engines.signals.dot_trend_signal import DotTrendSignalEngine
+from hf.engines.signals.dot_breakout_trend_signal import DotBreakoutTrendSignalEngine
 
 
 def _default_registry() -> List[dict]:
@@ -65,6 +67,7 @@ class RegistryOpportunityBook:
         if not self.engine_factories:
             self.engine_factories = {
                 "btc_trend_signal": lambda cfg: BtcTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "doge_trend_signal": lambda cfg: make_doge_trend_signal(cfg),
                 "sol_bbrsi_signal": lambda cfg: SolBbrsiSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_vol_breakout_signal": lambda cfg: SolVolBreakoutSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "sol_trend_pullback_signal": lambda cfg: SolTrendPullbackSignalEngine(
@@ -86,10 +89,11 @@ class RegistryOpportunityBook:
                 "bnb_trend_signal": lambda cfg: BnbTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "eth_trend_signal": lambda cfg: EthTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
                 "xrp_trend_signal": lambda cfg: XrpTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
-            "trx_trend_signal": lambda cfg: TrxTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
-            "btc_short_trend_signal": lambda cfg: BtcShortTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
-            "avax_trend_signal": lambda cfg: AvaxTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
-            "dot_trend_signal": lambda cfg: DotTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "trx_trend_signal": lambda cfg: TrxTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "btc_short_trend_signal": lambda cfg: BtcShortTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "avax_trend_signal": lambda cfg: AvaxTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
+                "dot_trend_signal": lambda cfg: make_dot_trend_signal(cfg),
+                "dot_breakout_trend_signal": lambda cfg: DotBreakoutTrendSignalEngine(**dict(cfg.get("params", {}) or {})),
             }
 
     def _load_registry(self) -> List[dict]:

@@ -21,7 +21,7 @@ class AllocationBridge:
         post_ml_competitive_score = float(
             meta.get("post_ml_competitive_score", meta.get("meta_post_ml_competitive_score", 0.0)) or 0.0
         )
-        p_win = float(meta.get("p_win", meta.get("ml_p_win", 0.5)) or 0.5)
+        p_win = float(meta.get("p_win_prod", 0.5) or 0.5)
         expected_return = float(meta.get("expected_return", 0.0) or 0.0)
 
         if self.score_projection == "policy_only":
@@ -111,7 +111,7 @@ class AllocationBridge:
             post_ml_competitive_score = float(
                 meta.get("post_ml_competitive_score", meta.get("meta_post_ml_competitive_score", 0.0)) or 0.0
             )
-            p_win = float(meta.get("p_win", meta.get("ml_p_win", 0.5)) or 0.5)
+            p_win = float(meta.get("p_win_prod", 0.5) or 0.5)
             expected_return = float(meta.get("expected_return", 0.0) or 0.0)
             policy_size_mult = float(meta.get("policy_size_mult", 0.0) or 0.0)
             ml_position_size_mult = float(meta.get("ml_position_size_mult", 0.0) or 0.0)

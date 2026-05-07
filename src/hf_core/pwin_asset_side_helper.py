@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import joblib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -64,26 +65,55 @@ def _load_registry_cached(registry_path: str) -> dict[str, Any]:
     except Exception:
         return {}
 
+    registry_feature_cols = list(data.get("feature_cols", []) or [])
     groups = dict(data.get("groups", {}) or {})
     loaded = {
         "version": str(data.get("version", "")),
         "target_col": str(data.get("target_col", "")),
+        "feature_cols": registry_feature_cols,
         "groups": {},
     }
 
     for key, info in groups.items():
+        info = dict(info or {})
         model_path = Path(str(info.get("model_path", "") or ""))
         if not model_path.exists():
             continue
+
         try:
-            with model_path.open("rb") as f:
-                payload = pickle.load(f)
+            try:
+                artifact = joblib.load(model_path)
+            except Exception:
+                with model_path.open("rb") as f:
+                    artifact = pickle.load(f)
+
+            # Supported artifact contracts:
+            # 1) Old style: {"pipeline": <model>, "feature_cols": [...]}
+            # 2) New style: direct sklearn Pipeline/model object; feature_cols lives in registry JSON/group info.
+            if isinstance(artifact, dict):
+                pipeline = artifact.get("pipeline") or artifact.get("model")
+                artifact_feature_cols = list(artifact.get("feature_cols", []) or [])
+            else:
+                pipeline = artifact
+                artifact_feature_cols = []
+
+            group_feature_cols = list(info.get("feature_cols", []) or [])
+            feature_cols = artifact_feature_cols or group_feature_cols or registry_feature_cols
+
             loaded["groups"][str(key)] = {
-                **dict(info or {}),
-                "payload": payload,
+                **info,
+                "pipeline": pipeline,
+                "feature_cols": feature_cols,
+                "artifact_contract": "dict_payload" if isinstance(artifact, dict) else "direct_pipeline",
             }
-        except Exception:
-            continue
+        except Exception as e:
+            loaded["groups"][str(key)] = {
+                **info,
+                "pipeline": None,
+                "feature_cols": [],
+                "artifact_contract": "load_error",
+                "load_error": str(e),
+            }
 
     return loaded
 
@@ -101,16 +131,16 @@ def load_registry(registry_path: str | None = None) -> dict[str, Any]:
 def resolve_group_key(candidate) -> str:
     meta = _candidate_meta(candidate)
 
-    symbol = str(
-        meta.get("symbol", "")
-        or getattr(candidate, "symbol", "") if not isinstance(candidate, dict) else ""
-    ).strip()
+    if isinstance(candidate, dict):
+        symbol_value = meta.get("symbol", "") or candidate.get("symbol", "")
+        side_value = candidate.get("side", None)
+    else:
+        symbol_value = meta.get("symbol", "") or getattr(candidate, "symbol", "")
+        side_value = getattr(candidate, "side", None)
 
-    candidate_side = getattr(candidate, "side", None)
-    if candidate_side is None and isinstance(candidate, dict):
-        candidate_side = candidate.get("side", None)
+    symbol = str(symbol_value or "").strip()
+    side = _normalize_side(side_value if side_value is not None else meta.get("side", ""))
 
-    side = _normalize_side(candidate_side if candidate_side is not None else meta.get("side", ""))
     return f"{symbol}|{side}"
 
 
@@ -152,15 +182,17 @@ def predict_pwin_for_candidate(candidate, registry_path: str | None = None) -> d
             "registry_version": str(registry.get("version", "")),
         }
 
-    payload = dict(group_info.get("payload", {}) or {})
-    pipe = payload.get("pipeline")
-    feature_cols = list(payload.get("feature_cols", []) or [])
+    pipe = group_info.get("pipeline")
+    feature_cols = list(group_info.get("feature_cols", []) or registry.get("feature_cols", []) or [])
 
     if pipe is None or not feature_cols:
+        reason = "payload_invalid"
+        if group_info.get("artifact_contract") == "load_error":
+            reason = f"model_load_error:{group_info.get('load_error', '')}"
         return {
             "enabled": True,
             "applied": False,
-            "reason": "payload_invalid",
+            "reason": reason,
             "group_key": group_key,
             "p_win": None,
             "model_name": str(group_info.get("model_name", "") or ""),

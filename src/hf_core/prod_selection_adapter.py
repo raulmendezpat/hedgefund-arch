@@ -28,21 +28,15 @@ class ProdSelectionResult:
 def _effective_pwin(signal_meta: dict, default: float = 0.5) -> float:
     """
     Resolve the effective p_win used by production selection ranking.
-    Keeps selection aligned with runtime scoring and sizing.
+
+    Contract:
+    - p_win_prod is the only effective runtime p_win.
+    - Other p_win_* fields are diagnostics only.
     """
     sm = dict(signal_meta or {})
-    for key in (
-        "p_win_prod",
-        "p_win_calibrated",
-        "p_win",
-        "p_win_ml_raw",
-        "p_win_ml",
-        "ml_p_win",
-        "p_win_effective_runtime",
-    ):
-        if key in sm and sm.get(key) is not None:
-            out = _safe_float(sm.get(key), default)
-            return max(0.0, min(1.0, float(out)))
+    if "p_win_prod" in sm and sm.get("p_win_prod") is not None:
+        out = _safe_float(sm.get("p_win_prod"), default)
+        return max(0.0, min(1.0, float(out)))
     return max(0.0, min(1.0, float(default)))
 
 def _score_competitive(candidate) -> float:

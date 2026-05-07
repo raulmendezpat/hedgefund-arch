@@ -17,32 +17,14 @@ def _effective_pwin(meta: dict, default: float = 0.5) -> float:
     """
     Resolve the effective runtime p_win used for score projection.
 
-    Priority:
-    1) p_win_prod
-    2) p_win_calibrated
-    3) p_win
-    4) p_win_ml_raw
-    5) p_win_ml
-    6) ml_p_win
-    7) p_win_effective_runtime as last fallback only
-    8) default
-
-    p_win_effective_runtime is primarily an output/observability field.
-    Never promotes invalid or zero p_win to 1.0.
+    Contract:
+    - p_win_prod is the only effective runtime p_win.
+    - Other p_win_* fields are diagnostics only.
     """
     m = dict(meta or {})
-    for key in (
-        "p_win_prod",
-        "p_win_calibrated",
-        "p_win",
-        "p_win_ml_raw",
-        "p_win_ml",
-        "ml_p_win",
-        "p_win_effective_runtime",
-    ):
-        if key in m and m.get(key) is not None:
-            out = _safe_float(m.get(key), default)
-            return max(0.0, min(1.0, float(out)))
+    if "p_win_prod" in m and m.get("p_win_prod") is not None:
+        out = _safe_float(m.get("p_win_prod"), default)
+        return max(0.0, min(1.0, float(out)))
 
     return max(0.0, min(1.0, float(default)))
 
@@ -108,102 +90,6 @@ class ScoreProjector:
         candidate.signal_meta = meta
         return candidate
 
-    def enrich_candidate_for_selection(
-        self,
-        *,
-        candidate: OpportunityCandidate,
-        score,
-        decision,
-        pwin_mode: str,
-        p_win: float,
-        p_win_ml: float,
-        p_win_math_v1: float,
-        p_win_math_v2: float,
-        p_win_math_v3: float,
-        p_win_hybrid_v1: float,
-        expected_return: float,
-        portfolio_context: dict | None = None,
-        opportunity=None,
-    ) -> OpportunityCandidate:
-        meta = dict(getattr(candidate, "signal_meta", {}) or {})
-
-        meta["strategy_id"] = str(getattr(candidate, "strategy_id", "") or "")
-        meta["side"] = str(getattr(candidate, "side", "flat") or "flat")
-        meta["p_win"] = float(p_win)
-        meta["p_win_ml"] = float(p_win_ml)
-        meta["p_win_math_v1"] = float(p_win_math_v1)
-        meta["p_win_math_v2"] = float(p_win_math_v2)
-        meta["p_win_math_v3"] = float(p_win_math_v3)
-        meta["p_win_hybrid_v1"] = float(p_win_hybrid_v1)
-        meta["p_win_mode"] = str(pwin_mode)
-        meta["expected_return"] = float(expected_return)
-        meta["score"] = float(getattr(score, "score", 0.0) or 0.0)
-
-        accept_flag = bool(getattr(decision, "accept", False))
-        meta["policy_score"] = float(getattr(decision, "policy_score", getattr(score, "score", 0.0)) or 0.0)
-        meta["policy_band"] = str(getattr(decision, "band", "") or "")
-        meta["policy_reason"] = str(getattr(decision, "reason", "") or "")
-        meta["policy_size_mult"] = float(getattr(decision, "size_mult", 0.0) or 0.0)
-        meta["accept"] = bool(accept_flag)
-
-        competitive_score = float(meta.get("meta_competitive_score", meta.get("competitive_score", 0.0)) or 0.0)
-        post_ml_score = float(meta.get("meta_post_ml_score", meta.get("post_ml_score", 0.0)) or 0.0)
-
-        if opportunity is not None:
-            try:
-                opportunity.meta = dict(getattr(opportunity, "meta", {}) or {})
-                opportunity.meta.update(meta)
-                competitive_score = float(compute_competitive_score(opportunity))
-            except Exception:
-                pass
-
-            try:
-                opportunity.meta = dict(getattr(opportunity, "meta", {}) or {})
-                opportunity.meta.update(meta)
-                opportunity.meta["competitive_score"] = float(competitive_score)
-                opportunity.meta["post_ml_score"] = float(competitive_score) * float(_effective_pwin(meta, default=0.5))
-                post_ml_score = float(compute_post_ml_competitive_score(opportunity))
-            except Exception:
-                pass
-
-        if accept_flag and competitive_score <= 0.0:
-            fallback_strength = abs(float(getattr(candidate, "signal_strength", 0.0) or 0.0))
-            fallback_base_weight = float(
-                getattr(candidate, "base_weight", meta.get("base_weight", 1.0)) or meta.get("base_weight", 1.0) or 1.0
-            )
-            competitive_score = float(fallback_strength * fallback_base_weight)
-
-        if accept_flag and post_ml_score <= 0.0 and competitive_score > 0.0:
-            fallback_pwin = _effective_pwin(meta, default=0.5)
-            fallback_size_mult = float(getattr(decision, "size_mult", meta.get("policy_size_mult", 1.0)) or 1.0)
-            fallback_size_mult = max(0.50, min(1.50, fallback_size_mult))
-            post_ml_score = float(competitive_score * fallback_pwin * fallback_size_mult)
-
-        meta["competitive_score"] = float(competitive_score)
-        meta["post_ml_score"] = float(post_ml_score)
-        meta["post_ml_competitive_score"] = float(post_ml_score)
-        meta["meta_competitive_score"] = float(competitive_score)
-        meta["meta_post_ml_score"] = float(post_ml_score)
-        meta["meta_post_ml_competitive_score"] = float(post_ml_score)
-
-        if bool(meta.get("accept", False)):
-            score_floor = 1.0e-4
-            policy_floor = 1.0e-4
-            if float(meta.get("score", 0.0) or 0.0) < score_floor:
-                meta["score"] = float(score_floor)
-            if float(meta.get("policy_score", 0.0) or 0.0) < policy_floor:
-                meta["policy_score"] = float(policy_floor)
-
-        portfolio_context = dict(portfolio_context or {})
-        meta["portfolio_regime"] = portfolio_context.get("portfolio_regime")
-        meta["portfolio_breadth"] = portfolio_context.get("portfolio_breadth")
-        meta["portfolio_avg_pwin"] = portfolio_context.get("portfolio_avg_pwin")
-        meta["portfolio_avg_atrp"] = portfolio_context.get("portfolio_avg_atrp")
-        meta["portfolio_avg_strength"] = portfolio_context.get("portfolio_avg_strength")
-        meta["portfolio_conviction"] = portfolio_context.get("portfolio_conviction")
-
-        candidate.signal_meta = meta
-        return candidate
 
 
     def enrich_many(self, candidates: list[OpportunityCandidate]) -> list[OpportunityCandidate]:

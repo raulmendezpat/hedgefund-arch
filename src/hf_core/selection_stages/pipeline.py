@@ -43,7 +43,7 @@ class SelectionPipeline:
                     side=str(getattr(c, "side", "flat") or meta.get("side", "flat") or "flat").lower(),
                     signal_strength=float(getattr(c, "signal_strength", meta.get("strength", 0.0)) or 0.0),
                     base_weight=float(getattr(c, "base_weight", meta.get("base_weight", 0.0)) or 0.0),
-                    p_win=float(meta.get("p_win", meta.get("ml_p_win", meta.get("meta_p_win", 0.0))) or 0.0),
+                    p_win=float(meta.get("p_win_prod", 0.5) or 0.5),
                     expected_return=float(meta.get("expected_return", 0.0) or 0.0),
                     post_ml_score=float(
                         meta.get(
@@ -124,7 +124,7 @@ class SelectionPipeline:
                     side=str(getattr(c, "side", "flat") or meta.get("side", "flat") or "flat").lower(),
                     signal_strength=float(getattr(c, "signal_strength", meta.get("strength", 0.0)) or 0.0),
                     base_weight=float(getattr(c, "base_weight", meta.get("base_weight", 0.0)) or 0.0),
-                    p_win=float(meta.get("p_win", meta.get("ml_p_win", meta.get("meta_p_win", 0.0))) or 0.0),
+                    p_win=float(meta.get("p_win_prod", 0.5) or 0.5),
                     expected_return=float(meta.get("expected_return", 0.0) or 0.0),
                     post_ml_score=float(
                         meta.get(

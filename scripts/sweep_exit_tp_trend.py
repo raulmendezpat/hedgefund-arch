@@ -51,7 +51,6 @@ BASE_ARGS = [
     "--runtime-ml-size-max", "1.50",
     "--runtime-ml-size-base", "0.70",
     "--runtime-ml-size-pwin-threshold", "0.46",
-    "--pwin-calibration-artifact", "artifacts/pwin_calibration_strategy_side_baseline_prodsem_3m_v3.json",
     "--target-exposure", "0.40",
     "--symbol-cap", "0.28",
 ]

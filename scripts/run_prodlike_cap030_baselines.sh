@@ -40,8 +40,7 @@ run_case () {
     --runtime-ml-size-max 1.30 \
     --runtime-ml-size-base 0.85 \
     --runtime-ml-size-pwin-threshold 0.46 \
-    --runtime-ml-size-overrides 'bnb_trend|short|1.08' \
-    --pwin-calibration-artifact artifacts/pwin_calibration_strategy_side_baseline_prodsem_3m_v3.json
+    --runtime-ml-size-overrides 'bnb_trend|short|1.08'
 }
 
 END_TS="2026-04-03 00:00:00"

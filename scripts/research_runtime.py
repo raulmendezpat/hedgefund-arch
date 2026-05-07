@@ -21,13 +21,10 @@ from hf_core import FeatureBuilder, MetaModel, PolicyModel, AllocationBridge, Al
 from hf_core.contracts import FeatureRow
 from hf_core.selection_stages import load_selection_policy_config, SelectionPipelineFactory
 from hf_core.selection_engine import compute_enhanced_score, apply_cross_sectional_ranking
-from hf_core.pwin_math_v2 import MathPWinV2
-from hf_core.pwin_math_v3 import MathPWinV3
 from hf_core.ml.feature_expansion import build_symbol_feature_frame, merge_cross_asset_features
 from hf_core.research_meta_inputs import seed_candidate_meta, build_portfolio_context
 from hf_core.trade_lifecycle import TradeLifecycleEngine
 from hf_core.target_position_lifecycle import TargetPositionLifecycleEngine
-from hf_core.pwin_calibration import PWinCalibrationTable
 from hf_core.prod_selection_adapter import apply_prod_selection_semantics
 
 from hf_core.score_projector import ScoreProjector
@@ -35,86 +32,6 @@ from hf_core.production_like_allocation_postprocess import ProductionLikeAllocat
 from hf_core.production_like_allocation_ml_sizer import ProductionLikeAllocationMlSizer
 from hf_core.production_like_allocation_cluster_controls import ProductionLikeAllocationClusterControls
 from hf_core.portfolio_atrp_risk_scaler import PortfolioAtrpRiskScaler
-import joblib
-
-
-_PWIN_FINAL_RUNTIME_CACHE = None
-
-def _load_pwin_final_runtime_bundle():
-    global _PWIN_FINAL_RUNTIME_CACHE
-    if _PWIN_FINAL_RUNTIME_CACHE is not None:
-        return _PWIN_FINAL_RUNTIME_CACHE
-
-    artifact_path = Path("artifacts/pwin_final_6m_baseline_full_clean_logreg_l1.joblib")
-    meta_path = Path("artifacts/pwin_final_6m_baseline_full_clean_logreg_l1.json")
-
-    if not artifact_path.exists():
-        _PWIN_FINAL_RUNTIME_CACHE = {"enabled": False, "reason": f"missing_artifact:{artifact_path}"}
-        return _PWIN_FINAL_RUNTIME_CACHE
-
-    try:
-        obj = joblib.load(artifact_path)
-    except Exception as e:
-        _PWIN_FINAL_RUNTIME_CACHE = {"enabled": False, "reason": f"artifact_load_error:{e}"}
-        return _PWIN_FINAL_RUNTIME_CACHE
-
-    model = obj
-    if isinstance(obj, dict):
-        for key in ("model", "pipeline", "estimator", "clf"):
-            if key in obj and obj[key] is not None:
-                model = obj[key]
-                break
-
-    meta = {}
-    if meta_path.exists():
-        try:
-            meta = json.loads(meta_path.read_text())
-        except Exception:
-            meta = {}
-
-    feature_cols = None
-    for key in ("feature_columns", "feature_cols", "features", "model_features", "columns_used"):
-        val = meta.get(key)
-        if isinstance(val, list) and val:
-            feature_cols = [str(x) for x in val]
-            break
-
-    if (not feature_cols) and hasattr(model, "feature_names_in_"):
-        feature_cols = [str(x) for x in list(model.feature_names_in_)]
-
-    if not feature_cols:
-        _PWIN_FINAL_RUNTIME_CACHE = {"enabled": False, "reason": "missing_feature_list"}
-        return _PWIN_FINAL_RUNTIME_CACHE
-
-    _PWIN_FINAL_RUNTIME_CACHE = {
-        "enabled": True,
-        "artifact_path": str(artifact_path),
-        "meta_path": str(meta_path),
-        "model": model,
-        "feature_cols": feature_cols,
-    }
-    return _PWIN_FINAL_RUNTIME_CACHE
-
-
-def _score_pwin_final_from_signal_meta(sm0):
-    bundle = _load_pwin_final_runtime_bundle()
-    if not bundle.get("enabled"):
-        return None
-
-    model = bundle["model"]
-    feature_cols = bundle["feature_cols"]
-
-    row = {}
-    for c in feature_cols:
-        row[c] = sm0.get(c, np.nan)
-
-    X = pd.DataFrame([row], columns=feature_cols)
-
-    try:
-        proba = model.predict_proba(X)[:, 1]
-        return float(proba[0])
-    except Exception:
-        return None
 
 
 def _parse_runtime_ml_size_overrides(raw: str | None) -> dict[tuple[str, str], float]:
@@ -138,7 +55,6 @@ def _parse_runtime_ml_size_overrides(raw: str | None) -> dict[tuple[str, str], f
             continue
 
     return out
-
 
 
 def _write_runtime_status(
@@ -244,6 +160,7 @@ def _build_runtime_candles_for_ts(
     return candles
 
 
+
 def _build_runtime_trace_row(
     *,
     ts,
@@ -258,26 +175,30 @@ def _build_runtime_trace_row(
 ) -> dict:
     _alloc_meta = dict(alloc_meta or {})
     _allocation_ctx = dict(allocation_portfolio_context or {})
+
+    def _candidate_meta(c):
+        return dict(getattr(c, "signal_meta", {}) or {})
+
     return {
         "ts": str(ts),
-        "n_candidates": int(len(enriched_candidates)),
+        "n_candidates": int(len(enriched_candidates or [])),
         "n_accepts": int(accepted_count),
-        "n_selected_after_pipeline": int(len(selected_candidates)),
-        "n_alloc_inputs": int(len(alloc_inputs)),
-        "n_weighted": int(sum(1 for _, v in weights.items() if abs(float(v or 0.0)) > 0.0)),
+        "n_selected_after_pipeline": int(len(selected_candidates or [])),
+        "n_alloc_inputs": int(len(alloc_inputs or [])),
+        "n_weighted": int(sum(1 for _, v in dict(weights or {}).items() if abs(float(v or 0.0)) > 0.0)),
         "gross_weight": float(gross_weight),
-        "accepted_symbols": [str(getattr(c, "symbol", "") or "") for c in selected_candidates],
+        "accepted_symbols": [str(getattr(c, "symbol", "") or "") for c in selected_candidates or []],
         "accepted_scores": {
             str(getattr(c, "symbol", "") or ""): float(
-                dict(getattr(c, "signal_meta", {}) or {}).get("policy_score", 0.0) or 0.0
+                _candidate_meta(c).get("policy_score", _candidate_meta(c).get("score", 0.0)) or 0.0
             )
-            for c in selected_candidates
+            for c in selected_candidates or []
         },
         "accepted_pwins": {
             str(getattr(c, "symbol", "") or ""): float(
-                dict(getattr(c, "signal_meta", {}) or {}).get("p_win", 0.0) or 0.0
+                _candidate_meta(c).get("p_win_prod", 0.5) or 0.5
             )
-            for c in selected_candidates
+            for c in selected_candidates or []
         },
         "weights": {str(k): float(v or 0.0) for k, v in dict(weights or {}).items()},
         "raw_scores": dict(_alloc_meta.get("raw_scores", {}) or {}),
@@ -309,86 +230,6 @@ def _build_runtime_trace_row(
         "allocation_portfolio_avg_strength": _allocation_ctx.get("portfolio_avg_strength"),
         "allocation_portfolio_conviction": _allocation_ctx.get("portfolio_conviction"),
     }
-
-
-
-    sm0 = dict(sm0 or {})
-    old_val = sm0.get("p_win", sm0.get("p_win_prod", sm0.get("p_win_ml_raw", 0.5)))
-    try:
-        old_val = float(old_val if old_val is not None else 0.5)
-    except Exception:
-        old_val = 0.5
-
-    new_val = sm0.get("p_win_new", None)
-    if new_val is None:
-        new_val = sm0.get("p_win_final", None)
-    if new_val is None:
-        new_val = sm0.get("p_win_override_value", None)
-    if new_val is None:
-        new_val = old_val
-
-    try:
-        new_val = float(new_val if new_val is not None else old_val)
-    except Exception:
-        new_val = old_val
-
-    if "p_win_old" not in sm0:
-        sm0["p_win_old"] = old_val
-
-    sm0["p_win_new"] = new_val
-    sm0["p_win"] = new_val
-    sm0["p_win_override_active"] = True
-    sm0["p_win_override_source"] = "p_win_new"
-    return sm0
-
-
-def _apply_pwin_final_override(sm0):
-    sm0 = dict(sm0 or {})
-
-    old_val = sm0.get("p_win_old", sm0.get("p_win", None))
-    if old_val is None:
-        old_val = sm0.get("p_win_prod", None)
-    if old_val is None:
-        old_val = sm0.get("p_win_ml_raw", None)
-    if old_val is None:
-        old_val = sm0.get("p_win_base", None)
-    if old_val is None:
-        old_val = 0.5
-
-    try:
-        old_val = float(old_val if old_val is not None else 0.5)
-    except Exception:
-        old_val = 0.5
-
-    new_val = sm0.get("p_win_new", None)
-    if new_val is None:
-        new_val = sm0.get("p_win_final", None)
-    if new_val is None:
-        new_val = _score_pwin_final_from_signal_meta(sm0)
-    if new_val is None:
-        new_val = sm0.get("p_win_override_value", None)
-    if new_val is None:
-        new_val = old_val
-
-    try:
-        new_val = float(new_val if new_val is not None else old_val)
-    except Exception:
-        new_val = old_val
-
-    if new_val < 0.0:
-        new_val = 0.0
-    if new_val > 1.0:
-        new_val = 1.0
-
-    if "p_win_old" not in sm0:
-        sm0["p_win_old"] = old_val
-
-    sm0["p_win_new"] = new_val
-    sm0["p_win"] = new_val
-    sm0["p_win_prod"] = new_val
-    sm0["p_win_override_active"] = True
-    sm0["p_win_override_source"] = "p_win_new"
-    return sm0
 
 
 def _build_candidates_from_opportunities(opps) -> list[OpportunityCandidate]:
@@ -595,99 +436,24 @@ def _build_runtime_feature_rows(
     return feature_rows
 
 
-
-
-def _apply_runtime_score_overrides(
-    *,
-    enriched_candidates,
-    scores,
-    args,
-    pwin_math_v2,
-    pwin_math_v3,
-):
-    return enriched_candidates, scores
-
-
-def _calibrate_runtime_pwin(
-    p: float,
-    *,
-    mode: str = "off",
-    a: float = 8.0,
-    b: float = 0.5,
-    gamma: float = 1.0,
-) -> float:
-    try:
-        p = float(p)
-    except Exception:
-        p = 0.5
-
-    if p < 0.0:
-        p = 0.0
-    if p > 1.0:
-        p = 1.0
-
-    mode = str(mode or "off").lower()
-
-    if mode == "off":
-        return float(p)
-
-    if mode == "sigmoid":
-        # calibración alrededor de b, por defecto 0.5
-        try:
-            import math
-            z = float(a) * (float(p) - float(b))
-            out = 1.0 / (1.0 + math.exp(-z))
-        except Exception:
-            out = p
-    elif mode == "power":
-        # sharpening simétrico alrededor de 0.5
-        eps = 1.0e-12
-        p = min(max(p, eps), 1.0 - eps)
-        g = float(gamma) if float(gamma) > 0.0 else 1.0
-        num = p ** g
-        den = num + ((1.0 - p) ** g)
-        out = num / den if den != 0.0 else p
-    else:
-        out = p
-
-    if out < 0.0:
-        out = 0.0
-    if out > 1.0:
-        out = 1.0
-    return float(out)
-
-
 def _resolve_effective_runtime_pwin(meta: dict, score_obj=None, default: float = 0.5) -> float:
     """
     Resolve the single effective runtime p_win.
+
+    Contract:
+    - p_win_prod is the only effective runtime p_win.
+    - p_win_prod is produced upstream from the ML/raw/asset-side path.
+    - Other p_win_* fields are diagnostics only and must not drive runtime decisions.
 
     Used for:
     - ML position sizing
     - post-ML score projection
     - selection ranking observability
-
-    This intentionally prefers calibrated/runtime fields over raw score_obj.p_win.
     """
     m = dict(meta or {})
-    for key in (
-        "p_win_prod",
-        "p_win_calibrated",
-        "p_win",
-        "p_win_ml_raw",
-        "p_win_ml",
-        "ml_p_win",
-        "p_win_effective_runtime",
-    ):
-        if key in m and m.get(key) is not None:
-            try:
-                out = float(m.get(key))
-            except Exception:
-                out = float(default)
-            return max(0.0, min(1.0, float(out)))
-
-    if score_obj is not None:
+    if "p_win_prod" in m and m.get("p_win_prod") is not None:
         try:
-            out = float(getattr(score_obj, "p_win", default) or default)
+            out = float(m.get("p_win_prod"))
         except Exception:
             out = float(default)
         return max(0.0, min(1.0, float(out)))
@@ -700,66 +466,46 @@ def _apply_runtime_prod_score_semantics(
     score_obj,
     decision,
     args,
-    pwin_math_v2,
-    pwin_math_v3,
     portfolio_context,
     score_projector,
 ):
     sm0 = dict(getattr(candidate, "signal_meta", {}) or {})
-    _p_ml_raw = float(getattr(score_obj, "p_win", 0.0) or 0.0)
+    _p_ml_raw_pre_override = float(getattr(score_obj, "p_win", 0.0) or 0.0)
+    _p_win_effective = float(_p_ml_raw_pre_override)
 
+    _asset_side_registry = str(getattr(args, "pwin_asset_side_registry", "") or "").strip()
     _asset_side_override = override_candidate_pwin(
         candidate,
-        fallback=float(_p_ml_raw),
+        fallback=float(_p_ml_raw_pre_override),
+        registry_path=_asset_side_registry or None,
     )
     _asset_side_override_applied = bool(_asset_side_override.get("applied", False))
-    _asset_side_override_p = _asset_side_override.get("p_win_final", _p_ml_raw)
-    _p_ml_raw = float(_asset_side_override_p if _asset_side_override_p is not None else _p_ml_raw)
+    _asset_side_override_p = _asset_side_override.get("p_win_final", _p_ml_raw_pre_override)
+    _p_win_effective = float(_asset_side_override_p if _asset_side_override_p is not None else _p_ml_raw_pre_override)
 
+    sm0["p_win_asset_side_registry_path"] = str(_asset_side_registry)
     sm0["p_win_asset_side_override_enabled"] = bool(_asset_side_override.get("enabled", False))
     sm0["p_win_asset_side_override_applied"] = bool(_asset_side_override_applied)
     sm0["p_win_asset_side_override_reason"] = str(_asset_side_override.get("reason", "") or "")
     sm0["p_win_asset_side_override_group_key"] = str(_asset_side_override.get("group_key", "") or "")
     sm0["p_win_asset_side_override_model_name"] = str(_asset_side_override.get("model_name", "") or "")
     sm0["p_win_asset_side_override_registry_version"] = str(_asset_side_override.get("registry_version", "") or "")
-    sm0["p_win_ml_raw_pre_asset_side_override"] = float(getattr(score_obj, "p_win", 0.0) or 0.0)
-    sm0["p_win_ml_raw_post_asset_side_override"] = float(_p_ml_raw)
-
-    _p_cal = _calibrate_runtime_pwin(
-        float(_p_ml_raw),
-        mode=str(getattr(args, "pwin_calibration_mode", "off")),
-        a=float(getattr(args, "pwin_calibration_a", 8.0)),
-        b=float(getattr(args, "pwin_calibration_b", 0.5)),
-        gamma=float(getattr(args, "pwin_calibration_gamma", 1.0)),
-    )
+    sm0["p_win_ml_raw_pre_asset_side_override"] = float(_p_ml_raw_pre_override)
+    sm0["p_win_ml_raw_post_asset_side_override"] = float(_p_win_effective)
 
     sm0["expected_return_ml"] = float(getattr(score_obj, "expected_return", 0.0) or 0.0)
     sm0["expected_return"] = float(getattr(score_obj, "expected_return", 0.0) or 0.0)
 
-    sm0["p_win"] = float(_p_cal)
-    sm0["p_win_prod"] = float(_p_cal)
-    sm0["p_win_ml_raw"] = float(_p_ml_raw)
-    sm0["p_win_ml"] = float(_p_ml_raw)
-    sm0["p_win_calibrated"] = float(_p_cal)
+    # Single effective runtime p_win contract.
+    # p_win_prod is the final ML + asset/side value used by scoring,
+    # sizing, selection, allocation and export. Other p_win calculation
+    # paths must not mutate the effective runtime p_win.
+    sm0["p_win"] = float(_p_win_effective)
+    sm0["p_win_prod"] = float(_p_win_effective)
+    sm0["p_win_ml_raw"] = float(_p_ml_raw_pre_override)
 
     sm0["strategy_id"] = str(getattr(candidate, "strategy_id", "") or "")
     sm0["side"] = str(getattr(candidate, "side", "flat") or "flat")
-
-    _diag_meta = dict(sm0)
-    _diag_meta["p_win"] = float(_p_ml_raw)
-    _p_ml_diag, _p_math, _p_hybrid = _resolve_pwin(_diag_meta, args.pwin_mode)
-    _p_math_v2_val = float(pwin_math_v2.predict_from_meta(_diag_meta))
-    _p_math_v3_val = float(pwin_math_v3.predict_from_meta(_diag_meta))
-
-    sm0["p_win_math_v1"] = float(_p_math)
-    sm0["p_win_math_v2"] = float(_p_math_v2_val)
-    sm0["p_win_math_v3"] = float(_p_math_v3_val)
-    sm0["p_win_hybrid_v1"] = float(_p_hybrid)
-    sm0["p_win_mode"] = "ml_raw_prod_semantics"
-    sm0["pwin_calibration_mode"] = str(getattr(args, "pwin_calibration_mode", "off"))
-    sm0["pwin_calibration_a"] = float(getattr(args, "pwin_calibration_a", 8.0))
-    sm0["pwin_calibration_b"] = float(getattr(args, "pwin_calibration_b", 0.5))
-    sm0["pwin_calibration_gamma"] = float(getattr(args, "pwin_calibration_gamma", 1.0))
 
     sm0["score"] = float(getattr(score_obj, "score", 0.0) or 0.0)
     sm0["policy_score"] = float(getattr(decision, "policy_score", getattr(score_obj, "score", 0.0)) or 0.0)
@@ -787,9 +533,6 @@ def _apply_runtime_prod_score_semantics(
     candidate = score_projector.enrich_candidate(candidate)
 
     sm1 = dict(getattr(candidate, "signal_meta", {}) or {})
-    if bool(getattr(args, "enable_pwin_final_override", False)):
-        sm1 = _apply_pwin_final_override(sm1)
-        sm1.pop("p_win_effective_runtime", None)
     _side_now = str(getattr(candidate, "side", sm1.get("side", "")) or "").lower()
     _active_flag = 1.0 if _side_now in {"long", "short"} else 0.0
     _strength = abs(float(getattr(candidate, "signal_strength", 0.0) or 0.0))
@@ -837,14 +580,8 @@ def _apply_runtime_ml_position_sizing_semantics(
 
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
 
-    # Ensure ML position sizing uses the same final/asset-side p_win
-    # contract as scoring and downstream selection.
-    #
-    # This must be unconditional: the final p_win override is part of the
-    # runtime p_win contract, not only an optional observability mode.
-    # Otherwise sizing can consume a stale/pre-final p_win while later
-    # scoring/export correctly shows p_win_prod.
-    sm = _apply_pwin_final_override(sm)
+    # ML position sizing is a consumer of the single runtime p_win contract.
+    # It must read p_win_prod only; it must not calculate or overwrite p_win.
     sm.pop("p_win_effective_runtime", None)
     sm.pop("ml_position_size_pwin_input", None)
     _side = str(getattr(candidate, "side", sm.get("side", "flat")) or "flat").lower()
@@ -886,8 +623,6 @@ def _enrich_candidate_for_selection_runtime(
     score_obj,
     decision,
     args,
-    pwin_math_v2,
-    pwin_math_v3,
     portfolio_context,
     score_projector,
 ):
@@ -896,8 +631,6 @@ def _enrich_candidate_for_selection_runtime(
         score_obj=score_obj,
         decision=decision,
         args=args,
-        pwin_math_v2=pwin_math_v2,
-        pwin_math_v3=pwin_math_v3,
         portfolio_context=portfolio_context,
         score_projector=score_projector,
     )
@@ -961,7 +694,6 @@ def _compute_btc_short_recent_positive_momentum_guard(
         "ret_4h_lag": float(ret_4h),
         "dist_close_ema_fast": float(dist_fast),
     }
-
 
 
 def _build_runtime_candidate_row(
@@ -1064,10 +796,9 @@ def _build_runtime_candidate_row(
         "side": candidate.side,
         "signal_strength": candidate.signal_strength,
         "base_weight": candidate.base_weight,
-        "p_win": float(sm.get("p_win", getattr(score_obj, "p_win", 0.0)) or 0.0),
+        "p_win": float(sm.get("p_win_prod", 0.5) or 0.5),
         "p_win_base": float(sm.get("p_win_base", getattr(score_obj, "p_win", 0.0)) or 0.0),
         "p_win_prod": float(sm.get("p_win_prod", float("nan"))),
-        "p_win_calibrated": float(sm.get("p_win_calibrated", float("nan"))),
         "p_win_ml_raw": float(sm.get("p_win_ml_raw", sm.get("p_win_ml_raw_post_asset_side_override", float("nan")))),
         "p_win_effective_runtime": float(sm.get("p_win_effective_runtime", float("nan"))),
         "ml_position_size_pwin_input": float(sm.get("ml_position_size_pwin_input", float("nan"))),
@@ -1075,16 +806,13 @@ def _build_runtime_candidate_row(
 
         "p_win_ml_raw_pre_asset_side_override": float(sm.get("p_win_ml_raw_pre_asset_side_override", float("nan"))),
         "p_win_ml_raw_post_asset_side_override": float(sm.get("p_win_ml_raw_post_asset_side_override", float("nan"))),
+        "p_win_asset_side_registry_path": str(sm.get("p_win_asset_side_registry_path", "") or ""),
         "p_win_asset_side_override_enabled": bool(sm.get("p_win_asset_side_override_enabled", False)),
         "p_win_asset_side_override_applied": bool(sm.get("p_win_asset_side_override_applied", False)),
         "p_win_asset_side_override_reason": str(sm.get("p_win_asset_side_override_reason", "") or ""),
         "p_win_asset_side_override_group_key": str(sm.get("p_win_asset_side_override_group_key", "") or ""),
         "p_win_asset_side_override_model_name": str(sm.get("p_win_asset_side_override_model_name", "") or ""),
         "p_win_asset_side_override_registry_version": str(sm.get("p_win_asset_side_override_registry_version", "") or ""),
-        "p_win_math_v1": float(sm.get("p_win_math_v1", float("nan"))),
-        "p_win_math_v2": float(sm.get("p_win_math_v2", float("nan"))),
-        "p_win_math_v3": float(sm.get("p_win_math_v3", float("nan"))),
-        "p_win_mode": str(sm.get("p_win_mode", "")),
         "expected_return": float(sm.get("expected_return", getattr(score_obj, "expected_return", 0.0)) or 0.0),
         "score": float(sm.get("score", getattr(score_obj, "score", 0.0)) or 0.0),
         "competitive_score": float(sm.get("competitive_score", 0.0) or 0.0),
@@ -1327,7 +1055,7 @@ def _apply_best_per_symbol_competition(
                 "strategy_id": str(getattr(c, "strategy_id", "") or ""),
                 "side": str(getattr(c, "side", "") or ""),
                 "score": float(score),
-                "p_win": float(sm.get("p_win", 0.0) or 0.0),
+                "p_win": float(sm.get("p_win_prod", 0.5) or 0.5),
                 "competitive_score": float(
                     sm.get("competitive_score", sm.get("meta_competitive_score", 0.0)) or 0.0
                 ),
@@ -1383,7 +1111,6 @@ def _apply_best_per_symbol_competition(
         "dropped": dropped,
     }
     return kept_candidates, kept_decisions, meta
-
 
 
 def load_registry(path: str) -> list[dict]:
@@ -1445,8 +1172,6 @@ def compute_common_ts(data_by_symbol: dict[str, pd.DataFrame]) -> list[pd.Timest
         idx = set(df.index)
         common = idx if common is None else common.intersection(idx)
     return sorted(common or [])
-
-
 
 
 def build_selection_reason_summary(trace_path: str | Path) -> pd.DataFrame:
@@ -1605,8 +1330,6 @@ def build_selection_stage_summary(trace_path: str | Path) -> pd.DataFrame:
     return summary
 
 
-
-
 def _f(x, default=0.0) -> float:
     try:
         if x is None:
@@ -1614,7 +1337,6 @@ def _f(x, default=0.0) -> float:
         return float(x)
     except Exception:
         return float(default)
-
 
 
 def _clip01(x: float) -> float:
@@ -1650,97 +1372,6 @@ def _safe_meta_float(meta: dict, key: str, default: float = 0.0) -> float:
         return float(default)
 
 
-def _compute_pwin_math_v1(meta: dict) -> float:
-    policy_score = _safe_meta_float(meta, "policy_score", _safe_meta_float(meta, "score", 0.0))
-    score = _safe_meta_float(meta, "score", 0.0)
-    expected_return = _safe_meta_float(meta, "expected_return", 0.0)
-    signal_strength = _safe_meta_float(meta, "strength", _safe_meta_float(meta, "signal_strength", 0.0))
-    competitive_score = _safe_meta_float(meta, "competitive_score", 0.0)
-    post_ml_score = _safe_meta_float(meta, "post_ml_score", 0.0)
-    portfolio_conviction = _safe_meta_float(meta, "portfolio_conviction", 0.0)
-
-    adx = _safe_meta_float(meta, "adx", 0.0)
-    atrp = _safe_meta_float(meta, "atrp", 0.0)
-    rsi = _safe_meta_float(meta, "rsi", 50.0)
-    ema_gap = abs(_safe_meta_float(meta, "ema_gap_fast_slow", _safe_meta_float(meta, "ema_gap_pct", 0.0)))
-    dist_fast = abs(_safe_meta_float(meta, "dist_close_ema_fast", 0.0))
-
-    policy_norm = _clip01(policy_score / 0.00025)
-    score_norm = _clip01(score / 0.00006)
-    er_norm = _clip01(expected_return / 0.0010)
-    signal_norm = _clip01(signal_strength / 2.0)
-    comp_norm = _clip01(competitive_score)
-    postml_norm = _clip01(post_ml_score)
-
-    adx_low_bonus = _clip01((adx - 14.0) / 10.0) * 0.15
-    adx_high_bonus = _clip01((adx - 35.0) / 15.0) * 0.25
-    adx_mid_penalty = _clip01(1.0 - abs(adx - 30.0) / 6.0) * 0.35
-
-    atrp_good_bonus = _clip01((0.0082 - atrp) / 0.0045) * 0.30
-    atrp_mid_penalty = _clip01((atrp - 0.0083) / 0.0020) * 0.35
-    atrp_high_penalty = _clip01((atrp - 0.0105) / 0.0040) * 0.45
-
-    ema_gap_bonus = _clip01(ema_gap / 0.0060) * 0.15
-    ema_gap_penalty = _clip01((0.0015 - ema_gap) / 0.0015) * 0.20
-    dist_penalty = _clip01((dist_fast - 0.010) / 0.020) * 0.20
-
-    rsi_extreme_penalty = (
-        _clip01((25.0 - rsi) / 25.0) * 0.12
-        + _clip01((rsi - 75.0) / 25.0) * 0.12
-    )
-
-    port_conv_bonus = _clip01((portfolio_conviction - 0.55) / 0.20) * 0.10
-
-    edge = (
-        0.22 * policy_norm
-        + 0.16 * score_norm
-        + 0.14 * er_norm
-        + 0.08 * signal_norm
-        + 0.06 * comp_norm
-        + 0.04 * postml_norm
-        + adx_low_bonus
-        + adx_high_bonus
-        + atrp_good_bonus
-        + ema_gap_bonus
-        + port_conv_bonus
-        - adx_mid_penalty
-        - atrp_mid_penalty
-        - atrp_high_penalty
-        - ema_gap_penalty
-        - dist_penalty
-        - rsi_extreme_penalty
-    )
-
-    p = 0.50 + 0.10 * (_sigmoid((edge - 0.18) * 8.0) - 0.5) * 2.0
-    if p < 0.45:
-        p = 0.45
-    if p > 0.65:
-        p = 0.65
-    return float(p)
-
-
-def _resolve_pwin(meta: dict, mode: str) -> tuple[float, float, float]:
-    p_ml = _safe_meta_float(meta, "p_win", _safe_meta_float(meta, "ml_p_win", 0.5))
-    if p_ml <= 0.0:
-        p_ml = 0.5
-    p_math = _compute_pwin_math_v1(meta)
-    p_hybrid = 0.35 * float(p_ml) + 0.65 * float(p_math)
-
-    mode = str(mode or "ml").lower()
-    if mode == "math_v1":
-        p_final = p_math
-    elif mode == "hybrid_v1":
-        p_final = p_hybrid
-    else:
-        p_final = p_ml
-
-    if p_final < 0.0:
-        p_final = 0.0
-    if p_final > 1.0:
-        p_final = 1.0
-
-    return float(p_ml), float(p_math), float(p_hybrid if p_hybrid <= 1.0 else 1.0)
-
 def load_exit_registry(path: str) -> dict:
     raw_path = str(path or "").strip()
     if not raw_path:
@@ -1772,7 +1403,6 @@ def resolve_exit_policy(exit_cfg: dict, strategy_id: str, side: str = "") -> dic
     return resolved
 
 
-
 def _resolve_runtime_exit_profile_for_candidate(candidate) -> dict:
     sm = dict(getattr(candidate, "signal_meta", {}) or {})
     strategy_id = str(getattr(candidate, "strategy_id", "") or sm.get("strategy_id", ""))
@@ -1786,7 +1416,7 @@ def _resolve_runtime_exit_profile_for_candidate(candidate) -> dict:
     portfolio_regime = str(sm.get("portfolio_regime", "") or "").lower()
     portfolio_regime = str(sm.get("portfolio_regime", "") or "").lower()
     portfolio_breadth = float(sm.get("portfolio_breadth", 0.0) or 0.0)
-    p_win = float(sm.get("p_win", 0.0) or 0.0)
+    p_win = float(sm.get("p_win_prod", 0.5) or 0.5)
     adx = float(sm.get("adx", 0.0) or 0.0)
     atrp = float(sm.get("atrp", 0.0) or 0.0)
     ema_gap = abs(float(sm.get("ema_gap_fast_slow", sm.get("ema_gap_pct", 0.0)) or 0.0))
@@ -1878,7 +1508,7 @@ def _resolve_shadow_exit_context(selected_candidates, weights: dict, symbol: str
         ctx_sl_mult = float(sm.get("ctx_sl_mult", 1.0) or 1.0)
         ctx_time_stop_bars = int(sm.get("ctx_time_stop_bars", 12) or 12)
 
-        p_win = float(sm.get("p_win", 0.0) or 0.0)
+        p_win = float(sm.get("p_win_prod", 0.5) or 0.5)
         policy_score = float(sm.get("policy_score", 0.0) or 0.0)
         size_mult = float(sm.get("policy_size_mult", sm.get("size_mult", 0.0)) or 0.0)
         adx = float(sm.get("adx", 0.0) or 0.0)
@@ -1961,7 +1591,6 @@ def _apply_runtime_exit_profiles_to_selected_candidates(selected_candidates):
     return projected_selected_candidates
 
 
-
 def _apply_runtime_cross_sectional_ranking(
     *,
     candidates,
@@ -1998,7 +1627,7 @@ def _apply_runtime_cross_sectional_ranking(
                 "strategy_id": str(getattr(c, "strategy_id", "") or ""),
                 "side": str(getattr(c, "side", "flat") or "flat"),
                 "strength": float(getattr(c, "signal_strength", 0.0) or 0.0),
-                "p_win": float(sm.get("p_win", 0.0) or 0.0),
+                "p_win": float(sm.get("p_win_prod", 0.5) or 0.5),
                 "base_weight": float(getattr(c, "base_weight", sm.get("base_weight", 0.0)) or 0.0),
                 "competitive_score": float(sm.get("competitive_score", sm.get("meta_competitive_score", 0.0)) or 0.0),
                 "post_ml_score": float(sm.get("post_ml_score", sm.get("meta_post_ml_score", 0.0)) or 0.0),
@@ -2243,15 +1872,12 @@ def main() -> None:
     ap.add_argument("--policy-config", default="artifacts/policy_config.json")
     ap.add_argument("--policy-profile", default="default")
     ap.add_argument("--selection-policy-config", default="artifacts/selection_policy_config.json")
-    ap.add_argument("--pwin-mode", choices=["math_v1", "math_v2"], default="math_v2")
     ap.add_argument("--selection-policy-profile", default="research")
     ap.add_argument("--enable-cross-sectional-ranking", action="store_true")
     ap.add_argument("--cross-sectional-top-pct", type=float, default=0.20)
     ap.add_argument("--enable-strategy-side-pwin", action="store_true")
+    ap.add_argument("--pwin-asset-side-registry", default="", help="Optional registry JSON for ML p_win asset/side override")
     ap.add_argument("--strategy-side-pwin-scale", type=float, default=1.0)
-    ap.add_argument("--pwin-calibration-artifact", default="")
-    ap.add_argument("--enable-pwin-final-override", action="store_true")
-    ap.add_argument("--pwin-calibration-key-mode", default="strategy_side", choices=["strategy_side", "symbol_side"])
     ap.add_argument("--selection-semantics-mode", default="research", choices=["research", "prod"])
     ap.add_argument("--prod-selection-mode", default="best_per_symbol", choices=["all", "best_per_symbol", "competitive", "top1_global", "top2_global", "top3_global"])
     ap.add_argument("--prod-ml-threshold", type=float, default=0.0)
@@ -2268,10 +1894,6 @@ def main() -> None:
     ap.add_argument("--prodlike-allocator-apply-ml-sizing", action="store_true")
     ap.add_argument("--prodlike-allocator-top-n-symbols", type=int, default=0)
     ap.add_argument("--prodlike-allocator-apply-cluster-caps", action="store_true")
-    ap.add_argument("--pwin-calibration-mode", default="off", choices=["off", "sigmoid", "power"])
-    ap.add_argument("--pwin-calibration-a", type=float, default=8.0)
-    ap.add_argument("--pwin-calibration-b", type=float, default=0.5)
-    ap.add_argument("--pwin-calibration-gamma", type=float, default=1.0)
     ap.add_argument("--runtime-prod-ml-position-sizing", action="store_true")
     ap.add_argument("--runtime-ml-size-mode", default="calibrated", choices=["linear_edge", "calibrated", "artifact_map"])
     ap.add_argument("--runtime-ml-size-scale", type=float, default=4.0)
@@ -2350,13 +1972,6 @@ def main() -> None:
         enable_strategy_side_pwin=bool(getattr(args, "enable_strategy_side_pwin", False)),
         strategy_side_pwin_scale=float(getattr(args, "strategy_side_pwin_scale", 1.0)),
     )
-    pwin_calibrator = PWinCalibrationTable(
-        artifact_path=str(getattr(args, "pwin_calibration_artifact", "") or ""),
-        key_mode=str(getattr(args, "pwin_calibration_key_mode", "strategy_side") or "strategy_side"),
-    )
-    pwin_math_v2 = MathPWinV2()
-    pwin_math_v3 = MathPWinV3()
-
     policy_cfg = {}
     if args.policy_config and Path(args.policy_config).exists():
         policy_cfg = json.loads(Path(args.policy_config).read_text(encoding="utf-8"))
@@ -2477,7 +2092,6 @@ def main() -> None:
         )
 
 
-
         candidates = _build_candidates_from_opportunities(opps)
 
         enriched_candidates, disabled_candidates = _enrich_candidates_for_runtime(
@@ -2500,34 +2114,6 @@ def main() -> None:
 
         scores = mm.predict_many(feature_rows)
 
-        if getattr(pwin_calibrator, "enabled", False):
-            for c, s in zip(enriched_candidates or [], scores or []):
-                _strategy_id = str(getattr(c, "strategy_id", "") or "")
-                _side = str(getattr(c, "side", "flat") or "flat")
-                _symbol = str(getattr(c, "symbol", "") or "")
-                _raw_p = float(getattr(s, "p_win", 0.5) or 0.5)
-                _cal_p, _cal_meta = pwin_calibrator.calibrate(
-                    p_win=_raw_p,
-                    strategy_id=_strategy_id,
-                    side=_side,
-                    symbol=_symbol,
-                )
-                try:
-                    s.p_win = float(_cal_p)
-                except Exception:
-                    pass
-                _mm_meta = dict(getattr(s, "model_meta", {}) or {})
-                _mm_meta.update(dict(_cal_meta or {}))
-                s.model_meta = _mm_meta
-
-        enriched_candidates, scores = _apply_runtime_score_overrides(
-            enriched_candidates=enriched_candidates,
-            scores=scores,
-            args=args,
-            pwin_math_v2=pwin_math_v2,
-            pwin_math_v3=pwin_math_v3,
-        )
-
         decisions = pm.decide_many(scores)
 
         accepted_count = sum(
@@ -2545,8 +2131,6 @@ def main() -> None:
                 score_obj=s,
                 decision=d,
                 args=args,
-                pwin_math_v2=pwin_math_v2,
-                pwin_math_v3=pwin_math_v3,
                 portfolio_context=portfolio_context,
                 score_projector=score_projector,
             )
@@ -2567,8 +2151,6 @@ def main() -> None:
                 score_obj=s,
                 decision=d,
                 args=args,
-                pwin_math_v2=pwin_math_v2,
-                pwin_math_v3=pwin_math_v3,
                 portfolio_context=portfolio_context,
                 score_projector=score_projector,
             )
@@ -3439,7 +3021,7 @@ def main() -> None:
             "entry_reason": str(_sm.get("policy_reason", _meta.get("policy_reason", _meta.get("entry_reason", "")))),
             "entry_strength": float(_sm.get("signal_strength", _meta.get("signal_strength", 0.0)) or 0.0),
             "entry_score": float(_sm.get("score", _meta.get("score", 0.0)) or 0.0),
-            "entry_p_win": float(_sm.get("p_win", _meta.get("p_win", 0.0)) or 0.0),
+            "entry_p_win": float(_sm.get("p_win_prod", _meta.get("p_win_prod", 0.5)) or 0.5),
             "entry_policy_score": float(_sm.get("policy_score", _meta.get("policy_score", 0.0)) or 0.0),
             "entry_policy_size_mult": float(_sm.get("policy_size_mult", _meta.get("policy_size_mult", 0.0)) or 0.0),
             "entry_competitive_score": float(_sm.get("competitive_score", _meta.get("competitive_score", 0.0)) or 0.0),
@@ -3481,7 +3063,6 @@ def main() -> None:
     print(f"saved: {shadow_entry_audit_csv}")
     print(f"saved: {stale_shadow_cleanup_csv}")
     print(f"saved: {lifecycle_metrics_json}")
-
 
 
     metrics = dict(lifecycle_metrics or {})
