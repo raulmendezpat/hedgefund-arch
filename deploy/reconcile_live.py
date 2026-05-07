@@ -1047,7 +1047,21 @@ def ensure_leverage(bitget, symbol: str, leverage: int = 2):
     except Exception as e:
         print(f"LEVERAGE_ERROR -> symbol={symbol} margin_mode=isolated leverage={leverage} error={e!r}")
 
-df = pd.read_csv(APP / "results/research_runtime_prod_v2_live_candidate.csv", low_memory=False)
+RUNTIME_CSV = Path(
+    os.getenv(
+        "RECONCILE_RUNTIME_CSV",
+        str(APP / "results/research_runtime_prod_v2_live_candidate.csv"),
+    )
+)
+if not RUNTIME_CSV.is_absolute():
+    RUNTIME_CSV = APP / RUNTIME_CSV
+
+print(f"reconcile_runtime_csv: {RUNTIME_CSV}")
+
+if not RUNTIME_CSV.exists():
+    raise FileNotFoundError(f"reconcile runtime csv not found: {RUNTIME_CSV}")
+
+df = pd.read_csv(RUNTIME_CSV, low_memory=False)
 
 SYMBOLS = build_runtime_symbols(df)
 print("runtime_symbols:", list(SYMBOLS.keys()))

@@ -190,6 +190,8 @@ else:
     print(f"WARN: allocation output not found: {alloc_path}")
 PYLOG
 
+  export RECONCILE_RUNTIME_CSV="$APP_DIR/results/research_runtime_${RUN_NAME}.csv"
+  echo "RECONCILE_RUNTIME_CSV=$RECONCILE_RUNTIME_CSV" >> "$LOG_FILE"
   PYTHONPATH=src python "$APP_DIR/deploy/reconcile_live.py" >> "$LOG_FILE" 2>&1
 
   echo "{\"ts\":\"$RUN_TS\",\"status\":\"ok\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
