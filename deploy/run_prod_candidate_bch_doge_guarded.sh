@@ -34,6 +34,13 @@ RUN_NAME="prod_v2_live_candidate_bch_doge_guarded"
 REGISTRY="artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json"
 SELECTION_POLICY="artifacts/asset_universe_ab/selection_policy_config.base_plus_bch_doge_guarded.json"
 PWIN_ARTIFACT="artifacts/pwin_calibration_strategy_side_baseline_prodsem_3m_v3.json"
+PWIN_ASSET_SIDE_REGISTRY_PATH="artifacts/pwin_asset_side_models_v2_clean/pwin_asset_side_model_registry.json"
+
+if [ -f "$PWIN_ASSET_SIDE_REGISTRY_PATH" ]; then
+  export PWIN_ASSET_SIDE_REGISTRY="$PWIN_ASSET_SIDE_REGISTRY_PATH"
+else
+  unset PWIN_ASSET_SIDE_REGISTRY || true
+fi
 
 EXTRA_ARGS=()
 if [ -f "$PWIN_ARTIFACT" ]; then
@@ -53,6 +60,8 @@ echo "RUN_NAME=$RUN_NAME" >> "$LOG_FILE"
 echo "REGISTRY=$REGISTRY" >> "$LOG_FILE"
 echo "SELECTION_POLICY=$SELECTION_POLICY" >> "$LOG_FILE"
 echo "PWIN_ARTIFACT_EXISTS=$([ -f "$PWIN_ARTIFACT" ] && echo true || echo false)" >> "$LOG_FILE"
+echo "PWIN_ASSET_SIDE_REGISTRY=${PWIN_ASSET_SIDE_REGISTRY:-}" >> "$LOG_FILE"
+echo "PWIN_ASSET_SIDE_REGISTRY_EXISTS=$([ -n "${PWIN_ASSET_SIDE_REGISTRY:-}" ] && [ -f "${PWIN_ASSET_SIDE_REGISTRY:-}" ] && echo true || echo false)" >> "$LOG_FILE"
 
 if PYTHONPATH=src python scripts/research_runtime.py \
   --name "$RUN_NAME" \
