@@ -33,8 +33,8 @@ export LIVE_TRADING="${LIVE_TRADING:-0}"
 RUN_NAME="prod_v2_live_candidate_bch_doge_guarded"
 REGISTRY="artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json"
 SELECTION_POLICY="artifacts/asset_universe_ab/selection_policy_config.base_plus_bch_doge_guarded.json"
-PWIN_ARTIFACT="artifacts/pwin_calibration_strategy_side_baseline_prodsem_3m_v3.json"
-PWIN_ASSET_SIDE_REGISTRY_PATH="artifacts/pwin_asset_side_models_v2_clean/pwin_asset_side_model_registry.json"
+PWIN_ARTIFACT=""
+PWIN_ASSET_SIDE_REGISTRY_PATH="artifacts/p_win/asset_side/pwin_asset_side_model_registry.json"
 
 if [ -f "$PWIN_ASSET_SIDE_REGISTRY_PATH" ]; then
   export PWIN_ASSET_SIDE_REGISTRY="$PWIN_ASSET_SIDE_REGISTRY_PATH"
@@ -71,7 +71,7 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --policy-config artifacts/policy_config.json \
   --policy-profile symmetric_v1 \
   --selection-semantics-mode research \
-  --exit-registry-json artifacts/exit_policy_registry.runtime_overrides.json \
+  --exit-registry-json artifacts/exit_policy_registry.json \
   --start "$START_TS" \
   --end "$END_TS" \
   --exchange binanceusdm \
@@ -90,6 +90,7 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --runtime-ml-size-max 1.50 \
   --runtime-ml-size-base 0.70 \
   --runtime-ml-size-pwin-threshold 0.46 \
+  --pwin-asset-side-registry "$PWIN_ASSET_SIDE_REGISTRY_PATH" \
   "${EXTRA_ARGS[@]}" \
   >> "$LOG_FILE" 2>&1
 then
