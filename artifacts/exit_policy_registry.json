@@ -200,5 +200,97 @@
         "invalidate_on_trend_break": true
       }
     }
+  },
+  "strategy_sides": {
+    "dot_trend:long": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.45,
+        "tp_atr_mult": 0.78,
+        "breakeven_activate_atr": 0.8,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 0.9,
+        "trail_stop_atr_mult": 1.2,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      },
+      "metadata": {
+        "promoted_at_utc": "20260508T031623Z",
+        "promotion_name": "surgical_core",
+        "canonical_file": "artifacts/exit_policy_registry.json",
+        "base_strategy_id": "dot_trend",
+        "side": "long",
+        "tp_mult_applied": 0.3,
+        "sl_mult_applied": 1.0,
+        "base_tp_atr_mult": 2.6,
+        "effective_tp_atr_mult": 0.78,
+        "base_stop_atr_mult": 1.45,
+        "effective_stop_atr_mult": 1.45,
+        "rationale": "surgical_core: DOT long was strongest candidate; TP closer improved aggregate PnL."
+      }
+    },
+    "eth_trend:short": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 1.1199999999999999,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      },
+      "metadata": {
+        "promoted_at_utc": "20260508T031623Z",
+        "promotion_name": "surgical_core",
+        "canonical_file": "artifacts/exit_policy_registry.json",
+        "base_strategy_id": "eth_trend",
+        "side": "short",
+        "tp_mult_applied": 0.4,
+        "sl_mult_applied": 1.0,
+        "base_tp_atr_mult": 2.8,
+        "effective_tp_atr_mult": 1.1199999999999999,
+        "base_stop_atr_mult": 1.5,
+        "effective_stop_atr_mult": 1.5,
+        "rationale": "surgical_core: ETH short improved across all windows."
+      }
+    },
+    "eth_trend:long": {
+      "family": "trend_atr_dynamic",
+      "params": {
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 1.1199999999999999,
+        "breakeven_activate_atr": 0.9,
+        "breakeven_offset_atr": 0.1,
+        "trail_activate_atr": 1.0,
+        "trail_stop_atr_mult": 1.25,
+        "max_hold_bars": 0,
+        "invalidate_on_trend_break": true
+      },
+      "metadata": {
+        "promoted_at_utc": "20260508T031623Z",
+        "promotion_name": "surgical_core",
+        "canonical_file": "artifacts/exit_policy_registry.json",
+        "base_strategy_id": "eth_trend",
+        "side": "long",
+        "tp_mult_applied": 0.4,
+        "sl_mult_applied": 1.0,
+        "base_tp_atr_mult": 2.8,
+        "effective_tp_atr_mult": 1.1199999999999999,
+        "base_stop_atr_mult": 1.5,
+        "effective_stop_atr_mult": 1.5,
+        "rationale": "surgical_core: ETH long improved across all windows."
+      }
+    }
+  },
+  "metadata": {
+    "last_promotion": {
+      "name": "surgical_core",
+      "timestamp_utc": "20260508T031623Z",
+      "description": "Promote surgical TP side overrides for DOT long and ETH long/short into canonical exit registry.",
+      "backup": "artifacts/tp_surgical_core_promotion_20260508T031623Z/exit_policy_registry.before_promotion.json",
+      "changed_file": "artifacts/exit_policy_registry.json"
+    }
   }
 }
