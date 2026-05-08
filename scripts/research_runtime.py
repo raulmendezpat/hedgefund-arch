@@ -2051,6 +2051,35 @@ def main() -> None:
     )
     context_enricher = AssetContextEnricher()
 
+    # Production execution observability:
+    # research_runtime exports raw executable intent in *_execution_target_weight.
+    # live reconcile applies deploy/live_execution_config.json max_target_weight caps
+    # before order sizing. Keep raw intent unchanged, but also export a capped view
+    # so production metrics match the real live execution contract.
+    live_execution_config_path = Path("deploy/live_execution_config.json")
+    live_execution_default_symbol_config = {}
+    live_execution_symbol_overrides = {}
+    if live_execution_config_path.exists():
+        try:
+            _live_execution_config = json.loads(live_execution_config_path.read_text(encoding="utf-8"))
+            live_execution_default_symbol_config = dict(
+                (_live_execution_config.get("default_symbol_config", {}) or {})
+            )
+            live_execution_symbol_overrides = dict(
+                (_live_execution_config.get("symbol_overrides", {}) or {})
+            )
+        except Exception:
+            live_execution_default_symbol_config = {}
+            live_execution_symbol_overrides = {}
+
+    def _live_execution_max_target_weight(sym: str) -> float:
+        _default_max = float(
+            (live_execution_default_symbol_config or {}).get("max_target_weight", 0.25) or 0.25
+        )
+        _cfg = dict(live_execution_symbol_overrides.get(str(sym), {}) or {})
+        return float(_cfg.get("max_target_weight", _default_max) or _default_max)
+
+
     rows = []
     candidate_rows = []
     equity = 1000.0
@@ -2962,6 +2991,22 @@ def main() -> None:
         _final_export_gross_weight = float(sum(abs(v) for v in _final_export_weights.values()))
         _final_export_active_symbols = int(sum(1 for v in _final_export_weights.values() if abs(v) > 1e-12))
 
+        _live_capped_execution_weights = {}
+        _live_cap_symbol_count = 0
+        _live_cap_total_abs_delta = 0.0
+        for _sym, _raw_w in _final_export_weights.items():
+            _max_w = _live_execution_max_target_weight(_sym)
+            _capped_w = max(-_max_w, min(_max_w, float(_raw_w or 0.0)))
+            _live_capped_execution_weights[_sym] = float(_capped_w)
+            if abs(float(_raw_w or 0.0) - _capped_w) > 1e-12:
+                _live_cap_symbol_count += 1
+                _live_cap_total_abs_delta += abs(float(_raw_w or 0.0) - _capped_w)
+
+        _live_capped_gross_weight = float(sum(abs(v) for v in _live_capped_execution_weights.values()))
+        _live_capped_active_symbols = int(
+            sum(1 for v in _live_capped_execution_weights.values() if abs(v) > 1e-12)
+        )
+
         _row = {
             "ts": ts,
             "n_opps": len(opps),
@@ -2977,6 +3022,10 @@ def main() -> None:
             "pipeline_weight_order": str(_alloc_meta.get("pipeline_weight_order", "") or ""),
             "desired_gross_weight": float(sum(abs(float(v or 0.0)) for v in desired_weights.values())),
             "effective_gross_weight": _final_export_gross_weight,
+            "live_capped_gross_weight": _live_capped_gross_weight,
+            "live_capped_active_symbols": _live_capped_active_symbols,
+            "live_cap_symbol_count": int(_live_cap_symbol_count),
+            "live_cap_total_abs_delta": float(_live_cap_total_abs_delta),
             "shadow_entry_debug": str(shadow_entry_debug),
         }
 
@@ -2988,6 +3037,12 @@ def main() -> None:
             _row[f"{_sym_key}_w_after_signal_gating"] = float(_gate_stage_weights.get(sym, 0.0) or 0.0)
             _row[f"{_sym_key}_cluster_target_weight"] = float(_cluster_stage_weights.get(sym, 0.0) or 0.0)
             _row[f"{_sym_key}_execution_target_weight"] = float(_execution_stage_weights.get(sym, 0.0) or 0.0)
+            _row[f"{_sym_key}_live_capped_execution_target_weight"] = float(
+                _live_capped_execution_weights.get(sym, 0.0) or 0.0
+            )
+            _row[f"{_sym_key}_live_execution_max_target_weight"] = float(
+                _live_execution_max_target_weight(sym)
+            )
 
         rows.append(_row)
 
@@ -3090,6 +3145,26 @@ def main() -> None:
     metrics["avg_n_accepts"] = float(out_df["n_accepts"].mean()) if len(out_df) else 0.0
     metrics["avg_active_symbols"] = float(out_df["active_symbols"].mean()) if len(out_df) else 0.0
     metrics["avg_gross_weight"] = float(out_df["gross_weight"].mean()) if len(out_df) else 0.0
+    metrics["avg_live_capped_active_symbols"] = (
+        float(out_df["live_capped_active_symbols"].mean())
+        if len(out_df) and "live_capped_active_symbols" in out_df.columns else 0.0
+    )
+    metrics["avg_live_capped_gross_weight"] = (
+        float(out_df["live_capped_gross_weight"].mean())
+        if len(out_df) and "live_capped_gross_weight" in out_df.columns else 0.0
+    )
+    metrics["live_cap_events_rows"] = (
+        int((out_df["live_cap_symbol_count"] > 0).sum())
+        if len(out_df) and "live_cap_symbol_count" in out_df.columns else 0
+    )
+    metrics["live_cap_events_total_symbol_hits"] = (
+        int(out_df["live_cap_symbol_count"].sum())
+        if len(out_df) and "live_cap_symbol_count" in out_df.columns else 0
+    )
+    metrics["avg_live_cap_total_abs_delta"] = (
+        float(out_df["live_cap_total_abs_delta"].mean())
+        if len(out_df) and "live_cap_total_abs_delta" in out_df.columns else 0.0
+    )
 
     out_json.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
