@@ -40,7 +40,9 @@ def build_runtime_symbols(df: pd.DataFrame) -> dict:
 
     symbol_cols = sorted({
         c.replace("_execution_target_weight", "")
-        for c in df.columns if c.endswith("_execution_target_weight")
+        for c in df.columns
+        if c.endswith("_execution_target_weight")
+        and not c.endswith("_live_capped_execution_target_weight")
     } | {
         c.replace("_cluster_target_weight", "")
         for c in df.columns if c.endswith("_cluster_target_weight")
