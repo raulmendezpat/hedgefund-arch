@@ -224,15 +224,33 @@ def fetch_live_qty_for_side(bitget, symbol: str, pos_side: str) -> float:
     return float(total)
 
 
-def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False):
+def place_market(bitget, symbol: str, side: str, qty: float, reduce: bool = False, hold_side: str | None = None):
     qty = float(qty)
     if qty <= 0:
         return None
-    print(f"ORDER -> symbol={symbol} side={side} qty={qty} reduceOnly={reduce} live={LIVE_TRADING}")
+
+    side_l = str(side or "").strip().lower()
+    reduce_hold_side = str(hold_side or "").strip().lower()
+    if reduce and reduce_hold_side not in {"long", "short"}:
+        if side_l == "buy":
+            reduce_hold_side = "short"
+        elif side_l == "sell":
+            reduce_hold_side = "long"
+
+    print(
+        f"ORDER -> symbol={symbol} side={side} qty={qty} reduceOnly={reduce} "
+        f"holdSide={reduce_hold_side if reduce else ''} live={LIVE_TRADING}"
+    )
     if not LIVE_TRADING:
         return None
     try:
-        return bitget.place_market_order(symbol=symbol, side=side, amount=qty, reduce=reduce)
+        return bitget.place_market_order(
+            symbol=symbol,
+            side=side,
+            amount=qty,
+            reduce=reduce,
+            hold_side=reduce_hold_side if reduce else None,
+        )
     except Exception as e:
         msg = str(e)
         if reduce and ("22002" in msg or "No position to close" in msg):
@@ -1366,7 +1384,7 @@ for prefix, cfg in SYMBOLS.items():
                     place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
             elif current_qty < 0 and target_qty < 0:
                 _action = "reduce_short"
-                place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
+                place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True, hold_side="short")
             elif is_flat_qty(current_qty) and target_qty > 0:
                 _action = "open_long"
                 place_market(bitget, symbol, "buy", abs(delta_qty), reduce=False)
@@ -1376,14 +1394,14 @@ for prefix, cfg in SYMBOLS.items():
         elif delta_qty < 0:
             if current_qty > 0 and target_qty > 0:
                 _action = "reduce_long"
-                place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True)
+                place_market(bitget, symbol, "sell", abs(delta_qty), reduce=True, hold_side="long")
             elif current_qty < 0 and target_qty < 0:
                 if abs(target_qty) > abs(current_qty):
                     _action = "open_short"
                     place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
                 else:
                     _action = "reduce_short"
-                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True)
+                    place_market(bitget, symbol, "buy", abs(delta_qty), reduce=True, hold_side="short")
             elif current_qty == 0 and target_qty < 0:
                 _action = "open_short"
                 place_market(bitget, symbol, "sell", abs(delta_qty), reduce=False)
@@ -1443,9 +1461,9 @@ for prefix, cfg in SYMBOLS.items():
     _action = "flip_position"
     print("flip detected: closing current position first")
     if current_qty > 0:
-        place_market(bitget, symbol, "sell", abs(current_qty), reduce=True)
+        place_market(bitget, symbol, "sell", abs(current_qty), reduce=True, hold_side="long")
     elif current_qty < 0:
-        place_market(bitget, symbol, "buy", abs(current_qty), reduce=True)
+        place_market(bitget, symbol, "buy", abs(current_qty), reduce=True, hold_side="short")
 
     if target_qty > 0:
         place_market(bitget, symbol, "buy", abs(target_qty), reduce=False)

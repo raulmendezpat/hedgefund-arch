@@ -312,12 +312,36 @@ class BitgetFutures():
 
         return df
 
-    def place_market_order(self, symbol: str, side: str, amount: float, reduce: bool = False) -> Dict[str, Any]:
+    def place_market_order(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        reduce: bool = False,
+        hold_side: Optional[str] = None,
+    ) -> Dict[str, Any]:
         try:
+            side_l = str(side or "").strip().lower()
+            inferred_hold_side = str(hold_side or "").strip().lower()
+
+            if reduce and inferred_hold_side not in {"long", "short"}:
+                if side_l == "buy":
+                    inferred_hold_side = "short"
+                elif side_l == "sell":
+                    inferred_hold_side = "long"
+
             params = {
                 'reduceOnly': reduce,
                 'tradeSide': 'close' if reduce else 'open',
             }
+
+            # Bitget hedge_mode requires the position side when closing/reducing.
+            # Without holdSide, Bitget can reject valid reduce-only orders with
+            # "No position to close" even while fetch_positions shows a live
+            # hedge-mode position on that side.
+            if reduce and inferred_hold_side in {"long", "short"}:
+                params["holdSide"] = inferred_hold_side
+
             amount = self.amount_to_precision(symbol, amount)
             return self.session.create_order(symbol, 'market', side, amount, params=params)
 
