@@ -2946,21 +2946,37 @@ def main() -> None:
         _cluster_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_cluster_controls_weights", {}) or {}).items()}
         _execution_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("performance_weights_by_symbol", {}) or {}).items()}
 
+        # Export contract:
+        # gross_weight / active_symbols / effective_gross_weight must reflect the
+        # final executable target weights exported in *_execution_target_weight.
+        #
+        # Do not derive these exported diagnostics from effective_weights here:
+        # effective_weights can preserve lifecycle/previous-weight state while the
+        # final execution bridge has already flattened the target to zero. Reconcile
+        # consumes *_execution_target_weight, so the summary columns must be aligned
+        # with that final execution-stage contract.
+        _final_export_weights = {
+            str(sym): float(_execution_stage_weights.get(sym, 0.0) or 0.0)
+            for sym in symbols
+        }
+        _final_export_gross_weight = float(sum(abs(v) for v in _final_export_weights.values()))
+        _final_export_active_symbols = int(sum(1 for v in _final_export_weights.values() if abs(v) > 1e-12))
+
         _row = {
             "ts": ts,
             "n_opps": len(opps),
             "n_features": len(feature_rows),
             "n_scores": len(scores),
             "n_accepts": int(sum(1 for d in decisions if bool(d.accept))),
-            "gross_weight": gross_weight,
-            "active_symbols": active_symbols,
+            "gross_weight": _final_export_gross_weight,
+            "active_symbols": _final_export_active_symbols,
             "port_ret_simple": port_ret,
             "equity_simple": equity,
             "port_ret": lifecycle_port_ret,
             "equity": lifecycle_equity_now,
             "pipeline_weight_order": str(_alloc_meta.get("pipeline_weight_order", "") or ""),
             "desired_gross_weight": float(sum(abs(float(v or 0.0)) for v in desired_weights.values())),
-            "effective_gross_weight": float(gross_weight),
+            "effective_gross_weight": _final_export_gross_weight,
             "shadow_entry_debug": str(shadow_entry_debug),
         }
 
