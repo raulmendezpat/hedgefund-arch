@@ -21,7 +21,7 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -41,7 +41,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "AVAX/USDT:USDT": {
@@ -65,7 +67,7 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -75,7 +77,7 @@
         ],
         "long_probe_mode": "observe_only",
         "min_adx": 17.0,
-        "min_rvol20": 0.4,
+        "min_rvol20": 0.6,
         "mode": "filter",
         "penalty_weights": {
           "rvol_below_min": 0.06,
@@ -85,7 +87,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": false,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "BCH/USDT:USDT": {
@@ -95,9 +99,12 @@
           "long"
         ],
         "long_probe_mode": "observe_only",
-        "min_rvol20": 0.4,
+        "min_rvol20": 0.8,
         "mode": "filter",
-        "require_rvol": true
+        "require_rvol": true,
+        "allow_missing_rvol": false,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "BNB/USDT:USDT": {
@@ -121,7 +128,7 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -141,7 +148,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": false,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "BTC/USDT:USDT": {
@@ -165,7 +174,7 @@
         "rows": 9386
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -185,7 +194,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "DOGE/USDT:USDT": {
@@ -197,7 +208,10 @@
         "long_probe_mode": "observe_only",
         "min_rvol20": 0.4,
         "mode": "filter",
-        "require_rvol": true
+        "require_rvol": true,
+        "allow_missing_rvol": false,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "DOT/USDT:USDT": {
@@ -221,8 +235,9 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
+          "short",
           "long"
         ],
         "long_probe_allowed_sides": [
@@ -240,7 +255,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "ETH/USDT:USDT": {
@@ -264,7 +281,7 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -284,7 +301,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "LINK/USDT:USDT": {
@@ -308,7 +327,7 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -328,7 +347,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "TRX/USDT:USDT": {
@@ -352,8 +373,9 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
+          "short",
           "long"
         ],
         "long_probe_allowed_sides": [
@@ -371,7 +393,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     },
     "XRP/USDT:USDT": {
@@ -395,7 +419,7 @@
         "rows": 4693
       },
       "trend_participation_gate": {
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
           "short",
           "long"
@@ -415,7 +439,9 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": true
+        "require_rvol": true,
+        "rvol_field": "rvol20",
+        "require_rvol_expansion": false
       }
     }
   },
@@ -831,9 +857,10 @@
       },
       "trend_participation_gate": {
         "adx_field": "adx14",
-        "allow_missing_rvol": true,
+        "allow_missing_rvol": false,
         "allowed_sides": [
-          "short"
+          "short",
+          "long"
         ],
         "close_field": "close",
         "ema_fast_field": "ema20",
@@ -844,7 +871,7 @@
         "max_extension_pct_short": 0.0,
         "min_adx": 20.0,
         "min_bar_ret_pct_long": 0.0,
-        "min_rvol20": 1.0,
+        "min_rvol20": 0.4,
         "mode": "filter",
         "penalty_weights": {
           "adx_below_min": 0.06,
@@ -861,7 +888,7 @@
         "require_close_vs_ema_fast": true,
         "require_ema_slope": true,
         "require_ema_stack": true,
-        "require_rvol": false,
+        "require_rvol": true,
         "require_rvol_expansion": false,
         "require_trend_alignment": true,
         "rvol_field": "rvol20",
