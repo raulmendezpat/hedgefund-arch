@@ -137,8 +137,8 @@
           "long"
         ],
         "long_probe_mode": "observe_only",
-        "min_adx": 17.0,
-        "min_rvol20": 0.4,
+        "min_adx": 13.0,
+        "min_rvol20": 0.15,
         "mode": "filter",
         "penalty_weights": {
           "rvol_below_min": 0.06,
@@ -183,8 +183,8 @@
           "long"
         ],
         "long_probe_mode": "observe_only",
-        "min_adx": 18.0,
-        "min_rvol20": 0.4,
+        "min_adx": 14.0,
+        "min_rvol20": 0.15,
         "mode": "filter",
         "penalty_weights": {
           "rvol_below_min": 0.06,
