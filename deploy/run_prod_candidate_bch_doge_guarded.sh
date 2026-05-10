@@ -22,6 +22,20 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 cd "$APP_DIR"
 source .venv/bin/activate
 
+# ----------------------------------------------------------------------
+# LIVE TRADING ENFORCEMENT - added 20260510T044452Z
+# This production launcher is intended to run real live reconciliation.
+# Cron already invokes it with LIVE_TRADING=1, but we also enforce/export
+# it here so downstream Python/reconcile/status writers receive it.
+# ----------------------------------------------------------------------
+export LIVE_TRADING="${LIVE_TRADING:-1}"
+if [ "${LIVE_TRADING}" != "1" ]; then
+  echo "ERROR: LIVE_TRADING must be 1 for production launcher. Got LIVE_TRADING=${LIVE_TRADING}"
+  exit 2
+fi
+echo "LIVE_TRADING=${LIVE_TRADING}"
+
+
 START_TS="$(date -u -d '30 days ago' +"%Y-%m-%d %H:%M:%S")"
 END_TS="$(date -u +"%Y-%m-%d %H:%M:%S")"
 
@@ -198,7 +212,15 @@ PYLOG
   PYTHONPATH=src python "$APP_DIR/deploy/reconcile_live.py" >> "$LOG_FILE" 2>&1
 
   echo "{\"ts\":\"$RUN_TS\",\"status\":\"ok\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
+
+  # ----------------------------------------------------------------------
+  # SYNC GUARDED STATUS TO CANONICAL STATUS - added 20260510T044545Z
+  # Keep the generic status aligned with the guarded production launcher.
+  # ----------------------------------------------------------------------
+  cp -p "$STATUS_FILE" "$STATE_DIR/last_run_status.json" || true
 else
   echo "{\"ts\":\"$RUN_TS\",\"status\":\"fail\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
+
+  cp -p "$STATUS_FILE" "$STATE_DIR/last_run_status.json" || true
   exit 1
 fi
