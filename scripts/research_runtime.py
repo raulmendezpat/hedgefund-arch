@@ -5,6 +5,7 @@ import json
 import time
 from pathlib import Path
 from hf_core.pwin_asset_side_helper import override_candidate_pwin
+from hf_core.candidate_quality import apply_candidate_quality_shadow_to_candidate
 
 import numpy as np
 import pandas as pd
@@ -564,6 +565,7 @@ def _apply_runtime_prod_score_semantics(
     sm1["ml_position_size_mult"] = float(_size_factor)
 
     candidate.signal_meta = sm1
+    candidate = apply_candidate_quality_shadow_to_candidate(candidate, args)
     return candidate
 
 
@@ -803,6 +805,13 @@ def _build_runtime_candidate_row(
         "p_win_effective_runtime": float(sm.get("p_win_effective_runtime", float("nan"))),
         "ml_position_size_pwin_input": float(sm.get("ml_position_size_pwin_input", float("nan"))),
         "ml_position_size_mult": float(sm.get("ml_position_size_mult", float("nan"))),
+        "candidate_quality_mode": str(sm.get("candidate_quality_mode", "") or ""),
+        "candidate_quality_score_v0_47": float(sm.get("candidate_quality_score_v0_47", float("nan"))),
+        "candidate_quality_shadow_applied": bool(sm.get("candidate_quality_shadow_applied", False)),
+        "candidate_quality_score_field": str(sm.get("candidate_quality_score_field", "") or ""),
+        "candidate_quality_model_path": str(sm.get("candidate_quality_model_path", "") or ""),
+        "candidate_quality_manifest_path": str(sm.get("candidate_quality_manifest_path", "") or ""),
+        "candidate_quality_error": str(sm.get("candidate_quality_error", "") or ""),
 
         "p_win_ml_raw_pre_asset_side_override": float(sm.get("p_win_ml_raw_pre_asset_side_override", float("nan"))),
         "p_win_ml_raw_post_asset_side_override": float(sm.get("p_win_ml_raw_post_asset_side_override", float("nan"))),
@@ -1877,6 +1886,10 @@ def main() -> None:
     ap.add_argument("--cross-sectional-top-pct", type=float, default=0.20)
     ap.add_argument("--enable-strategy-side-pwin", action="store_true")
     ap.add_argument("--pwin-asset-side-registry", default="", help="Optional registry JSON for ML p_win asset/side override")
+    ap.add_argument("--candidate-quality-mode", default="off", choices=["off", "shadow"])
+    ap.add_argument("--candidate-quality-model-path", default="")
+    ap.add_argument("--candidate-quality-manifest-path", default="")
+    ap.add_argument("--candidate-quality-score-field", default="candidate_quality_score_v0_47")
     ap.add_argument("--strategy-side-pwin-scale", type=float, default=1.0)
     ap.add_argument("--selection-semantics-mode", default="research", choices=["research", "prod"])
     ap.add_argument("--prod-selection-mode", default="best_per_symbol", choices=["all", "best_per_symbol", "competitive", "top1_global", "top2_global", "top3_global"])
