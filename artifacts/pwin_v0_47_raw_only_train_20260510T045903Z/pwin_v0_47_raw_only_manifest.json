@@ -1,0 +1,44 @@
+{
+  "model_name": "pwin_v0_47_raw_only_reference_model",
+  "model_type": "hgb_balanced_like",
+  "label_col": "target_win",
+  "numeric_features": [
+    "adx",
+    "range_pct",
+    "breakout_distance_up",
+    "breakout_distance_down",
+    "dist_close_ema_fast",
+    "dist_close_ema_slow",
+    "pullback_depth",
+    "ret_1h_lag",
+    "ret_4h_lag",
+    "ret_12h_lag",
+    "ret_24h_lag",
+    "ema_gap_fast_slow",
+    "atrp",
+    "atrp_zscore",
+    "rolling_vol_24h",
+    "rolling_vol_72h",
+    "btc_adx",
+    "btc_atrp",
+    "btc_ret_24h_lag",
+    "btc_rolling_vol_24h"
+  ],
+  "categorical_features": [
+    "symbol",
+    "side",
+    "strategy_id"
+  ],
+  "train_rows": 143699,
+  "holdout_rows": 15967,
+  "holdout_base_win_rate_pct": 2.7932611010208555,
+  "holdout_auc": 0.957291625435581,
+  "holdout_average_precision": 0.4476840355286535,
+  "holdout_log_loss": 0.07123508979666399,
+  "holdout_brier": 0.019961669237463106,
+  "notes": [
+    "Experimental only. Do not promote to runtime without additional validation.",
+    "Uses raw pre-decision features only plus symbol/side/strategy_id context.",
+    "Excludes p_win, policy, post_ml, selection, target/pnl leakage, and stage-derived gate pass/kept/winner columns."
+  ]
+}
