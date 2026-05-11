@@ -5,7 +5,7 @@ import json
 import time
 from pathlib import Path
 from hf_core.pwin_asset_side_helper import override_candidate_pwin
-from hf_core.candidate_quality import apply_candidate_quality_shadow_to_candidate
+from hf_core.candidate_quality import apply_candidate_quality_shadow_to_candidate, apply_candidate_quality_gate_to_selection
 
 import numpy as np
 import pandas as pd
@@ -812,6 +812,14 @@ def _build_runtime_candidate_row(
         "candidate_quality_model_path": str(sm.get("candidate_quality_model_path", "") or ""),
         "candidate_quality_manifest_path": str(sm.get("candidate_quality_manifest_path", "") or ""),
         "candidate_quality_error": str(sm.get("candidate_quality_error", "") or ""),
+        "candidate_quality_gate_enabled": bool(sm.get("candidate_quality_gate_enabled", False)),
+        "candidate_quality_gate_applied": bool(sm.get("candidate_quality_gate_applied", False)),
+        "candidate_quality_gate_threshold": float(sm.get("candidate_quality_gate_threshold", float("nan"))),
+        # Empty unless gate mode actually evaluated this candidate.
+        # Avoid exporting False for off/shadow/non-gated rows because that is misleading.
+        "candidate_quality_gate_pass": str(sm.get("candidate_quality_gate_pass", "") if "candidate_quality_gate_pass" in sm else ""),
+        "candidate_quality_selected_after_gate": str(sm.get("candidate_quality_selected_after_gate", "") if "candidate_quality_selected_after_gate" in sm else ""),
+        "candidate_quality_gate_reason": str(sm.get("candidate_quality_gate_reason", "") or ""),
 
         "p_win_ml_raw_pre_asset_side_override": float(sm.get("p_win_ml_raw_pre_asset_side_override", float("nan"))),
         "p_win_ml_raw_post_asset_side_override": float(sm.get("p_win_ml_raw_post_asset_side_override", float("nan"))),
@@ -1886,10 +1894,12 @@ def main() -> None:
     ap.add_argument("--cross-sectional-top-pct", type=float, default=0.20)
     ap.add_argument("--enable-strategy-side-pwin", action="store_true")
     ap.add_argument("--pwin-asset-side-registry", default="", help="Optional registry JSON for ML p_win asset/side override")
-    ap.add_argument("--candidate-quality-mode", default="off", choices=["off", "shadow"])
+    ap.add_argument("--candidate-quality-mode", default="off", choices=["off", "shadow", "gate"])
     ap.add_argument("--candidate-quality-model-path", default="")
     ap.add_argument("--candidate-quality-manifest-path", default="")
     ap.add_argument("--candidate-quality-score-field", default="candidate_quality_score_v0_47")
+    ap.add_argument("--candidate-quality-gate-threshold", type=float, default=0.30)
+    ap.add_argument("--candidate-quality-gate-config-json", default="", help="Optional JSON with per symbol/side/strategy candidate quality gate thresholds")
     ap.add_argument("--strategy-side-pwin-scale", type=float, default=1.0)
     ap.add_argument("--selection-semantics-mode", default="research", choices=["research", "prod"])
     ap.add_argument("--prod-selection-mode", default="best_per_symbol", choices=["all", "best_per_symbol", "competitive", "top1_global", "top2_global", "top3_global"])
@@ -1931,6 +1941,8 @@ def main() -> None:
 
     selection_cfg = load_selection_policy_config(str(args.selection_policy_config))
     selection_trace_path = Path(f"results/selection_trace_{str(args.name)}.jsonl")
+
+    candidate_quality_gate_audit_rows = []
 
     runtime_debug_counters = {
         "btc_short_guard_seen": 0,
@@ -2380,6 +2392,24 @@ def main() -> None:
         if str(getattr(args, "allocation_score_mode", "legacy") or "legacy") == "frozen":
             selected_candidates = _seed_frozen_allocation_score(selected_candidates)
             bridge.score_projection = "frozen_allocation_score"
+
+        candidate_quality_gate_meta = {}
+        selected_candidates, selected_decisions, candidate_quality_gate_meta = apply_candidate_quality_gate_to_selection(
+            selected_candidates,
+            selected_decisions,
+            args,
+        )
+
+        if candidate_quality_gate_meta.get("candidate_quality_gate_rows"):
+            for _gate_row in candidate_quality_gate_meta.get("candidate_quality_gate_rows", []):
+                _row = dict(_gate_row or {})
+                _row["ts"] = str(ts)
+                _row["run_name"] = str(args.name)
+                _row["gate_threshold"] = float(candidate_quality_gate_meta.get("candidate_quality_gate_threshold", float("nan")))
+                _row["gate_in"] = int(candidate_quality_gate_meta.get("candidate_quality_gate_in", 0) or 0)
+                _row["gate_out"] = int(candidate_quality_gate_meta.get("candidate_quality_gate_out", 0) or 0)
+                _row["gate_blocked"] = int(candidate_quality_gate_meta.get("candidate_quality_gate_blocked", 0) or 0)
+                candidate_quality_gate_audit_rows.append(_row)
 
         alloc_inputs = _build_runtime_allocator_inputs(
             allocation_bridge=bridge,
@@ -3081,6 +3111,9 @@ def main() -> None:
 
     out_df.to_csv(out_csv, index=False)
     pd.DataFrame(candidate_rows).to_csv(out_candidates_csv, index=False)
+    candidate_quality_gate_audit_csv = Path(f"results/research_runtime_candidate_quality_gate_audit_{args.name}.csv")
+    pd.DataFrame(candidate_quality_gate_audit_rows).to_csv(candidate_quality_gate_audit_csv, index=False)
+    print(f"saved: {candidate_quality_gate_audit_csv}")
     lifecycle_trade_rows = []
     for t in lifecycle_engine.trade_log:
         _meta = dict(t.meta or {})

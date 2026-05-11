@@ -1,0 +1,79 @@
+{
+  "version": "v0_47_surgical_candidate_quality_gate_from_asset_side_strategy_audit",
+  "default_action": "pass",
+  "description": "Only apply candidate_quality hard gate to groups where multiwindow asset/side/strategy audit showed robust positive impact. All unlisted groups pass through unchanged.",
+  "groups": [
+    {
+      "symbol": "ETH",
+      "side": "short",
+      "strategy_id": "eth_trend",
+      "threshold": 0.05,
+      "reason": "largest positive robust impact; threshold 0.05 helped ETH short materially"
+    },
+    {
+      "symbol": "DOGE",
+      "side": "short",
+      "strategy_id": "doge_trend_loose",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    },
+    {
+      "symbol": "AVAX",
+      "side": "short",
+      "strategy_id": "avax_trend",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    },
+    {
+      "symbol": "BCH",
+      "side": "long",
+      "strategy_id": "bch_trend",
+      "threshold": 0.03,
+      "reason": "positive robust impact in all windows at threshold 0.03"
+    },
+    {
+      "symbol": "BTC",
+      "side": "long",
+      "strategy_id": "btc_trend_loose",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    },
+    {
+      "symbol": "DOGE",
+      "side": "long",
+      "strategy_id": "doge_trend_loose",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    },
+    {
+      "symbol": "AVAX",
+      "side": "long",
+      "strategy_id": "avax_trend",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    },
+    {
+      "symbol": "DOT",
+      "side": "long",
+      "strategy_id": "dot_trend",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    },
+    {
+      "symbol": "XRP",
+      "side": "long",
+      "strategy_id": "xrp_trend",
+      "threshold": 0.03,
+      "reason": "positive robust impact at threshold 0.03"
+    }
+  ],
+  "explicit_no_gate_groups": [
+    {"symbol": "AAVE", "side": "short", "strategy_id": "aave_trend"},
+    {"symbol": "AAVE", "side": "long", "strategy_id": "aave_trend"},
+    {"symbol": "XRP", "side": "short", "strategy_id": "xrp_trend"},
+    {"symbol": "BTC", "side": "short", "strategy_id": "btc_trend_loose"},
+    {"symbol": "BNB", "side": "short", "strategy_id": "bnb_trend"},
+    {"symbol": "LINK", "side": "short", "strategy_id": "link_trend"},
+    {"symbol": "TRX", "side": "long", "strategy_id": "trx_trend"}
+  ]
+}
