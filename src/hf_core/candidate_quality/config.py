@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,81 @@ class CandidateQualityConfig:
             candidate_manifest = Path(model_path).with_name("pwin_v0_47_raw_only_manifest.json")
             if candidate_manifest.exists():
                 manifest_path = str(candidate_manifest)
+
+        # Allow callers to pass only the manifest path. The manifest is the canonical
+        # deployment artifact and can point to the model. This keeps runtime CLI usage
+        # stable while avoiding silent missing_model_or_manifest_path failures.
+        if manifest_path and not model_path:
+            try:
+                manifest_p = Path(manifest_path)
+                manifest_obj = json.loads(manifest_p.read_text())
+
+                def _walk_model_refs(obj):
+                    refs = []
+                    if isinstance(obj, dict):
+                        for k, v in obj.items():
+                            kl = str(k).lower()
+                            if isinstance(v, str) and (
+                                "model" in kl
+                                or "joblib" in kl
+                                or v.endswith(".joblib")
+                                or v.endswith(".pkl")
+                            ):
+                                refs.append(v)
+                            refs.extend(_walk_model_refs(v))
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            refs.extend(_walk_model_refs(item))
+                    return refs
+
+                candidate_model_refs = []
+                candidate_model_refs.extend([
+                    manifest_obj.get("model_path"),
+                    manifest_obj.get("model"),
+                    manifest_obj.get("model_file"),
+                    manifest_obj.get("reference_model"),
+                    (manifest_obj.get("outputs") or {}).get("model"),
+                    (manifest_obj.get("artifacts") or {}).get("model"),
+                ])
+                candidate_model_refs.extend(_walk_model_refs(manifest_obj))
+
+                seen = set()
+                for ref in candidate_model_refs:
+                    if not ref:
+                        continue
+                    ref = str(ref).strip()
+                    if not ref or ref in seen:
+                        continue
+                    seen.add(ref)
+
+                    ref_path = Path(ref)
+                    candidates = [
+                        ref_path,
+                        manifest_p.parent / ref,
+                        manifest_p.parent / ref_path.name,
+                    ]
+
+                    for candidate_path in candidates:
+                        if candidate_path.is_file():
+                            model_path = str(candidate_path)
+                            break
+
+                    if model_path:
+                        break
+
+                # Last-resort safe fallback: use the single model artifact colocated
+                # with the manifest. This is valid for v0.47 raw-only candidate quality.
+                if not model_path:
+                    colocated_models = sorted(
+                        list(manifest_p.parent.glob("*.joblib"))
+                        + list(manifest_p.parent.glob("*.pkl"))
+                    )
+                    if len(colocated_models) == 1:
+                        model_path = str(colocated_models[0])
+
+            except Exception:
+                # Validation/fail-fast is handled by research_runtime and scorer.
+                pass
 
         return cls(
             mode=mode,

@@ -5,7 +5,7 @@ import json
 import time
 from pathlib import Path
 from hf_core.pwin_asset_side_helper import override_candidate_pwin
-from hf_core.candidate_quality import apply_candidate_quality_shadow_to_candidate, apply_candidate_quality_gate_to_selection
+from hf_core.candidate_quality import CandidateQualityConfig, apply_candidate_quality_shadow_to_candidate, apply_candidate_quality_gate_to_selection
 
 import numpy as np
 import pandas as pd
@@ -1932,6 +1932,46 @@ def main() -> None:
         help="Enable target-position lifecycle semantics in shadow trading runtime.",
     )
     args = ap.parse_args()
+
+    # Candidate-quality shadow/gate must never run with missing model/manifest.
+    # Otherwise the runtime can produce apparently complete but invalid metrics.
+    _candidate_quality_mode = str(getattr(args, "candidate_quality_mode", "off") or "off").strip().lower()
+    if _candidate_quality_mode in {"shadow", "gate"}:
+        _candidate_quality_cfg = CandidateQualityConfig.from_args(args)
+
+        # Persist inferred paths back onto args so downstream metadata exports the resolved values.
+        args.candidate_quality_model_path = str(_candidate_quality_cfg.model_path or "")
+        args.candidate_quality_manifest_path = str(_candidate_quality_cfg.manifest_path or "")
+
+        _cq_model_path = Path(str(args.candidate_quality_model_path or ""))
+        _cq_manifest_path = Path(str(args.candidate_quality_manifest_path or ""))
+
+        _cq_errors = []
+        if not str(args.candidate_quality_model_path or "").strip():
+            _cq_errors.append("missing --candidate-quality-model-path")
+        elif not _cq_model_path.is_file():
+            _cq_errors.append(f"candidate quality model not found: {_cq_model_path}")
+
+        if not str(args.candidate_quality_manifest_path or "").strip():
+            _cq_errors.append("missing --candidate-quality-manifest-path")
+        elif not _cq_manifest_path.is_file():
+            _cq_errors.append(f"candidate quality manifest not found: {_cq_manifest_path}")
+
+        if _candidate_quality_mode == "gate":
+            _gate_cfg = str(getattr(args, "candidate_quality_gate_config_json", "") or "").strip()
+            if _gate_cfg and not _gate_cfg.lstrip().startswith(("{", "[")):
+                _gate_cfg_path = Path(_gate_cfg)
+                if not _gate_cfg_path.is_file():
+                    _cq_errors.append(f"candidate quality gate config not found: {_gate_cfg_path}")
+
+        if _cq_errors:
+            raise SystemExit(
+                "Invalid candidate-quality configuration for mode="
+                + _candidate_quality_mode
+                + ": "
+                + "; ".join(_cq_errors)
+            )
+
 
     _exit_registry_cfg = {}
     _exit_registry_path = str(getattr(args, "exit_registry_json", "") or "").strip()
