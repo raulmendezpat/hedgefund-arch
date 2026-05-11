@@ -104,6 +104,9 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --runtime-ml-size-max 1.50 \
   --runtime-ml-size-base 0.70 \
   --runtime-ml-size-pwin-threshold 0.46 \
+  --candidate-quality-mode gate \
+  --candidate-quality-manifest-path "artifacts/pwin_v0_47_raw_only_train_20260510T045903Z/pwin_v0_47_raw_only_manifest.json" \
+  --candidate-quality-gate-config-json "artifacts/candidate_quality_gate.v0_47_surgical.json" \
   --pwin-asset-side-registry "$PWIN_ASSET_SIDE_REGISTRY_PATH" \
   "${EXTRA_ARGS[@]}" \
   >> "$LOG_FILE" 2>&1
