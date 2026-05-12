@@ -3,6 +3,82 @@ import json
 import os
 from pathlib import Path
 
+
+def _hf_safe_partial_tp_qty(exchange, symbol, qty, fraction):
+    """
+    Return (qty1, qty2, reason, raw_qty1) for partial TP sizing.
+
+    Defensive production helper:
+    - If the intended partial quantity is below Bitget/CCXT min amount or precision,
+      collapse to a single full-size TP instead of attempting a micro partial TP.
+    - This prevents repeated Bitget precision exceptions for tiny live positions.
+    - Does not place/cancel orders; it only prepares safe quantities for existing flow.
+    """
+    try:
+        qty_f = abs(float(qty or 0.0))
+    except Exception:
+        qty_f = 0.0
+
+    try:
+        frac_f = float(fraction or 0.0)
+    except Exception:
+        frac_f = 0.0
+
+    raw_qty1 = qty_f * frac_f
+
+    if qty_f <= 0:
+        return 0.0, qty_f, "zero_qty", raw_qty1
+
+    if raw_qty1 <= 0:
+        return 0.0, qty_f, "partial_raw_zero_use_single_tp", raw_qty1
+
+    min_amount = None
+    try:
+        market = exchange.market(symbol)
+        limits = market.get("limits") or {}
+        amount_limits = limits.get("amount") or {}
+        min_amount = amount_limits.get("min")
+    except Exception:
+        pass
+
+    try:
+        min_amount_f = float(min_amount) if min_amount is not None else None
+    except Exception:
+        min_amount_f = None
+
+    if min_amount_f is not None and raw_qty1 < min_amount_f:
+        return 0.0, qty_f, "partial_below_min_amount_use_single_tp", raw_qty1
+
+    try:
+        qty1 = float(exchange.amount_to_precision(symbol, raw_qty1))
+    except Exception:
+        return 0.0, qty_f, "partial_precision_failed_use_single_tp", raw_qty1
+
+    if qty1 <= 0:
+        return 0.0, qty_f, "partial_precision_zero_use_single_tp", raw_qty1
+
+    if min_amount_f is not None and qty1 < min_amount_f:
+        return 0.0, qty_f, "partial_precision_below_min_amount_use_single_tp", raw_qty1
+
+    qty2_raw = max(0.0, qty_f - qty1)
+
+    if min_amount_f is not None and qty2_raw < min_amount_f:
+        return 0.0, qty_f, "partial_residual_below_min_amount_use_single_tp", raw_qty1
+
+    try:
+        qty2 = float(exchange.amount_to_precision(symbol, qty2_raw)) if qty2_raw > 0 else 0.0
+    except Exception:
+        return 0.0, qty_f, "residual_precision_failed_use_single_tp", raw_qty1
+
+    if qty2 <= 0:
+        return 0.0, qty_f, "residual_precision_zero_use_single_tp", raw_qty1
+
+    if min_amount_f is not None and qty2 < min_amount_f:
+        return 0.0, qty_f, "residual_precision_below_min_amount_use_single_tp", raw_qty1
+
+    return qty1, qty2, "partial_ok", raw_qty1
+
+
 import pandas as pd
 import ta
 
@@ -792,26 +868,19 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
     qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
 
     if partial_tp_enabled:
-        raw_qty1 = max(0.0, float(qty) * partial_tp1_fraction)
-        try:
-            qty1 = float(bitget.amount_to_precision(symbol, raw_qty1)) if raw_qty1 > 0 else 0.0
-            qty2 = max(0.0, float(qty) - float(qty1))
-            qty2 = float(bitget.amount_to_precision(symbol, qty2)) if qty2 > 0 else 0.0
+        qty1, qty2, partial_tp_qty_reason, raw_qty1 = _hf_safe_partial_tp_qty(
+            bitget,
+            symbol,
+            qty,
+            partial_tp1_fraction,
+        )
 
-            if qty1 <= 0.0 or qty2 <= 0.0:
-                print(
-                    f"TP_SPLIT_COLLAPSED -> symbol={symbol} qty={qty} "
-                    f"raw_qty1={raw_qty1} qty1={qty1} qty2={qty2}"
-                )
-                qty1 = 0.0
-                qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
-        except Exception as e:
+        if partial_tp_qty_reason != "partial_ok":
             print(
-                f"TP_SPLIT_FALLBACK -> symbol={symbol} qty={qty} "
-                f"raw_qty1={raw_qty1} error={e!r}"
+                f"TP_SPLIT_MICRO_QTY_GUARD -> symbol={symbol} qty={qty} "
+                f"raw_qty1={raw_qty1} reason={partial_tp_qty_reason} "
+                f"qty1={qty1} qty2={qty2}"
             )
-            qty1 = 0.0
-            qty2 = float(bitget.amount_to_precision(symbol, qty)) if qty > 0 else 0.0
 
     price_tol = float(cfg.get("tp_refresh_rel_tol", 0.001) or 0.001)
 
