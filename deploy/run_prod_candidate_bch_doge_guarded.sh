@@ -93,9 +93,9 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --allocator-mode production_like_snapshot \
   --allocator-profile blended \
   --projection-profile research \
-  --target-exposure 0.40 \
-  --symbol-cap 0.28 \
-  --execution-symbol-cap 0.60 \
+  --target-exposure 0.80 \
+  --symbol-cap 0.45 \
+  --execution-symbol-cap 1.00 \
   --runtime-prod-ml-position-sizing \
   --prodlike-allocator-apply-ml-sizing \
   --runtime-ml-size-mode calibrated \
