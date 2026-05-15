@@ -698,6 +698,76 @@ def _compute_btc_short_recent_positive_momentum_guard(
     }
 
 
+
+def _sync_candidate_quality_gate_rows_into_candidate_export(candidate_rows, gate_rows, ts):
+    """Sync CQ gate audit rows into research_runtime_candidates export.
+
+    Observability only:
+    - Does not change selection, allocation, lifecycle, execution, or reconcile.
+    - Uses gate audit rows as source of truth because rejected candidates are
+      intentionally removed from selected_candidates after the gate.
+    - Updates only candidate export rows for the same ts/symbol/strategy/side that
+      were selected before CQ gate evaluation.
+    """
+    if not candidate_rows or not gate_rows:
+        return
+
+    ts_s = str(ts)
+
+    rows_by_key = {}
+    for row in candidate_rows:
+        if not isinstance(row, dict):
+            continue
+        key = (
+            str(row.get("ts", "") or ""),
+            str(row.get("symbol", "") or ""),
+            str(row.get("strategy_id", "") or ""),
+            str(row.get("side", "") or ""),
+        )
+        rows_by_key.setdefault(key, []).append(row)
+
+    for gate_row in gate_rows:
+        if not isinstance(gate_row, dict):
+            continue
+
+        symbol = str(gate_row.get("symbol", "") or "")
+        strategy_id = str(gate_row.get("strategy_id", "") or "")
+        side = str(gate_row.get("side", "") or "")
+
+        key = (ts_s, symbol, strategy_id, side)
+        rows = rows_by_key.get(key, [])
+
+        if not rows:
+            # Candidate export ts is sometimes already stringified consistently,
+            # but keep a conservative fallback matching only same candidate identity.
+            rows = [
+                r for r in candidate_rows
+                if str(r.get("symbol", "") or "") == symbol
+                and str(r.get("strategy_id", "") or "") == strategy_id
+                and str(r.get("side", "") or "") == side
+                and bool(r.get("selected_after_prod_selection", False))
+            ]
+
+        for row in rows:
+            if not bool(row.get("selected_after_prod_selection", False)):
+                continue
+
+            gate_applied = bool(gate_row.get("gate_applied", False))
+            gate_pass = bool(gate_row.get("pass", True))
+
+            row["candidate_quality_gate_enabled"] = True
+            row["candidate_quality_gate_applied"] = gate_applied
+            row["candidate_quality_gate_threshold"] = float(gate_row.get("threshold", gate_row.get("gate_threshold", 0.30)) or 0.30)
+            row["candidate_quality_gate_pass"] = gate_pass
+            row["candidate_quality_selected_after_gate"] = gate_pass
+            row["candidate_quality_gate_reason"] = str(gate_row.get("reason", "") or "")
+            row["candidate_quality_gate_config_json"] = str(gate_row.get("gate_config_json", "") or "")
+            row["candidate_quality_gate_scope_reason"] = str(gate_row.get("scope_reason", "") or "")
+
+            if not gate_pass:
+                row["selected_final"] = False
+
+
 def _build_runtime_candidate_row(
     *,
     candidate,
@@ -2450,6 +2520,12 @@ def main() -> None:
                 _row["gate_out"] = int(candidate_quality_gate_meta.get("candidate_quality_gate_out", 0) or 0)
                 _row["gate_blocked"] = int(candidate_quality_gate_meta.get("candidate_quality_gate_blocked", 0) or 0)
                 candidate_quality_gate_audit_rows.append(_row)
+
+        _sync_candidate_quality_gate_rows_into_candidate_export(
+            candidate_rows,
+            candidate_quality_gate_meta.get("candidate_quality_gate_rows", []),
+            ts,
+        )
 
         alloc_inputs = _build_runtime_allocator_inputs(
             allocation_bridge=bridge,
