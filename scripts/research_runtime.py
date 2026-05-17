@@ -1809,6 +1809,103 @@ def _apply_runtime_cross_sectional_ranking(
 
     return kept_candidates, kept_decisions, meta
 
+def _dynamic_exit_v1_2_norm_symbol(symbol: str) -> str:
+    return str(symbol or "").upper().strip()
+
+
+def _dynamic_exit_v1_2_asset_side_allowed(args, symbol: str, side: str) -> bool:
+    raw = str(getattr(args, "dynamic_exit_v1_2_asset_side_allowlist", "") or "").strip()
+    if not raw:
+        return True
+
+    sym = _dynamic_exit_v1_2_norm_symbol(symbol)
+    side_l = str(side or "").lower().strip()
+    wanted = f"{sym}|{side_l}"
+
+    allowed = set()
+    for tok in raw.replace(";", ",").split(","):
+        tok = tok.strip()
+        if not tok or "|" not in tok:
+            continue
+        s, sd = tok.split("|", 1)
+        allowed.add(f"{_dynamic_exit_v1_2_norm_symbol(s)}|{str(sd or '').lower().strip()}")
+
+    return wanted in allowed
+
+
+def _dynamic_exit_v1_2_enabled(args) -> bool:
+    return bool(getattr(args, "dynamic_exit_v1_2_lifecycle_overlay", False))
+
+
+def _apply_dynamic_exit_v1_2_lifecycle_overlay(args, params: dict, side: str, context: dict, symbol: str = "") -> dict:
+    """
+    Minimal Dynamic Exit V1.2 lifecycle integration.
+
+    This is intentionally a lifecycle ATR cap overlay, not the full contextual
+    DynamicExitModel. It applies V1.2-style TP/SL ATR envelopes immediately
+    before evaluate_exit(), making 1/3/6/12 backtests meaningful while keeping
+    the change small, reversible, and observable.
+    """
+    out = dict(params or {})
+    if not _dynamic_exit_v1_2_enabled(args):
+        return out
+
+    side_l = str(side or "").lower().strip()
+    if not _dynamic_exit_v1_2_asset_side_allowed(args, symbol=symbol, side=side_l):
+        return out
+
+    ctx = dict(context or {})
+
+    regime = str(
+        ctx.get("portfolio_regime")
+        or ctx.get("market_state")
+        or ctx.get("ctx_exit_profile")
+        or ""
+    ).lower()
+
+    tp_cap = 0.0
+    if side_l == "long":
+        tp_cap = float(getattr(args, "dynamic_exit_v1_2_max_tp_atr_long", 0.0) or 0.0)
+    elif side_l == "short":
+        short_cap = float(getattr(args, "dynamic_exit_v1_2_max_tp_atr_short", 0.0) or 0.0)
+        short_bear_cap = float(getattr(args, "dynamic_exit_v1_2_max_tp_atr_short_bear", 0.0) or 0.0)
+        is_bear_like = (
+            "bear" in regime
+            or "defensive" in regime
+            or "risk_off" in regime
+            or regime == ""
+            or regime == "normal"
+        )
+        tp_cap = short_bear_cap if (is_bear_like and short_bear_cap > 0.0) else short_cap
+
+    if tp_cap > 0.0 and "tp_atr_mult" in out:
+        try:
+            out["tp_atr_mult"] = float(min(float(out.get("tp_atr_mult", tp_cap) or tp_cap), tp_cap))
+        except Exception:
+            out["tp_atr_mult"] = float(tp_cap)
+
+    sl_min = float(getattr(args, "dynamic_exit_v1_2_min_sl_atr", 0.0) or 0.0)
+    sl_max = float(getattr(args, "dynamic_exit_v1_2_max_sl_atr", 0.0) or 0.0)
+
+    if "stop_atr_mult" in out:
+        try:
+            sl = float(out.get("stop_atr_mult", 0.0) or 0.0)
+            if sl_min > 0.0:
+                sl = max(sl, sl_min)
+            if sl_max > 0.0:
+                sl = min(sl, sl_max)
+            out["stop_atr_mult"] = float(sl)
+        except Exception:
+            pass
+
+    out["dynamic_exit_v1_2_overlay_enabled"] = True
+    out["dynamic_exit_v1_2_tp_cap_applied"] = float(tp_cap or 0.0)
+    out["dynamic_exit_v1_2_sl_min_applied"] = float(sl_min or 0.0)
+    out["dynamic_exit_v1_2_sl_max_applied"] = float(sl_max or 0.0)
+
+    return out
+
+
 def _historical_avg_hold_bars_for_position(lifecycle_engine, symbol: str, strategy_id: str, side: str) -> float:
     trade_log = list(getattr(lifecycle_engine, "trade_log", []) or [])
     if not trade_log:
@@ -2000,6 +2097,48 @@ def main() -> None:
         "--enable-target-position-lifecycle",
         action="store_true",
         help="Enable target-position lifecycle semantics in shadow trading runtime.",
+    )
+
+    ap.add_argument(
+        "--dynamic-exit-v1-2-lifecycle-overlay",
+        action="store_true",
+        default=False,
+        help="Enable Dynamic Exit V1.2 lifecycle ATR cap overlay for TP/SL backtest validation.",
+    )
+    ap.add_argument(
+        "--dynamic-exit-v1-2-max-tp-atr-long",
+        type=float,
+        default=0.0,
+        help="Optional max TP ATR multiplier for long lifecycle exits. 0 disables long TP cap.",
+    )
+    ap.add_argument(
+        "--dynamic-exit-v1-2-max-tp-atr-short",
+        type=float,
+        default=0.0,
+        help="Optional max TP ATR multiplier for short lifecycle exits. 0 disables short TP cap.",
+    )
+    ap.add_argument(
+        "--dynamic-exit-v1-2-max-tp-atr-short-bear",
+        type=float,
+        default=0.0,
+        help="Optional max TP ATR multiplier for short lifecycle exits in bearish/unknown context. 0 falls back to short cap.",
+    )
+    ap.add_argument(
+        "--dynamic-exit-v1-2-min-sl-atr",
+        type=float,
+        default=0.0,
+        help="Optional minimum SL ATR multiplier for lifecycle exits. 0 disables min clamp.",
+    )
+    ap.add_argument(
+        "--dynamic-exit-v1-2-max-sl-atr",
+        type=float,
+        default=0.0,
+        help="Optional maximum SL ATR multiplier for lifecycle exits. 0 disables max clamp.",
+    )
+    ap.add_argument(
+        "--dynamic-exit-v1-2-asset-side-allowlist",
+        default="",
+        help="Optional comma-separated allowlist for Dynamic Exit V1.2 overlay, e.g. BTC/USDT:USDT|long,XRP/USDT:USDT|long. Empty means all asset/sides.",
     )
     args = ap.parse_args()
 
@@ -2635,11 +2774,11 @@ def main() -> None:
                 side=getattr(pos, "side", ""),
             ) or {})
 
-            if _override_cfg:
-                _base_family = str(strat_cfg.get("family", "") or "")
-                _base_params = dict(strat_cfg.get("params", {}) or {})
-                _merged_params = dict(_base_params)
+            _base_family = str(strat_cfg.get("family", "") or "")
+            _base_params = dict(strat_cfg.get("params", {}) or {})
+            _merged_params = dict(_base_params)
 
+            if _override_cfg:
                 if "sl_mult" in _override_cfg:
                     _merged_params["stop_atr_mult"] = float(_base_params.get("stop_atr_mult", 1.5) or 1.5) * float(_override_cfg["sl_mult"])
                 if "tp_mult" in _override_cfg:
@@ -2647,9 +2786,17 @@ def main() -> None:
                 if "time_stop_bars" in _override_cfg:
                     _merged_params["max_hold_bars"] = int(_override_cfg["time_stop_bars"])
 
-                if _base_family:
-                    strat_cfg["family"] = _base_family
-                strat_cfg["params"] = _merged_params
+            _merged_params = _apply_dynamic_exit_v1_2_lifecycle_overlay(
+                args=args,
+                params=_merged_params,
+                side=str(getattr(pos, "side", "") or ""),
+                context=exit_context,
+                symbol=str(sym),
+            )
+
+            if _base_family:
+                strat_cfg["family"] = _base_family
+            strat_cfg["params"] = _merged_params
 
             _hist_avg_hold_bars = _historical_avg_hold_bars_for_position(
                 lifecycle_engine,
@@ -2683,6 +2830,10 @@ def main() -> None:
                         "exit_reason": rec.exit_reason,
                         "entry_px": rec.entry_px,
                         "exit_px": rec.exit_px,
+                        "dynamic_exit_v1_2_overlay_enabled": bool(_merged_params.get("dynamic_exit_v1_2_overlay_enabled", False)),
+                        "dynamic_exit_v1_2_tp_cap_applied": float(_merged_params.get("dynamic_exit_v1_2_tp_cap_applied", 0.0) or 0.0),
+                        "dynamic_exit_v1_2_sl_min_applied": float(_merged_params.get("dynamic_exit_v1_2_sl_min_applied", 0.0) or 0.0),
+                        "dynamic_exit_v1_2_sl_max_applied": float(_merged_params.get("dynamic_exit_v1_2_sl_max_applied", 0.0) or 0.0),
                         "qty": rec.qty,
                         "pnl": rec.pnl,
                         "bars_held": rec.bars_held,
