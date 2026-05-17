@@ -86,6 +86,12 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   --policy-profile symmetric_v1 \
   --selection-semantics-mode research \
   --exit-registry-json artifacts/exit_policy_registry.json \
+  --enable-target-position-lifecycle \
+  --dynamic-exit-v1-2-lifecycle-overlay \
+  --dynamic-exit-v1-2-max-tp-atr-long 2.0 \
+  --dynamic-exit-v1-2-max-tp-atr-short 2.0 \
+  --dynamic-exit-v1-2-max-tp-atr-short-bear 2.0 \
+  --dynamic-exit-v1-2-asset-side-allowlist "BTC/USDT:USDT|long,BCH/USDT:USDT|long,XRP/USDT:USDT|long,AVAX/USDT:USDT|short,LINK/USDT:USDT|long" \
   --start "$START_TS" \
   --end "$END_TS" \
   --exchange binanceusdm \
