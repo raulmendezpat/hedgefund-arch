@@ -452,7 +452,7 @@
           "short"
         ],
         "ema_gap_field": "ema_gap_fast_slow",
-        "min_adx": 22.0,
+        "min_adx": 20.5,
         "min_ema_gap": 0.003,
         "mode": "filter"
       }
