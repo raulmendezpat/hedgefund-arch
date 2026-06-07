@@ -216,7 +216,26 @@ else:
     print(f"WARN: allocation output not found: {alloc_path}")
 PYLOG
 
-  export RECONCILE_RUNTIME_CSV="$APP_DIR/results/research_runtime_${RUN_NAME}.csv"
+  # Apply execution-layer SL cooldown before live reconcile.
+# This blocks re-entry/rebalance for symbols that hit stop-loss within the cooldown window.
+export RECONCILE_RUNTIME_CSV="$APP_DIR/results/research_runtime_${RUN_NAME}.csv"
+export RECONCILE_TRADES_CSV="$APP_DIR/results/research_runtime_lifecycle_trades_${RUN_NAME}.csv"
+export SL_COOLDOWN_STATE_JSON="$APP_DIR/runtime/state/sl_cooldown_state.json"
+export SL_COOLDOWN_REPORT_JSON="$APP_DIR/runtime/state/sl_cooldown_last_report.json"
+
+echo "SL_COOLDOWN_HOURS=${SL_COOLDOWN_HOURS:-6}" >> "$LOG_FILE"
+echo "SL_COOLDOWN_STATE_JSON=$SL_COOLDOWN_STATE_JSON" >> "$LOG_FILE"
+
+PYTHONPATH=src python "$APP_DIR/deploy/apply_sl_cooldown.py" \
+  --runtime-csv "$RECONCILE_RUNTIME_CSV" \
+  --trades-csv "$RECONCILE_TRADES_CSV" \
+  --state-json "$SL_COOLDOWN_STATE_JSON" \
+  --cooldown-hours "${SL_COOLDOWN_HOURS:-6}" \
+  --lookback-hours "${SL_COOLDOWN_LOOKBACK_HOURS:-6.5}" \
+  --report-json "$SL_COOLDOWN_REPORT_JSON" \
+  >> "$LOG_FILE" 2>&1
+
+
   echo "RECONCILE_RUNTIME_CSV=$RECONCILE_RUNTIME_CSV" >> "$LOG_FILE"
   PYTHONPATH=src python "$APP_DIR/deploy/reconcile_live.py" >> "$LOG_FILE" 2>&1
 
