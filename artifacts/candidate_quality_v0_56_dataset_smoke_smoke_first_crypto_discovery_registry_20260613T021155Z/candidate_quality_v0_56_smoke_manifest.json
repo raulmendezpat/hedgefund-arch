@@ -1,0 +1,376 @@
+{
+  "candidate_rows": 3381,
+  "candidates_path": "results/research_runtime_candidates_smoke_first_crypto_discovery_registry_20260613T021155Z.csv",
+  "categorical_features": [
+    "symbol",
+    "side",
+    "strategy_id"
+  ],
+  "groups": [
+    {
+      "pnl_avg": 0.8248186681,
+      "pnl_sum": 15.671554693,
+      "rows": 19,
+      "side": "long",
+      "strategy_id": "btc_trend_loose",
+      "symbol": "BTC/USDT:USDT",
+      "win_rate": 0.4210526316
+    },
+    {
+      "pnl_avg": 0.7884947306,
+      "pnl_sum": 11.8274209586,
+      "rows": 15,
+      "side": "short",
+      "strategy_id": "bch_trend",
+      "symbol": "BCH/USDT:USDT",
+      "win_rate": 0.4666666667
+    },
+    {
+      "pnl_avg": 0.5709384589,
+      "pnl_sum": 10.8478307183,
+      "rows": 19,
+      "side": "long",
+      "strategy_id": "ton_trend_discovery",
+      "symbol": "TON/USDT:USDT",
+      "win_rate": 0.5789473684
+    },
+    {
+      "pnl_avg": 7.1976510566,
+      "pnl_sum": 7.1976510566,
+      "rows": 1,
+      "side": "long",
+      "strategy_id": "xrp_trend",
+      "symbol": "XRP/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.4345770012,
+      "pnl_sum": 6.9532320188,
+      "rows": 16,
+      "side": "long",
+      "strategy_id": "doge_trend_loose",
+      "symbol": "DOGE/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": 1.0737354092,
+      "pnl_sum": 6.4424124554,
+      "rows": 6,
+      "side": "short",
+      "strategy_id": "sol_trend_discovery",
+      "symbol": "SOL/USDT:USDT",
+      "win_rate": 0.3333333333
+    },
+    {
+      "pnl_avg": 0.2783810144,
+      "pnl_sum": 4.1757152159,
+      "rows": 15,
+      "side": "short",
+      "strategy_id": "ena_trend_discovery",
+      "symbol": "ENA/USDT:USDT",
+      "win_rate": 0.4666666667
+    },
+    {
+      "pnl_avg": 0.2170941418,
+      "pnl_sum": 3.9076945521,
+      "rows": 18,
+      "side": "long",
+      "strategy_id": "ada_trend_discovery",
+      "symbol": "ADA/USDT:USDT",
+      "win_rate": 0.6111111111
+    },
+    {
+      "pnl_avg": 0.4496213399,
+      "pnl_sum": 2.6977280391,
+      "rows": 6,
+      "side": "short",
+      "strategy_id": "avax_trend",
+      "symbol": "AVAX/USDT:USDT",
+      "win_rate": 0.6666666667
+    },
+    {
+      "pnl_avg": 0.4036136434,
+      "pnl_sum": 2.4216818603,
+      "rows": 6,
+      "side": "long",
+      "strategy_id": "avax_trend",
+      "symbol": "AVAX/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": 0.2154818128,
+      "pnl_sum": 1.9393363151,
+      "rows": 9,
+      "side": "short",
+      "strategy_id": "render_trend_discovery",
+      "symbol": "RENDER/USDT:USDT",
+      "win_rate": 0.5555555556
+    },
+    {
+      "pnl_avg": 0.1185800388,
+      "pnl_sum": 1.8972806205,
+      "rows": 16,
+      "side": "long",
+      "strategy_id": "ondo_trend_discovery",
+      "symbol": "ONDO/USDT:USDT",
+      "win_rate": 0.5625
+    },
+    {
+      "pnl_avg": 0.0834252346,
+      "pnl_sum": 1.5850794576,
+      "rows": 19,
+      "side": "long",
+      "strategy_id": "bnb_trend",
+      "symbol": "BNB/USDT:USDT",
+      "win_rate": 0.5263157895
+    },
+    {
+      "pnl_avg": 0.3116336074,
+      "pnl_sum": 1.5581680372,
+      "rows": 5,
+      "side": "long",
+      "strategy_id": "trx_trend",
+      "symbol": "TRX/USDT:USDT",
+      "win_rate": 0.4
+    },
+    {
+      "pnl_avg": 0.5092560391,
+      "pnl_sum": 1.5277681172,
+      "rows": 3,
+      "side": "short",
+      "strategy_id": "eth_trend",
+      "symbol": "ETH/USDT:USDT",
+      "win_rate": 0.6666666667
+    },
+    {
+      "pnl_avg": 0.1835067236,
+      "pnl_sum": 1.284547065,
+      "rows": 7,
+      "side": "long",
+      "strategy_id": "bch_trend",
+      "symbol": "BCH/USDT:USDT",
+      "win_rate": 0.5714285714
+    },
+    {
+      "pnl_avg": 0.0728388017,
+      "pnl_sum": 0.9469044226,
+      "rows": 13,
+      "side": "long",
+      "strategy_id": "sui_trend_discovery",
+      "symbol": "SUI/USDT:USDT",
+      "win_rate": 0.5384615385
+    },
+    {
+      "pnl_avg": 0.0520531225,
+      "pnl_sum": 0.9369562051,
+      "rows": 18,
+      "side": "long",
+      "strategy_id": "inj_trend_discovery",
+      "symbol": "INJ/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": 0.0538056542,
+      "pnl_sum": 0.7532791592,
+      "rows": 14,
+      "side": "long",
+      "strategy_id": "sol_trend_discovery",
+      "symbol": "SOL/USDT:USDT",
+      "win_rate": 0.4285714286
+    },
+    {
+      "pnl_avg": 0.0640466779,
+      "pnl_sum": 0.5123734234,
+      "rows": 8,
+      "side": "short",
+      "strategy_id": "near_trend_discovery",
+      "symbol": "NEAR/USDT:USDT",
+      "win_rate": 0.625
+    },
+    {
+      "pnl_avg": 0.0572940794,
+      "pnl_sum": 0.4583526351,
+      "rows": 8,
+      "side": "short",
+      "strategy_id": "xlm_trend_discovery",
+      "symbol": "XLM/USDT:USDT",
+      "win_rate": 0.375
+    },
+    {
+      "pnl_avg": 0.0913933688,
+      "pnl_sum": 0.3655734751,
+      "rows": 4,
+      "side": "short",
+      "strategy_id": "doge_trend_loose",
+      "symbol": "DOGE/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": 0.0249533899,
+      "pnl_sum": 0.224580509,
+      "rows": 9,
+      "side": "long",
+      "strategy_id": "xlm_trend_discovery",
+      "symbol": "XLM/USDT:USDT",
+      "win_rate": 0.3333333333
+    },
+    {
+      "pnl_avg": 0.1915825754,
+      "pnl_sum": 0.1915825754,
+      "rows": 1,
+      "side": "short",
+      "strategy_id": "sui_trend_discovery",
+      "symbol": "SUI/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.1889701509,
+      "pnl_sum": 0.1889701509,
+      "rows": 1,
+      "side": "long",
+      "strategy_id": "dot_trend",
+      "symbol": "DOT/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.1508325127,
+      "pnl_sum": 0.1508325127,
+      "rows": 1,
+      "side": "long",
+      "strategy_id": "eth_trend",
+      "symbol": "ETH/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.0650400774,
+      "pnl_sum": 0.1300801548,
+      "rows": 2,
+      "side": "long",
+      "strategy_id": "link_trend",
+      "symbol": "LINK/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": 0.0128410368,
+      "pnl_sum": 0.0256820735,
+      "rows": 2,
+      "side": "short",
+      "strategy_id": "ada_trend_discovery",
+      "symbol": "ADA/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": -0.007801744,
+      "pnl_sum": -0.0702156962,
+      "rows": 9,
+      "side": "long",
+      "strategy_id": "render_trend_discovery",
+      "symbol": "RENDER/USDT:USDT",
+      "win_rate": 0.5555555556
+    },
+    {
+      "pnl_avg": -0.133101216,
+      "pnl_sum": -0.133101216,
+      "rows": 1,
+      "side": "short",
+      "strategy_id": "link_trend",
+      "symbol": "LINK/USDT:USDT",
+      "win_rate": 0.0
+    },
+    {
+      "pnl_avg": -0.0311963415,
+      "pnl_sum": -0.2495707318,
+      "rows": 8,
+      "side": "short",
+      "strategy_id": "ondo_trend_discovery",
+      "symbol": "ONDO/USDT:USDT",
+      "win_rate": 0.375
+    },
+    {
+      "pnl_avg": -0.1342594374,
+      "pnl_sum": -0.8055566244,
+      "rows": 6,
+      "side": "short",
+      "strategy_id": "inj_trend_discovery",
+      "symbol": "INJ/USDT:USDT",
+      "win_rate": 0.3333333333
+    },
+    {
+      "pnl_avg": -1.200988124,
+      "pnl_sum": -1.200988124,
+      "rows": 1,
+      "side": "long",
+      "strategy_id": "aave_trend",
+      "symbol": "AAVE/USDT:USDT",
+      "win_rate": 0.0
+    },
+    {
+      "pnl_avg": -0.2775950317,
+      "pnl_sum": -1.9431652222,
+      "rows": 7,
+      "side": "long",
+      "strategy_id": "near_trend_discovery",
+      "symbol": "NEAR/USDT:USDT",
+      "win_rate": 0.7142857143
+    },
+    {
+      "pnl_avg": -3.9237479303,
+      "pnl_sum": -3.9237479303,
+      "rows": 1,
+      "side": "short",
+      "strategy_id": "bnb_trend",
+      "symbol": "BNB/USDT:USDT",
+      "win_rate": 0.0
+    },
+    {
+      "pnl_avg": -1.9353243395,
+      "pnl_sum": -9.6766216976,
+      "rows": 5,
+      "side": "short",
+      "strategy_id": "xrp_trend",
+      "symbol": "XRP/USDT:USDT",
+      "win_rate": 0.4
+    }
+  ],
+  "joined_rows": 299,
+  "label_col": "target_win",
+  "notes": [
+    "Non-production dataset builder for first crypto discovery universe.",
+    "Labels are created from lifecycle trade pnl: target_win = pnl > 0.",
+    "Uses trace_candidate_id to join candidate features to realized trades.",
+    "Training/promotion requires larger 1M/3M/6M datasets and A/B validation."
+  ],
+  "numeric_features": [
+    "adx",
+    "range_pct",
+    "breakout_distance_up",
+    "breakout_distance_down",
+    "dist_close_ema_fast",
+    "dist_close_ema_slow",
+    "pullback_depth",
+    "ret_1h_lag",
+    "ret_4h_lag",
+    "ret_12h_lag",
+    "ret_24h_lag",
+    "ema_gap_fast_slow",
+    "atrp",
+    "atrp_zscore",
+    "rolling_vol_24h",
+    "rolling_vol_72h",
+    "btc_adx",
+    "btc_atrp",
+    "btc_ret_24h_lag",
+    "btc_rolling_vol_24h"
+  ],
+  "output_csv": "artifacts/candidate_quality_v0_56_dataset_smoke_smoke_first_crypto_discovery_registry_20260613T021155Z/candidate_quality_v0_56_smoke_dataset.csv",
+  "rows": 299,
+  "status": "DATASET_BUILT",
+  "target_distribution": {
+    "0": 148,
+    "1": 151
+  },
+  "trade_coverage_pct": 100.0,
+  "trade_rows": 299,
+  "trades_path": "results/research_runtime_lifecycle_trades_smoke_first_crypto_discovery_registry_20260613T021155Z.csv",
+  "version": "v0_56_candidate_quality_dataset_builder"
+}
