@@ -1,0 +1,23 @@
+{
+  "binanceusdm_active_linear_usdt_contracts": 631,
+  "bitget_active_linear_usdt_contracts": 622,
+  "common_active_linear_usdt_contracts": 527,
+  "csv_path": "artifacts/market_discovery_v0_53_20260613T015805Z/common_new_linear_usdt_contracts_binanceusdm_bitget.csv",
+  "current_registry_symbols": [
+    "AAVE/USDT:USDT",
+    "AVAX/USDT:USDT",
+    "BCH/USDT:USDT",
+    "BNB/USDT:USDT",
+    "BTC/USDT:USDT",
+    "DOGE/USDT:USDT",
+    "DOT/USDT:USDT",
+    "ETH/USDT:USDT",
+    "LINK/USDT:USDT",
+    "TRX/USDT:USDT",
+    "XRP/USDT:USDT"
+  ],
+  "new_common_active_linear_usdt_contracts_excluding_current_registry": 516,
+  "note": "Candidate still requires liquidity, cache coverage, registry, model recalculation and controlled backtest validation before inclusion.",
+  "registry_path": "artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json",
+  "status": "MARKET_DISCOVERY_COMPLETE"
+}

@@ -1,0 +1,29 @@
+{
+  "output_csv": "artifacts/market_crypto_shortlist_v0_53_20260613T020336Z/crypto_only_liquid_shortlist.csv",
+  "selection_note": "Conservative crypto-only shortlist excluding stocks/ETFs/commodities/RWA-like names before cache/backtest/model work.",
+  "shortlist_count": 43,
+  "source_rank_csv": "artifacts/market_liquidity_rank_v0_53_swapfixed_20260613T020251Z/common_candidates_liquidity_rank_swapfixed.csv",
+  "status": "CRYPTO_ONLY_SHORTLIST_COMPLETE",
+  "top_20_symbols": [
+    "SOL/USDT:USDT",
+    "WLD/USDT:USDT",
+    "ZEC/USDT:USDT",
+    "NEAR/USDT:USDT",
+    "ADA/USDT:USDT",
+    "SUI/USDT:USDT",
+    "ENA/USDT:USDT",
+    "XLM/USDT:USDT",
+    "XMR/USDT:USDT",
+    "ONDO/USDT:USDT",
+    "RENDER/USDT:USDT",
+    "TON/USDT:USDT",
+    "INJ/USDT:USDT",
+    "TAO/USDT:USDT",
+    "CRV/USDT:USDT",
+    "APT/USDT:USDT",
+    "FET/USDT:USDT",
+    "VIRTUAL/USDT:USDT",
+    "ORDI/USDT:USDT",
+    "OP/USDT:USDT"
+  ]
+}

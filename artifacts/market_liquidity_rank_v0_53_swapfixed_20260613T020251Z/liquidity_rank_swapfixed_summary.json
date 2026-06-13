@@ -1,0 +1,22 @@
+{
+  "clean_candidates_no_soft_flags": 487,
+  "clean_candidates_with_both_quote_volume": 487,
+  "common_new_candidates": 516,
+  "csv_path": "artifacts/market_liquidity_rank_v0_53_swapfixed_20260613T020251Z/common_candidates_liquidity_rank_swapfixed.csv",
+  "current_registry_symbols": [
+    "AAVE/USDT:USDT",
+    "AVAX/USDT:USDT",
+    "BCH/USDT:USDT",
+    "BNB/USDT:USDT",
+    "BTC/USDT:USDT",
+    "DOGE/USDT:USDT",
+    "DOT/USDT:USDT",
+    "ETH/USDT:USDT",
+    "LINK/USDT:USDT",
+    "TRX/USDT:USDT",
+    "XRP/USDT:USDT"
+  ],
+  "registry_path": "artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json",
+  "selection_note": "Bitget liquidity uses fetch_tickers(params={'type':'swap'}). Use min_quote_volume to avoid assets liquid on one exchange but weak on the other.",
+  "status": "LIQUIDITY_RANK_SWAPFIXED_COMPLETE"
+}

@@ -1,0 +1,153 @@
+{
+  "baseline_tag": "v0.53_research_cachefixed_baseline_evidence",
+  "batch_size": 10,
+  "cache_exchange": "binanceusdm",
+  "cache_rows": [
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/SOL_USDT_USDT.csv.gz",
+      "expected_rows": 50348,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2020-09-14 07:00:00+00:00",
+      "missing_est": 0,
+      "rows": 50348,
+      "symbol": "SOL/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/ADA_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "ADA/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/SUI_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "SUI/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/NEAR_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "NEAR/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/ENA_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "ENA/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/XLM_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "XLM/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/ONDO_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "ONDO/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/RENDER_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "RENDER/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/TON_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "TON/USDT:USDT"
+    },
+    {
+      "bad_gap_count": 0,
+      "cache_exists": true,
+      "cache_path": "data/cache/binanceusdm/1h/INJ_USDT_USDT.csv.gz",
+      "expected_rows": 4321,
+      "max_gap": "0 days 01:00:00",
+      "max_ts": "2026-06-13 02:00:00+00:00",
+      "min_ts": "2025-12-15 02:00:00+00:00",
+      "missing_est": 0,
+      "rows": 4321,
+      "symbol": "INJ/USDT:USDT"
+    }
+  ],
+  "cache_timeframe": "1h",
+  "cache_validation": {
+    "all_bad_gap_count_zero": true,
+    "all_cache_exists": true,
+    "all_missing_est_zero": true,
+    "note": "SOL had older tracked cache extended to 2026-06-13 02:00 UTC; the other 9 assets received 180d cache."
+  },
+  "next_required_steps": [
+    "Create non-production discovery registry extending v0.53 baseline registry",
+    "Recalculate / train ML or candidate-quality artifacts for new asset universe",
+    "Run controlled 1m/3m/6m backtests versus v0.53 baseline",
+    "Only promote assets that improve portfolio PnL without unacceptable drawdown/risk deterioration"
+  ],
+  "selected_batch": [
+    "SOL/USDT:USDT",
+    "ADA/USDT:USDT",
+    "SUI/USDT:USDT",
+    "NEAR/USDT:USDT",
+    "ENA/USDT:USDT",
+    "XLM/USDT:USDT",
+    "ONDO/USDT:USDT",
+    "RENDER/USDT:USDT",
+    "TON/USDT:USDT",
+    "INJ/USDT:USDT"
+  ],
+  "status": "FIRST_CRYPTO_DISCOVERY_BATCH_CACHE_VALIDATED"
+}
