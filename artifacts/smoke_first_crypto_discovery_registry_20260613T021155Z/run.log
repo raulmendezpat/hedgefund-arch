@@ -1,0 +1,40 @@
+saved: results/selection_stage_summary_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/selection_reason_summary_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_candidate_quality_gate_audit_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_lifecycle_trades_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_lifecycle_equity_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_lifecycle_open_positions_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_lifecycle_events_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_shadow_entry_audit_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_stale_shadow_cleanup_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_lifecycle_metrics_smoke_first_crypto_discovery_registry_20260613T021155Z.json
+saved: results/research_runtime_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_candidates_smoke_first_crypto_discovery_registry_20260613T021155Z.csv
+saved: results/research_runtime_metrics_smoke_first_crypto_discovery_registry_20260613T021155Z.json
+runtime_debug_counters: {'btc_short_guard_seen': 11, 'btc_short_guard_blocked': 0}
+entry_loop_debug: {'selected_candidates_in': 0, 'selected_candidates_blocked': 0, 'selected_candidates_used': 0}
+
+=== METRICS ===
+equity_start: 1000.0
+equity_final: 1066.3511335621452
+total_return_pct: 6.635113356214517
+sharpe_annual: 9.257383209232726
+max_drawdown_pct: -2.0469801028634937
+vol_annual: 0.3692750548685154
+trade_count: 299
+win_rate_pct: 50.50167224080268
+rows: 169
+load_seconds: 12.363215662000584
+run_seconds: 69.6231745959958
+total_seconds: 81.98639025799639
+avg_n_opps: 20.005917159763314
+avg_n_accepts: 11.485207100591715
+avg_active_symbols: 6.562130177514793
+avg_gross_weight: 0.9447847573235397
+avg_live_capped_active_symbols: 6.562130177514793
+avg_live_capped_gross_weight: 0.6769246613752158
+live_cap_events_rows: 159
+live_cap_events_total_symbol_hits: 159
+avg_live_cap_total_abs_delta: 0.26786009594832405
+saved: /Users/raulmendez/Projects/hedgefund-arch/runtime/state/last_run_status.json
+saved: /Users/raulmendez/Projects/hedgefund-arch/runtime/logs/run_20260613T021319Z.log

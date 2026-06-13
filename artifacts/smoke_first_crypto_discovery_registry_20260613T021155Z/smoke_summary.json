@@ -1,0 +1,20 @@
+{
+  "metrics": {
+    "avg_active_symbols": "6.562130177514793",
+    "avg_n_accepts": "11.485207100591715",
+    "avg_n_opps": "20.005917159763314",
+    "equity_final": "1066.3511335621452",
+    "max_drawdown_pct": "-2.0469801028634937",
+    "rows": "169",
+    "sharpe_annual": "9.257383209232726",
+    "total_return_pct": "6.635113356214517",
+    "trade_count": "299",
+    "win_rate_pct": "50.50167224080268"
+  },
+  "note": "This is only a smoke test, not a viability result. New assets still require ML/candidate-quality recalculation and controlled 1m/3m/6m comparison versus v0.53 baseline.",
+  "purpose": "Validate non-production discovery registry loads and executes before controlled ML/backtest work.",
+  "registry": "artifacts/asset_universe_ab/rt_registry_base_plus_first_crypto_discovery.json",
+  "run_dir": "artifacts/smoke_first_crypto_discovery_registry_20260613T021155Z",
+  "selection_policy": "artifacts/asset_universe_ab/selection_policy_config.base_plus_first_crypto_discovery.json",
+  "status": "SMOKE_TEST_PASSED"
+}
