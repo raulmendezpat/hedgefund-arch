@@ -1,0 +1,412 @@
+{
+  "candidate_rows": 14423,
+  "candidates_path": "results/research_runtime_candidates_first_crypto_discovery_v0_56_1m_20260613T020000Z.csv",
+  "categorical_features": [
+    "symbol",
+    "side",
+    "strategy_id"
+  ],
+  "groups": [
+    {
+      "pnl_avg": 2.4935697043,
+      "pnl_sum": 117.1977761024,
+      "rows": 47,
+      "side": "long",
+      "strategy_id": "near_trend_discovery",
+      "symbol": "NEAR/USDT:USDT",
+      "win_rate": 0.6382978723
+    },
+    {
+      "pnl_avg": 1.6131938706,
+      "pnl_sum": 91.9520506261,
+      "rows": 57,
+      "side": "short",
+      "strategy_id": "xrp_trend",
+      "symbol": "XRP/USDT:USDT",
+      "win_rate": 0.6315789474
+    },
+    {
+      "pnl_avg": 0.7327773268,
+      "pnl_sum": 35.9060890115,
+      "rows": 49,
+      "side": "long",
+      "strategy_id": "inj_trend_discovery",
+      "symbol": "INJ/USDT:USDT",
+      "win_rate": 0.5510204082
+    },
+    {
+      "pnl_avg": 0.6401251616,
+      "pnl_sum": 35.8470090503,
+      "rows": 56,
+      "side": "short",
+      "strategy_id": "sui_trend_discovery",
+      "symbol": "SUI/USDT:USDT",
+      "win_rate": 0.6428571429
+    },
+    {
+      "pnl_avg": 0.7054263895,
+      "pnl_sum": 33.8604666972,
+      "rows": 48,
+      "side": "short",
+      "strategy_id": "link_trend",
+      "symbol": "LINK/USDT:USDT",
+      "win_rate": 0.5625
+    },
+    {
+      "pnl_avg": 0.7232271918,
+      "pnl_sum": 31.82199644,
+      "rows": 44,
+      "side": "short",
+      "strategy_id": "ton_trend_discovery",
+      "symbol": "TON/USDT:USDT",
+      "win_rate": 0.5909090909
+    },
+    {
+      "pnl_avg": 0.3411363307,
+      "pnl_sum": 31.3845424253,
+      "rows": 92,
+      "side": "short",
+      "strategy_id": "eth_trend",
+      "symbol": "ETH/USDT:USDT",
+      "win_rate": 0.6304347826
+    },
+    {
+      "pnl_avg": 0.5757092588,
+      "pnl_sum": 27.0583351643,
+      "rows": 47,
+      "side": "short",
+      "strategy_id": "btc_trend_loose",
+      "symbol": "BTC/USDT:USDT",
+      "win_rate": 0.7021276596
+    },
+    {
+      "pnl_avg": 0.4599574785,
+      "pnl_sum": 17.938341663,
+      "rows": 39,
+      "side": "short",
+      "strategy_id": "xlm_trend_discovery",
+      "symbol": "XLM/USDT:USDT",
+      "win_rate": 0.5128205128
+    },
+    {
+      "pnl_avg": 0.3226109722,
+      "pnl_sum": 17.7436034717,
+      "rows": 55,
+      "side": "short",
+      "strategy_id": "bnb_trend",
+      "symbol": "BNB/USDT:USDT",
+      "win_rate": 0.6181818182
+    },
+    {
+      "pnl_avg": 0.5524296749,
+      "pnl_sum": 16.5728902467,
+      "rows": 30,
+      "side": "long",
+      "strategy_id": "bnb_trend",
+      "symbol": "BNB/USDT:USDT",
+      "win_rate": 0.5666666667
+    },
+    {
+      "pnl_avg": 0.5533762374,
+      "pnl_sum": 16.0479108849,
+      "rows": 29,
+      "side": "long",
+      "strategy_id": "xlm_trend_discovery",
+      "symbol": "XLM/USDT:USDT",
+      "win_rate": 0.6206896552
+    },
+    {
+      "pnl_avg": 0.2735183688,
+      "pnl_sum": 13.9494368076,
+      "rows": 51,
+      "side": "short",
+      "strategy_id": "ena_trend_discovery",
+      "symbol": "ENA/USDT:USDT",
+      "win_rate": 0.5098039216
+    },
+    {
+      "pnl_avg": 0.2492935347,
+      "pnl_sum": 13.212557341,
+      "rows": 53,
+      "side": "short",
+      "strategy_id": "avax_trend",
+      "symbol": "AVAX/USDT:USDT",
+      "win_rate": 0.5849056604
+    },
+    {
+      "pnl_avg": 0.6149987457,
+      "pnl_sum": 12.9149736597,
+      "rows": 21,
+      "side": "short",
+      "strategy_id": "inj_trend_discovery",
+      "symbol": "INJ/USDT:USDT",
+      "win_rate": 0.619047619
+    },
+    {
+      "pnl_avg": 0.3001680309,
+      "pnl_sum": 12.9072253307,
+      "rows": 43,
+      "side": "long",
+      "strategy_id": "render_trend_discovery",
+      "symbol": "RENDER/USDT:USDT",
+      "win_rate": 0.488372093
+    },
+    {
+      "pnl_avg": 0.2466791009,
+      "pnl_sum": 10.6072013378,
+      "rows": 43,
+      "side": "long",
+      "strategy_id": "ondo_trend_discovery",
+      "symbol": "ONDO/USDT:USDT",
+      "win_rate": 0.511627907
+    },
+    {
+      "pnl_avg": 0.3422576098,
+      "pnl_sum": 10.2677282946,
+      "rows": 30,
+      "side": "short",
+      "strategy_id": "ondo_trend_discovery",
+      "symbol": "ONDO/USDT:USDT",
+      "win_rate": 0.6
+    },
+    {
+      "pnl_avg": 0.1144425947,
+      "pnl_sum": 9.4987353588,
+      "rows": 83,
+      "side": "short",
+      "strategy_id": "bch_trend",
+      "symbol": "BCH/USDT:USDT",
+      "win_rate": 0.5903614458
+    },
+    {
+      "pnl_avg": 2.9944780076,
+      "pnl_sum": 8.9834340227,
+      "rows": 3,
+      "side": "long",
+      "strategy_id": "xrp_trend",
+      "symbol": "XRP/USDT:USDT",
+      "win_rate": 0.6666666667
+    },
+    {
+      "pnl_avg": 0.1474031936,
+      "pnl_sum": 8.4019820352,
+      "rows": 57,
+      "side": "short",
+      "strategy_id": "ada_trend_discovery",
+      "symbol": "ADA/USDT:USDT",
+      "win_rate": 0.6315789474
+    },
+    {
+      "pnl_avg": 0.1455220344,
+      "pnl_sum": 8.2947559627,
+      "rows": 57,
+      "side": "short",
+      "strategy_id": "sol_trend_discovery",
+      "symbol": "SOL/USDT:USDT",
+      "win_rate": 0.6315789474
+    },
+    {
+      "pnl_avg": 0.1240138481,
+      "pnl_sum": 7.4408308848,
+      "rows": 60,
+      "side": "short",
+      "strategy_id": "aave_trend",
+      "symbol": "AAVE/USDT:USDT",
+      "win_rate": 0.5166666667
+    },
+    {
+      "pnl_avg": 0.2559484016,
+      "pnl_sum": 6.1427616381,
+      "rows": 24,
+      "side": "short",
+      "strategy_id": "near_trend_discovery",
+      "symbol": "NEAR/USDT:USDT",
+      "win_rate": 0.4583333333
+    },
+    {
+      "pnl_avg": 0.0833575223,
+      "pnl_sum": 5.1681663827,
+      "rows": 62,
+      "side": "short",
+      "strategy_id": "doge_trend_loose",
+      "symbol": "DOGE/USDT:USDT",
+      "win_rate": 0.5806451613
+    },
+    {
+      "pnl_avg": 0.1648894427,
+      "pnl_sum": 4.7817938374,
+      "rows": 29,
+      "side": "short",
+      "strategy_id": "render_trend_discovery",
+      "symbol": "RENDER/USDT:USDT",
+      "win_rate": 0.5517241379
+    },
+    {
+      "pnl_avg": 0.1322547024,
+      "pnl_sum": 3.3063675604,
+      "rows": 25,
+      "side": "long",
+      "strategy_id": "ton_trend_discovery",
+      "symbol": "TON/USDT:USDT",
+      "win_rate": 0.4
+    },
+    {
+      "pnl_avg": 0.2977423228,
+      "pnl_sum": 1.1909692913,
+      "rows": 4,
+      "side": "long",
+      "strategy_id": "sui_trend_discovery",
+      "symbol": "SUI/USDT:USDT",
+      "win_rate": 0.25
+    },
+    {
+      "pnl_avg": 0.165340209,
+      "pnl_sum": 0.992041254,
+      "rows": 6,
+      "side": "long",
+      "strategy_id": "btc_trend_loose",
+      "symbol": "BTC/USDT:USDT",
+      "win_rate": 0.3333333333
+    },
+    {
+      "pnl_avg": 0.1145061563,
+      "pnl_sum": 0.9160492507,
+      "rows": 8,
+      "side": "long",
+      "strategy_id": "ena_trend_discovery",
+      "symbol": "ENA/USDT:USDT",
+      "win_rate": 0.625
+    },
+    {
+      "pnl_avg": 0.3937898558,
+      "pnl_sum": 0.7875797117,
+      "rows": 2,
+      "side": "long",
+      "strategy_id": "dot_trend",
+      "symbol": "DOT/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.3174165578,
+      "pnl_sum": 0.6348331156,
+      "rows": 2,
+      "side": "long",
+      "strategy_id": "link_trend",
+      "symbol": "LINK/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.0489572086,
+      "pnl_sum": 0.3427004601,
+      "rows": 7,
+      "side": "long",
+      "strategy_id": "doge_trend_loose",
+      "symbol": "DOGE/USDT:USDT",
+      "win_rate": 0.5714285714
+    },
+    {
+      "pnl_avg": 0.0998871735,
+      "pnl_sum": 0.199774347,
+      "rows": 2,
+      "side": "long",
+      "strategy_id": "trx_trend",
+      "symbol": "TRX/USDT:USDT",
+      "win_rate": 1.0
+    },
+    {
+      "pnl_avg": 0.024679263,
+      "pnl_sum": 0.1233963151,
+      "rows": 5,
+      "side": "long",
+      "strategy_id": "sol_trend_discovery",
+      "symbol": "SOL/USDT:USDT",
+      "win_rate": 0.6
+    },
+    {
+      "pnl_avg": 0.0169366174,
+      "pnl_sum": 0.0677464697,
+      "rows": 4,
+      "side": "long",
+      "strategy_id": "ada_trend_discovery",
+      "symbol": "ADA/USDT:USDT",
+      "win_rate": 0.75
+    },
+    {
+      "pnl_avg": -0.019183421,
+      "pnl_sum": -0.0575502629,
+      "rows": 3,
+      "side": "long",
+      "strategy_id": "bch_trend",
+      "symbol": "BCH/USDT:USDT",
+      "win_rate": 0.3333333333
+    },
+    {
+      "pnl_avg": -0.0678116859,
+      "pnl_sum": -0.0678116859,
+      "rows": 1,
+      "side": "long",
+      "strategy_id": "aave_trend",
+      "symbol": "AAVE/USDT:USDT",
+      "win_rate": 0.0
+    },
+    {
+      "pnl_avg": -0.2283232245,
+      "pnl_sum": -0.4566464489,
+      "rows": 2,
+      "side": "long",
+      "strategy_id": "eth_trend",
+      "symbol": "ETH/USDT:USDT",
+      "win_rate": 0.5
+    },
+    {
+      "pnl_avg": -0.6432468418,
+      "pnl_sum": -4.5027278926,
+      "rows": 7,
+      "side": "long",
+      "strategy_id": "avax_trend",
+      "symbol": "AVAX/USDT:USDT",
+      "win_rate": 0.4285714286
+    }
+  ],
+  "joined_rows": 1287,
+  "label_col": "target_win",
+  "notes": [
+    "Non-production dataset builder for first crypto discovery universe.",
+    "Labels are created from lifecycle trade pnl: target_win = pnl > 0.",
+    "Uses trace_candidate_id to join candidate features to realized trades.",
+    "Training/promotion requires larger 1M/3M/6M datasets and A/B validation."
+  ],
+  "numeric_features": [
+    "adx",
+    "range_pct",
+    "breakout_distance_up",
+    "breakout_distance_down",
+    "dist_close_ema_fast",
+    "dist_close_ema_slow",
+    "pullback_depth",
+    "ret_1h_lag",
+    "ret_4h_lag",
+    "ret_12h_lag",
+    "ret_24h_lag",
+    "ema_gap_fast_slow",
+    "atrp",
+    "atrp_zscore",
+    "rolling_vol_24h",
+    "rolling_vol_72h",
+    "btc_adx",
+    "btc_atrp",
+    "btc_ret_24h_lag",
+    "btc_rolling_vol_24h"
+  ],
+  "output_csv": "artifacts/candidate_quality_v0_56_dataset_1m_first_crypto_discovery_v0_56_1m_20260613T020000Z/candidate_quality_v0_56_1m_dataset.csv",
+  "rows": 1287,
+  "status": "DATASET_BUILT",
+  "target_distribution": {
+    "0": 538,
+    "1": 749
+  },
+  "trade_coverage_pct": 100.0,
+  "trade_rows": 1287,
+  "trades_path": "results/research_runtime_lifecycle_trades_first_crypto_discovery_v0_56_1m_20260613T020000Z.csv",
+  "version": "v0_56_candidate_quality_dataset_builder"
+}
