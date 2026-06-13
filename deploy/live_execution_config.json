@@ -83,7 +83,7 @@
     },
     "SOL/USDT:USDT": {
       "max_delta_notional": 100.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.18,
       "sl_atr_mult": 2.2,
       "stop_refresh_rel_tol": 0.004,
       "tp_atr_mult_max": 4.2,
@@ -106,6 +106,42 @@
       "tp_atr_mult_max": 3.8,
       "tp_atr_mult_min": 1.9,
       "tp_atr_pct_pivot": 0.014
+    },
+    "ADA/USDT:USDT": {
+      "max_target_weight": 0.16,
+      "max_delta_notional": 100.0
+    },
+    "NEAR/USDT:USDT": {
+      "max_target_weight": 0.16,
+      "max_delta_notional": 100.0
+    },
+    "SUI/USDT:USDT": {
+      "max_target_weight": 0.14,
+      "max_delta_notional": 80.0
+    },
+    "XLM/USDT:USDT": {
+      "max_target_weight": 0.14,
+      "max_delta_notional": 80.0
+    },
+    "TON/USDT:USDT": {
+      "max_target_weight": 0.14,
+      "max_delta_notional": 80.0
+    },
+    "ENA/USDT:USDT": {
+      "max_target_weight": 0.12,
+      "max_delta_notional": 60.0
+    },
+    "ONDO/USDT:USDT": {
+      "max_target_weight": 0.12,
+      "max_delta_notional": 60.0
+    },
+    "RENDER/USDT:USDT": {
+      "max_target_weight": 0.12,
+      "max_delta_notional": 60.0
+    },
+    "INJ/USDT:USDT": {
+      "max_target_weight": 0.12,
+      "max_delta_notional": 60.0
     }
   }
 }

@@ -1,0 +1,65 @@
+{
+  "live_execution_config": "deploy/live_execution_config.json",
+  "notes": [
+    "This is not a production deployment by itself.",
+    "Caps are intentionally more conservative than default_symbol_config.",
+    "SOL TP/SL custom fields are preserved.",
+    "Next step is to inspect live_execution_config consumption path and then decide whether to commit this as production-safe guardrail patch."
+  ],
+  "overrides": {
+    "ADA/USDT:USDT": {
+      "max_delta_notional": 100.0,
+      "max_target_weight": 0.16
+    },
+    "ENA/USDT:USDT": {
+      "max_delta_notional": 60.0,
+      "max_target_weight": 0.12
+    },
+    "INJ/USDT:USDT": {
+      "max_delta_notional": 60.0,
+      "max_target_weight": 0.12
+    },
+    "NEAR/USDT:USDT": {
+      "max_delta_notional": 100.0,
+      "max_target_weight": 0.16
+    },
+    "ONDO/USDT:USDT": {
+      "max_delta_notional": 60.0,
+      "max_target_weight": 0.12
+    },
+    "RENDER/USDT:USDT": {
+      "max_delta_notional": 60.0,
+      "max_target_weight": 0.12
+    },
+    "SOL/USDT:USDT": {
+      "max_delta_notional": 100.0,
+      "max_target_weight": 0.18,
+      "sl_atr_mult": 2.2,
+      "stop_refresh_rel_tol": 0.004,
+      "tp_atr_mult_max": 4.2,
+      "tp_atr_mult_min": 2.0,
+      "tp_atr_pct_pivot": 0.018,
+      "tp_refresh_rel_tol": 0.005
+    },
+    "SUI/USDT:USDT": {
+      "max_delta_notional": 80.0,
+      "max_target_weight": 0.14
+    },
+    "TON/USDT:USDT": {
+      "max_delta_notional": 80.0,
+      "max_target_weight": 0.14
+    },
+    "XLM/USDT:USDT": {
+      "max_delta_notional": 80.0,
+      "max_target_weight": 0.14
+    }
+  },
+  "purpose": "Conservative live execution caps for new first crypto discovery assets before production promotion.",
+  "status": "LIVE_GUARDRAIL_PROPOSAL_VALIDATED_NO_COMMIT",
+  "validation": {
+    "all_new_assets_have_live_override": true,
+    "max_delta_notional_lte": 100.0,
+    "max_target_weight_lte": 0.18,
+    "sol_existing_tp_sl_fields_preserved": true
+  }
+}
