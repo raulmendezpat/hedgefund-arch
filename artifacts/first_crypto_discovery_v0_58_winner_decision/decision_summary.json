@@ -1,0 +1,98 @@
+{
+  "baseline_reference": "v0.53_research_cachefixed_baseline_evidence",
+  "candidate_reference": "v0.55_first_crypto_discovery_registry_smoke",
+  "dataset_builder_reference": "v0.56_candidate_quality_dataset_builder_smoke",
+  "decision": "PROMOTE_FULL_FIRST_CRYPTO_DISCOVERY_UNIVERSE",
+  "evidence_reference": "v0.57_candidate_quality_1m_discovery_dataset",
+  "next_required_step": "Prepare production-safe promotion patch by updating canonical launcher references only after final inspection.",
+  "notes": [
+    "No intermediate 3M/6M training datasets are committed.",
+    "This artifact records the final evidence and decision only.",
+    "Production is not modified by this commit."
+  ],
+  "promotion_scope": {
+    "candidate_quality": "keep_existing_v0_47_surgical_gate",
+    "new_assets": [
+      "SOL/USDT:USDT",
+      "ADA/USDT:USDT",
+      "SUI/USDT:USDT",
+      "NEAR/USDT:USDT",
+      "ENA/USDT:USDT",
+      "XLM/USDT:USDT",
+      "ONDO/USDT:USDT",
+      "RENDER/USDT:USDT",
+      "TON/USDT:USDT",
+      "INJ/USDT:USDT"
+    ],
+    "p_win": "keep_existing_global_only_registry",
+    "promote_registry": "artifacts/asset_universe_ab/rt_registry_base_plus_first_crypto_discovery.json",
+    "promote_selection_policy": "artifacts/asset_universe_ab/selection_policy_config.base_plus_first_crypto_discovery.json"
+  },
+  "status": "WINNER_DECISION_COMPLETE",
+  "summary": {
+    "new_asset_groups_all_positive_1m_3m_6m": true,
+    "new_asset_groups_count": 20,
+    "new_asset_groups_with_any_negative_window": 0,
+    "portfolio_windows": [
+      {
+        "baseline_max_dd_pct": -3.3615777788,
+        "baseline_return_pct": 22.8362561895,
+        "baseline_trade_count": 580,
+        "baseline_win_rate_pct": 58.1034482759,
+        "dd_delta_pct": 0.4149050138,
+        "discovery_max_dd_pct": -2.946672765,
+        "discovery_return_pct": 58.5105391496,
+        "discovery_trade_count": 1287,
+        "discovery_win_rate_pct": 58.1973581974,
+        "return_delta_pct": 35.6742829601,
+        "rows": 721,
+        "run": "first_crypto_discovery_v0_56_1m_20260613T020000Z",
+        "win_rate_delta_pct": 0.0939099215,
+        "window": "1m"
+      },
+      {
+        "baseline_max_dd_pct": -3.3390916937,
+        "baseline_return_pct": 72.1867548627,
+        "baseline_trade_count": 1424,
+        "baseline_win_rate_pct": 53.9325842697,
+        "dd_delta_pct": 0.3924189286,
+        "discovery_max_dd_pct": -2.946672765,
+        "discovery_return_pct": 166.6565578341,
+        "discovery_trade_count": 3428,
+        "discovery_win_rate_pct": 55.6009334889,
+        "return_delta_pct": 94.4698029714,
+        "rows": 2161,
+        "run": "first_crypto_discovery_v0_57_3m_20260613T000000Z",
+        "win_rate_delta_pct": 1.6683492193,
+        "window": "3m"
+      },
+      {
+        "baseline_max_dd_pct": -4.9686223811,
+        "baseline_return_pct": 366.3644947128,
+        "baseline_trade_count": 2797,
+        "baseline_win_rate_pct": 54.2009295674,
+        "dd_delta_pct": 1.7797040693,
+        "discovery_max_dd_pct": -3.1889183117,
+        "discovery_return_pct": 748.0420359037,
+        "discovery_trade_count": 6607,
+        "discovery_win_rate_pct": 55.3503859543,
+        "return_delta_pct": 381.6775411909,
+        "rows": 4319,
+        "run": "first_crypto_discovery_v0_57_6m_20260613T000000Z",
+        "win_rate_delta_pct": 1.1494563869,
+        "window": "6m"
+      }
+    ]
+  },
+  "technical_decision_rationale": [
+    "Discovery universe outperformed the v0.53 production-equivalent baseline in 1M, 3M and 6M windows.",
+    "Return improved materially in all windows.",
+    "Maximum drawdown improved in all windows.",
+    "Win rate improved or remained effectively stable across windows.",
+    "All new asset/side/strategy groups were positive across 1M, 3M and 6M.",
+    "No negative groups were observed in 3M or 6M group-level PnL analysis.",
+    "PnL concentration was acceptable: top group around 11%, top five groups around 36-37%.",
+    "Candidate-quality v0.47 and canonical global P_win remain unchanged to avoid adding unnecessary model-change risk."
+  ],
+  "version": "v0.58_first_crypto_discovery_winner"
+}
