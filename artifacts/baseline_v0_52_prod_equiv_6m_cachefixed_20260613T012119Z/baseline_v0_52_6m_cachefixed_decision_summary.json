@@ -1,0 +1,34 @@
+{
+  "git_expected_tag": "v0.52_aave_live_cap_0p6",
+  "interpretation": {
+    "cache_status": "BTC/LINK/BNB/TRX gap repaired before this run",
+    "decision": "v0.52 accepted as robust 1m/3m/6m baseline before new asset discovery",
+    "window": "180 days / 4320 hourly rows"
+  },
+  "metrics": {
+    "avg_active_symbols": 2.4159722222222224,
+    "avg_gross_weight": 0.8499372324024899,
+    "avg_live_cap_total_abs_delta": 0.2888309521957338,
+    "avg_live_capped_active_symbols": 2.4159722222222224,
+    "avg_live_capped_gross_weight": 0.561106280206756,
+    "avg_n_accepts": 5.346527777777778,
+    "avg_n_opps": 10.003935185185185,
+    "equity_final": 4663.6449471280985,
+    "equity_start": 1000.0,
+    "live_cap_events_rows": 3369,
+    "live_cap_events_total_symbol_hits": 3369,
+    "load_seconds": 12.940529334002349,
+    "max_drawdown_pct": -4.968622381075849,
+    "rows": 4320,
+    "run_seconds": 1307.9510934629943,
+    "sharpe_annual": 10.970317700526506,
+    "total_return_pct": 366.3644947128098,
+    "total_seconds": 1320.8916227969967,
+    "trade_count": 2797,
+    "vol_annual": 0.28851486221085676,
+    "win_rate_pct": 54.20092956739364
+  },
+  "rows_expected_180d_1h": 4320,
+  "run_name": "baseline_v0_52_prod_equiv_6m_cachefixed_20260613T012119Z",
+  "status": "BASELINE_V0_52_6M_CACHE_FIXED_VALIDATED"
+}
