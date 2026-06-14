@@ -45,8 +45,8 @@ END_TS="$(date -u +"%Y-%m-%d %H:%M:%S")"
 export LIVE_TRADING="${LIVE_TRADING:-0}"
 
 RUN_NAME="prod_v2_live_candidate_bch_doge_guarded"
-REGISTRY="artifacts/asset_universe_ab/rt_registry_base_plus_bch_doge_guarded.json"
-SELECTION_POLICY="artifacts/asset_universe_ab/selection_policy_config.base_plus_bch_doge_guarded.json"
+REGISTRY="artifacts/asset_universe_ab/rt_registry_base_plus_first_crypto_discovery.json"
+SELECTION_POLICY="artifacts/asset_universe_ab/selection_policy_config.base_plus_first_crypto_discovery.json"
 PWIN_ARTIFACT=""
 PWIN_ASSET_SIDE_REGISTRY_PATH="artifacts/p_win/asset_side/pwin_asset_side_model_registry.json"
 
