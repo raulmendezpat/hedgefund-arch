@@ -1,0 +1,22 @@
+symbol,cache_file,exists,rows,min_ts,max_ts,covers_12m_nominal,covers_24m_nominal
+BTC/USDT:USDT,data/cache/binanceusdm/1h/BTC_USDT_USDT.csv.gz,True,59265,2019-09-08 17:00:00+00:00,2026-06-13 01:00:00+00:00,True,True
+LINK/USDT:USDT,data/cache/binanceusdm/1h/LINK_USDT_USDT.csv.gz,True,56130,2020-01-17 08:00:00+00:00,2026-06-13 01:00:00+00:00,True,True
+BNB/USDT:USDT,data/cache/binanceusdm/1h/BNB_USDT_USDT.csv.gz,True,55554,2020-02-10 08:00:00+00:00,2026-06-13 01:00:00+00:00,True,True
+XRP/USDT:USDT,data/cache/binanceusdm/1h/XRP_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+ETH/USDT:USDT,data/cache/binanceusdm/1h/ETH_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+TRX/USDT:USDT,data/cache/binanceusdm/1h/TRX_USDT_USDT.csv.gz,True,21458,2024-01-01 00:00:00+00:00,2026-06-13 01:00:00+00:00,True,True
+AAVE/USDT:USDT,data/cache/binanceusdm/1h/AAVE_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+DOT/USDT:USDT,data/cache/binanceusdm/1h/DOT_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+AVAX/USDT:USDT,data/cache/binanceusdm/1h/AVAX_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+BCH/USDT:USDT,data/cache/binanceusdm/1h/BCH_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+DOGE/USDT:USDT,data/cache/binanceusdm/1h/DOGE_USDT_USDT.csv.gz,True,18483,2024-05-04 00:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+SOL/USDT:USDT,data/cache/binanceusdm/1h/SOL_USDT_USDT.csv.gz,True,50348,2020-09-14 07:00:00+00:00,2026-06-13 02:00:00+00:00,True,True
+ADA/USDT:USDT,data/cache/binanceusdm/1h/ADA_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+SUI/USDT:USDT,data/cache/binanceusdm/1h/SUI_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+NEAR/USDT:USDT,data/cache/binanceusdm/1h/NEAR_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+ENA/USDT:USDT,data/cache/binanceusdm/1h/ENA_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+XLM/USDT:USDT,data/cache/binanceusdm/1h/XLM_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+ONDO/USDT:USDT,data/cache/binanceusdm/1h/ONDO_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+RENDER/USDT:USDT,data/cache/binanceusdm/1h/RENDER_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+TON/USDT:USDT,data/cache/binanceusdm/1h/TON_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False
+INJ/USDT:USDT,data/cache/binanceusdm/1h/INJ_USDT_USDT.csv.gz,True,4321,2025-12-15 02:00:00+00:00,2026-06-13 02:00:00+00:00,False,False

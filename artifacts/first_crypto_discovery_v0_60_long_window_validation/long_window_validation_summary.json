@@ -1,0 +1,81 @@
+{
+  "baseline_vs_discovery": [
+    {
+      "avg_live_capped_gross_weight": 0.5684476507,
+      "label": "baseline_12m",
+      "max_dd_pct": -5.0333936475,
+      "return_pct": 2815.8588910721,
+      "rows": 8761,
+      "run": "baseline_prod_equiv_v0_59_guardrails_12m_20260613T020000Z",
+      "sharpe_annual": 11.1321379861,
+      "trade_count": 6031,
+      "win_rate_pct": 55.0654949428
+    },
+    {
+      "avg_live_capped_gross_weight": 0.620347491,
+      "label": "discovery_12m",
+      "max_dd_pct": -4.2714647898,
+      "return_pct": 10304.5619672495,
+      "rows": 8761,
+      "run": "first_crypto_discovery_v0_59_guardrails_12m_20260613T020000Z",
+      "sharpe_annual": 13.2448360832,
+      "trade_count": 13643,
+      "win_rate_pct": 55.1638202741
+    },
+    {
+      "avg_live_capped_gross_weight": 0.5711907099,
+      "label": "baseline_24m",
+      "max_dd_pct": -7.8852537298,
+      "return_pct": 173011.8879906843,
+      "rows": 17521,
+      "run": "baseline_prod_equiv_v0_59_guardrails_24m_20260613T020000Z",
+      "sharpe_annual": 11.3358794429,
+      "trade_count": 11734,
+      "win_rate_pct": 55.9740923811
+    },
+    {
+      "avg_live_capped_gross_weight": 0.627671468,
+      "label": "discovery_24m",
+      "max_dd_pct": -8.1368635937,
+      "return_pct": 1421224.475302793,
+      "rows": 16481,
+      "run": "first_crypto_discovery_v0_59_guardrails_24m_20260613T020000Z",
+      "sharpe_annual": 13.279229715,
+      "trade_count": 25296,
+      "win_rate_pct": 55.8902593295
+    }
+  ],
+  "cache_coverage": {
+    "assets_covering_12m_in_csv": 12,
+    "assets_covering_24m_in_csv": 12,
+    "assets_total_in_csv": 21,
+    "assets_with_gaps_gt_1h": null,
+    "coverage_12m_column": "covers_12m_nominal",
+    "coverage_24m_column": "covers_24m_nominal",
+    "gap_note": "Gap metric not present in preflight cache_coverage_audit.csv. Runtime post-run console audit showed 0 gaps for the 9 new assets."
+  },
+  "decision": "SUPPORTS_CONTROLLED_PRODUCTION_PROMOTION",
+  "negative_groups": {
+    "12m_count": 0,
+    "24m_count": 0
+  },
+  "next_step": "Prepare production-safe rollout patch by updating launcher registry/policy references and validating production dry-run/audit before enabling live deployment.",
+  "post_run_cache_coverage_note": {
+    "new_assets_covering_12m": "9/9 from post-run console audit.",
+    "new_assets_covering_24m": "8/9 from post-run console audit.",
+    "render_24m_limitation": "RENDER starts at 2024-07-26 10:00 UTC, so 24M is a contrast window for RENDER."
+  },
+  "status": "LONG_WINDOW_VALIDATION_COMPLETE",
+  "technical_conclusion": [
+    "Discovery universe outperformed production-equivalent baseline materially in 12M and 24M contrast windows.",
+    "12M drawdown improved versus baseline.",
+    "24M return and Sharpe improved materially; drawdown was slightly worse than baseline but still within acceptable range.",
+    "No negative asset/side/strategy groups were observed in either 12M or 24M group diagnostics.",
+    "12M post-run cache coverage was complete for all new assets; 24M post-run coverage was complete for 8 of 9 new assets, with RENDER partial."
+  ],
+  "validation_scope": {
+    "12m": "Full validation window for all new assets.",
+    "24m": "Contrast window; RENDER has partial 24M coverage starting 2024-07-26 based on post-run console audit."
+  },
+  "version": "v0.60_first_crypto_discovery_long_window_validation"
+}
