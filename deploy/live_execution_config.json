@@ -2,7 +2,7 @@
   "default_symbol_config": {
     "atr_period": 14,
     "max_delta_notional": 120.0,
-    "max_target_weight": 0.6,
+    "max_target_weight": 0.45,
     "min_delta_notional": 5.0,
     "ohlcv_limit": 120,
     "partial_tp1_atr_mult": 1.0,
@@ -19,11 +19,11 @@
   },
   "symbol_overrides": {
     "AAVE/USDT:USDT": {
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "max_delta_notional": 300.0
     },
     "AVAX/USDT:USDT": {
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "max_delta_notional": 120.0
     },
     "BCH/USDT:USDT": {
@@ -36,7 +36,7 @@
     },
     "BNB/USDT:USDT": {
       "max_delta_notional": 160.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "sl_atr_mult": 2.0,
       "tp_atr_mult_max": 3.8,
       "tp_atr_mult_min": 1.9,
@@ -44,7 +44,7 @@
     },
     "BTC/USDT:USDT": {
       "max_delta_notional": 200.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "sl_atr_mult": 1.8,
       "stop_refresh_rel_tol": 0.0025,
       "tp_atr_mult_max": 3.8,
@@ -61,12 +61,12 @@
       "tp_atr_pct_pivot": 0.018
     },
     "DOT/USDT:USDT": {
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "max_delta_notional": 120.0
     },
     "ETH/USDT:USDT": {
       "max_delta_notional": 160.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "partial_tp_enabled": false,
       "sl_atr_mult": 1.9,
       "tp_atr_mult_max": 3.6,
@@ -75,7 +75,7 @@
     },
     "LINK/USDT:USDT": {
       "max_delta_notional": 200.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "sl_atr_mult": 2.1,
       "tp_atr_mult_max": 4.0,
       "tp_atr_mult_min": 2.0,
@@ -93,7 +93,7 @@
     },
     "TRX/USDT:USDT": {
       "max_delta_notional": 160.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "sl_atr_mult": 2.0,
       "tp_atr_mult_max": 3.8,
       "tp_atr_mult_min": 1.9,
@@ -101,7 +101,7 @@
     },
     "XRP/USDT:USDT": {
       "max_delta_notional": 200.0,
-      "max_target_weight": 0.6,
+      "max_target_weight": 0.45,
       "sl_atr_mult": 2.0,
       "tp_atr_mult_max": 3.8,
       "tp_atr_mult_min": 1.9,
