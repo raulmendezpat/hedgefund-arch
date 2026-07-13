@@ -330,17 +330,21 @@ class BitgetFutures():
                 elif side_l == "sell":
                     inferred_hold_side = "long"
 
+            # Production Bitget account uses hedge mode with isolated margin.
+            #
+            # Let CCXT construct the exchange-specific tradeSide and side fields.
+            # In hedge mode CCXT maps:
+            #   reduceOnly=True  -> tradeSide=Close and the required Bitget side
+            #   reduceOnly=False -> tradeSide=Open
+            #
+            # Do not pass holdSide for ordinary market orders. holdSide remains
+            # valid for the dedicated position TP/SL endpoints elsewhere in this
+            # class.
             params = {
-                'reduceOnly': reduce,
-                'tradeSide': 'close' if reduce else 'open',
+                "reduceOnly": reduce,
+                "hedged": True,
+                "marginMode": "isolated",
             }
-
-            # Bitget hedge_mode requires the position side when closing/reducing.
-            # Without holdSide, Bitget can reject valid reduce-only orders with
-            # "No position to close" even while fetch_positions shows a live
-            # hedge-mode position on that side.
-            if reduce and inferred_hold_side in {"long", "short"}:
-                params["holdSide"] = inferred_hold_side
 
             amount = self.amount_to_precision(symbol, amount)
             return self.session.create_order(symbol, 'market', side, amount, params=params)

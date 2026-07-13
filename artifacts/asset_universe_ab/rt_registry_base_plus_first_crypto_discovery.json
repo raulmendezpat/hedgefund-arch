@@ -305,23 +305,6 @@
   {
     "base_weight": 0.3,
     "cluster_cap": 0.12,
-    "cluster_id": "discovery_major",
-    "enabled": true,
-    "engine": "btc_trend_signal",
-    "params": {
-      "adx_min": 18.0,
-      "ema_gap_min": 0.0015,
-      "require_ema_gap_min": true,
-      "soft_adx_gate": false,
-      "soft_ema_gap_gate": false,
-      "use_strength_tiers": false
-    },
-    "strategy_id": "ton_trend_discovery",
-    "symbol": "TON/USDT:USDT"
-  },
-  {
-    "base_weight": 0.3,
-    "cluster_cap": 0.12,
     "cluster_id": "discovery_high_beta",
     "enabled": true,
     "engine": "btc_trend_signal",

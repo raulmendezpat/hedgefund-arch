@@ -672,46 +672,6 @@
         "rvol_field": "rvol20"
       }
     },
-    "TON/USDT:USDT": {
-      "asset_gate": {
-        "min_competitive_rank": 0.55,
-        "min_policy_score": 1e-06,
-        "min_postml_rank": 0.6,
-        "min_pwin_contextual": 0.57,
-        "min_pwin_rank": 0.7,
-        "min_pwin_strong": 0.59
-      },
-      "diagnostics": {
-        "ml_share": 0.0,
-        "note": "Discovery placeholder. Requires ML/candidate-quality recalculation before promotion.",
-        "source": "first_crypto_discovery_batch"
-      },
-      "trend_participation_gate": {
-        "allow_missing_rvol": false,
-        "allowed_sides": [
-          "short",
-          "long"
-        ],
-        "long_probe_allowed_sides": [
-          "long"
-        ],
-        "long_probe_mode": "observe_only",
-        "min_adx": 18.0,
-        "min_rvol20": 0.4,
-        "mode": "filter",
-        "penalty_weights": {
-          "rvol_below_min": 0.06,
-          "rvol_below_min_observed_only": 0.04
-        },
-        "require_adx": true,
-        "require_close_vs_ema_fast": true,
-        "require_ema_slope": true,
-        "require_ema_stack": true,
-        "require_rvol": true,
-        "require_rvol_expansion": false,
-        "rvol_field": "rvol20"
-      }
-    },
     "TRX/USDT:USDT": {
       "asset_gate": {
         "min_competitive_rank": 0.55,
@@ -1235,17 +1195,6 @@
       }
     },
     "SUI/USDT:USDT::short::sui_trend_discovery": {
-      "market_guard": {
-        "allowed_sides": [
-          "short"
-        ],
-        "ema_gap_field": "ema_gap_fast_slow",
-        "min_adx": 22.0,
-        "min_ema_gap": 0.003,
-        "mode": "filter"
-      }
-    },
-    "TON/USDT:USDT::short::ton_trend_discovery": {
       "market_guard": {
         "allowed_sides": [
           "short"

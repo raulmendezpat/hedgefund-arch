@@ -123,10 +123,6 @@
       "max_target_weight": 0.14,
       "max_delta_notional": 80.0
     },
-    "TON/USDT:USDT": {
-      "max_target_weight": 0.14,
-      "max_delta_notional": 80.0
-    },
     "ENA/USDT:USDT": {
       "max_target_weight": 0.12,
       "max_delta_notional": 60.0

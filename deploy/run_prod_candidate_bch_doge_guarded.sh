@@ -118,7 +118,7 @@ if PYTHONPATH=src python scripts/research_runtime.py \
   >> "$LOG_FILE" 2>&1
 then
 
-  python - <<'PYLOG' >> "$LOG_FILE" 2>&1
+  if ! python - <<'PYLOG' >> "$LOG_FILE" 2>&1
 import json
 from pathlib import Path
 import pandas as pd
@@ -215,6 +215,12 @@ if alloc_path.exists():
 else:
     print(f"WARN: allocation output not found: {alloc_path}")
 PYLOG
+  then
+    echo "ERROR_STAGE=portfolio_snapshot" >> "$LOG_FILE"
+    echo "{\"ts\":\"$RUN_TS\",\"status\":\"fail\",\"stage\":\"portfolio_snapshot\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
+    cp -p "$STATUS_FILE" "$STATE_DIR/last_run_status.json" || true
+    exit 1
+  fi
 
   # Apply execution-layer SL cooldown before live reconcile.
 # This blocks re-entry/rebalance for symbols that hit stop-loss within the cooldown window.
@@ -226,7 +232,7 @@ export SL_COOLDOWN_REPORT_JSON="$APP_DIR/runtime/state/sl_cooldown_last_report.j
 echo "SL_COOLDOWN_HOURS=${SL_COOLDOWN_HOURS:-6}" >> "$LOG_FILE"
 echo "SL_COOLDOWN_STATE_JSON=$SL_COOLDOWN_STATE_JSON" >> "$LOG_FILE"
 
-PYTHONPATH=src python "$APP_DIR/deploy/apply_sl_cooldown.py" \
+if ! PYTHONPATH=src python "$APP_DIR/deploy/apply_sl_cooldown.py" \
   --runtime-csv "$RECONCILE_RUNTIME_CSV" \
   --trades-csv "$RECONCILE_TRADES_CSV" \
   --state-json "$SL_COOLDOWN_STATE_JSON" \
@@ -234,10 +240,22 @@ PYTHONPATH=src python "$APP_DIR/deploy/apply_sl_cooldown.py" \
   --lookback-hours "${SL_COOLDOWN_LOOKBACK_HOURS:-6.5}" \
   --report-json "$SL_COOLDOWN_REPORT_JSON" \
   >> "$LOG_FILE" 2>&1
-
+then
+  echo "ERROR_STAGE=sl_cooldown" >> "$LOG_FILE"
+  echo "{\"ts\":\"$RUN_TS\",\"status\":\"fail\",\"stage\":\"sl_cooldown\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
+  cp -p "$STATUS_FILE" "$STATE_DIR/last_run_status.json" || true
+  exit 1
+fi
 
   echo "RECONCILE_RUNTIME_CSV=$RECONCILE_RUNTIME_CSV" >> "$LOG_FILE"
-  PYTHONPATH=src python "$APP_DIR/deploy/reconcile_live.py" >> "$LOG_FILE" 2>&1
+
+  if ! PYTHONPATH=src python "$APP_DIR/deploy/reconcile_live.py" >> "$LOG_FILE" 2>&1
+  then
+    echo "ERROR_STAGE=live_reconcile" >> "$LOG_FILE"
+    echo "{\"ts\":\"$RUN_TS\",\"status\":\"fail\",\"stage\":\"live_reconcile\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
+    cp -p "$STATUS_FILE" "$STATE_DIR/last_run_status.json" || true
+    exit 1
+  fi
 
   echo "{\"ts\":\"$RUN_TS\",\"status\":\"ok\",\"profile\":\"bch_doge_guarded\",\"log\":\"$LOG_FILE\",\"start\":\"$START_TS\",\"end\":\"$END_TS\",\"live_trading\":$( [ "${LIVE_TRADING:-0}" = "1" ] && echo true || echo false )}" > "$STATUS_FILE"
 

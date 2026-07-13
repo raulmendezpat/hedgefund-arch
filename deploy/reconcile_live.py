@@ -931,6 +931,27 @@ def ensure_protective_orders(bitget, symbol: str, pos_qty: float, ref_price: flo
                 f"(side={pos_side}, existing={existing_sl_price}, desired={desired_sl_price})"
             )
 
+    # A protective SL price may be retained only when its plan size also
+    # matches the current live position. After a partial reduction, preserve
+    # the safer existing trigger but recreate the plan with the new quantity.
+    if keep_sl:
+        keep_sl_size = get_plan_size(keep_sl)
+        keep_sl_price = get_plan_trigger_price(keep_sl)
+        keep_sl_qty_matches = (
+            keep_sl_size is not None
+            and _rel_close(keep_sl_size, float(qty), 1e-9)
+        )
+
+        if not keep_sl_qty_matches:
+            if keep_sl_price is not None:
+                sl_price = float(keep_sl_price)
+            print(
+                f"SL_SIZE_REALIGN -> symbol={symbol} "
+                f"existing_qty={keep_sl_size} desired_qty={qty} "
+                f"preserved_trigger={sl_price}"
+            )
+            keep_sl = None
+
     if keep_sl:
         print(f"sl_action: keep existing loss_plan (qty={get_plan_size(keep_sl)}, trigger={get_plan_trigger_price(keep_sl)})")
         for o in loss_plans:
