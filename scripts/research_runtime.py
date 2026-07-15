@@ -2729,7 +2729,19 @@ def main() -> None:
 
         weights = dict(alloc.weights or {})
         performance_weights = dict((_alloc_meta.get("performance_weights_by_symbol", {}) or {}) or weights)
-        desired_weights = dict(performance_weights)
+
+        # Shadow lifecycle must use the same per-symbol maximum target-weight
+        # contract enforced by live reconciliation. Previously the cap was only
+        # exported as observability, while lifecycle entries continued to size
+        # from uncapped performance_weights.
+        desired_weights = {}
+        for _sym, _raw_weight in performance_weights.items():
+            _raw_weight = float(_raw_weight or 0.0)
+            _max_target_weight = float(_live_execution_max_target_weight(str(_sym)))
+            desired_weights[str(_sym)] = max(
+                -_max_target_weight,
+                min(_max_target_weight, _raw_weight),
+            )
 
         lifecycle_engine.decrement_cooldowns()
 
