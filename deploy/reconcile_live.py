@@ -1252,7 +1252,29 @@ for prefix, cfg in SYMBOLS.items():
         )
 
     target_qty = abs(usdt_total * target_weight) / last if last > 0 else 0.0
-    target_qty = float(bitget.amount_to_precision(symbol, target_qty)) if target_qty > 0 else 0.0
+
+    try:
+        market = bitget.session.market(symbol)
+        min_amount = (
+            ((market.get("limits") or {}).get("amount") or {}).get("min")
+        )
+        min_amount = float(min_amount) if min_amount is not None else None
+    except Exception:
+        min_amount = None
+
+    if (
+        target_qty > 0
+        and min_amount is not None
+        and target_qty < min_amount
+    ):
+        print(
+            f"TARGET_QTY_BELOW_MIN_AMOUNT -> symbol={symbol} "
+            f"target_qty={target_qty} min_amount={min_amount}; treating as flat"
+        )
+        target_qty = 0.0
+    elif target_qty > 0:
+        target_qty = float(bitget.amount_to_precision(symbol, target_qty))
+
     if target_weight < 0:
         target_qty = -target_qty
 

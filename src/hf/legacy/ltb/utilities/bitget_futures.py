@@ -343,7 +343,6 @@ class BitgetFutures():
             params = {
                 "reduceOnly": reduce,
                 "hedged": True,
-                "marginMode": "isolated",
             }
 
             amount = self.amount_to_precision(symbol, amount)
