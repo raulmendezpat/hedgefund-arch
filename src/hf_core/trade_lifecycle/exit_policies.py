@@ -60,6 +60,12 @@ class TrendAtrDynamicExitPolicy:
     max_hold_bars: int = 0
     invalidate_on_trend_break: bool = False
 
+    # Optional exchange-equivalent timeout layer.
+    exchange_time_exit_enabled: bool = False
+    exchange_positive_after_bars: int = 10
+    exchange_positive_min_roe_pct: float = 0.0
+    exchange_hard_close_after_bars: int = 20
+
     def evaluate(
         self,
         *,
@@ -74,13 +80,59 @@ class TrendAtrDynamicExitPolicy:
         signal_side = _s(context.get("signal_side"), "").lower()
         regime_on = bool(context.get("regime_on", True))
 
-        ctx_tp_mult = _f(context.get("tp_mult", context.get("ctx_tp_mult", 1.0)), 1.0)
-        ctx_sl_mult = _f(context.get("sl_mult", context.get("ctx_sl_mult", 1.0)), 1.0)
-        ctx_time_stop_bars = int(_f(context.get("time_stop_bars", context.get("ctx_time_stop_bars", self.max_hold_bars)), self.max_hold_bars))
+        ctx_tp_mult = _f(
+            context.get("tp_mult", context.get("ctx_tp_mult", 1.0)),
+            1.0,
+        )
+        ctx_sl_mult = _f(
+            context.get("sl_mult", context.get("ctx_sl_mult", 1.0)),
+            1.0,
+        )
+        ctx_time_stop_bars = int(
+            _f(
+                context.get(
+                    "time_stop_bars",
+                    context.get("ctx_time_stop_bars", self.max_hold_bars),
+                ),
+                self.max_hold_bars,
+            )
+        )
+
+        exchange_time_exit_enabled = bool(
+            context.get(
+                "exchange_time_exit_enabled",
+                self.exchange_time_exit_enabled,
+            )
+        )
+        exchange_positive_after_bars = int(
+            _f(
+                context.get(
+                    "exchange_positive_after_bars",
+                    self.exchange_positive_after_bars,
+                ),
+                self.exchange_positive_after_bars,
+            )
+        )
+        exchange_positive_min_roe_pct = _f(
+            context.get(
+                "exchange_positive_min_roe_pct",
+                self.exchange_positive_min_roe_pct,
+            ),
+            self.exchange_positive_min_roe_pct,
+        )
+        exchange_hard_close_after_bars = int(
+            _f(
+                context.get(
+                    "exchange_hard_close_after_bars",
+                    self.exchange_hard_close_after_bars,
+                ),
+                self.exchange_hard_close_after_bars,
+            )
+        )
 
         # Dynamic stale-position kill switch:
-        # if no explicit time_stop_bars override is provided, allow a position to live
-        # up to 150% of the historical average hold time for its asset/side or strategy/side.
+        # if no explicit time_stop_bars override is provided, allow a position
+        # to live up to the configured multiple of historical average hold.
         hist_avg_hold_bars = _f(
             context.get(
                 "historical_avg_hold_bars",
@@ -97,30 +149,91 @@ class TrendAtrDynamicExitPolicy:
 
         dynamic_max_hold_bars = int(ctx_time_stop_bars)
 
-        # Only treat time_stop as explicitly overridden when the caller says so.
-        # Default ctx_time_stop_bars from the runtime profile should not disable
-        # the dynamic stale-position kill switch.
-        explicit_time_stop_present = bool(context.get("explicit_time_stop_override", False))
-        dynamic_hold_multiplier = float(context.get("dynamic_hold_multiplier", 1.8))
-        close_now = _f(prev_bar.get("close"), position.entry_px)
-        unrealized_pnl = 0.0
-        if position.side == "long":
-            unrealized_pnl = float(close_now) - float(position.entry_px)
-        elif position.side == "short":
-            unrealized_pnl = float(position.entry_px) - float(close_now)
+        explicit_time_stop_present = bool(
+            context.get("explicit_time_stop_override", False)
+        )
+        dynamic_hold_multiplier = float(
+            context.get("dynamic_hold_multiplier", 1.8)
+        )
 
-        entry_notional = abs(float(position.entry_px) * float(position.qty))
+        close_now = _f(prev_bar.get("close"), position.entry_px)
+
+        unrealized_price_move = 0.0
+        if position.side == "long":
+            unrealized_price_move = (
+                float(close_now) - float(position.entry_px)
+            )
+        elif position.side == "short":
+            unrealized_price_move = (
+                float(position.entry_px) - float(close_now)
+            )
+
+        entry_notional = abs(
+            float(position.entry_px) * float(position.qty)
+        )
+
+        position_unrealized_pnl = (
+            float(unrealized_price_move) * abs(float(position.qty))
+        )
+
         loss_pct_notional = 0.0
         if entry_notional > 0.0:
-            loss_pct_notional = max(0.0, (-unrealized_pnl / entry_notional) * 100.0)
+            loss_pct_notional = max(
+                0.0,
+                (-position_unrealized_pnl / entry_notional) * 100.0,
+            )
 
         if (
             (not explicit_time_stop_present)
             and hist_avg_hold_bars > 0
-            and unrealized_pnl < 0.0
+            and position_unrealized_pnl < 0.0
             and loss_pct_notional >= 2.5
         ):
-            dynamic_max_hold_bars = max(1, int(__import__("math").ceil(hist_avg_hold_bars * dynamic_hold_multiplier)))
+            dynamic_max_hold_bars = max(
+                1,
+                int(
+                    __import__("math").ceil(
+                        hist_avg_hold_bars * dynamic_hold_multiplier
+                    )
+                ),
+            )
+
+        # Research/backtest exchange-equivalent ROE.
+        #
+        # Prefer a caller-provided value when supplied. Otherwise:
+        #
+        #   initial_margin = entry_notional / leverage
+        #   ROE% = unrealized_pnl / initial_margin * 100
+        exchange_roe_pct = _f(
+            context.get(
+                "exchange_roe_pct",
+                context.get(
+                    "simulated_exchange_roe_pct",
+                    float("nan"),
+                ),
+            ),
+            float("nan"),
+        )
+
+        if exchange_roe_pct != exchange_roe_pct:
+            leverage = max(
+                0.0,
+                _f(
+                    context.get(
+                        "leverage",
+                        context.get("execution_leverage", 1.0),
+                    ),
+                    1.0,
+                ),
+            )
+
+            if entry_notional > 0.0 and leverage > 0.0:
+                initial_margin = entry_notional / leverage
+                exchange_roe_pct = (
+                    position_unrealized_pnl / initial_margin
+                ) * 100.0
+            else:
+                exchange_roe_pct = 0.0
 
         atr_now = _f(prev_bar.get("atr"), position.entry_atr)
         close_now = _f(prev_bar.get("close"), position.entry_px)
@@ -128,28 +241,57 @@ class TrendAtrDynamicExitPolicy:
         low_now = _f(current_bar.get("low"), close_now)
 
         if atr_now <= 0.0:
-            return ExitDecision(action="hold", exit_reason="atr_missing")
+            return ExitDecision(
+                action="hold",
+                exit_reason="atr_missing",
+            )
 
         side = _s(position.side).lower()
 
         if side == "long":
-            tp_atr_mult = float(self.tp_atr_mult * max(ctx_tp_mult, 0.1))
-            stop_atr_mult = float(self.stop_atr_mult * max(ctx_sl_mult, 0.1))
+            tp_atr_mult = float(
+                self.tp_atr_mult * max(ctx_tp_mult, 0.1)
+            )
+            stop_atr_mult = float(
+                self.stop_atr_mult * max(ctx_sl_mult, 0.1)
+            )
 
-            tp = float(position.entry_px + tp_atr_mult * atr_now)
-            sl = float(position.entry_px - stop_atr_mult * atr_now)
-            move_atr = float((close_now - position.entry_px) / atr_now)
+            tp = float(
+                position.entry_px + tp_atr_mult * atr_now
+            )
+            sl = float(
+                position.entry_px - stop_atr_mult * atr_now
+            )
+            move_atr = float(
+                (close_now - position.entry_px) / atr_now
+            )
 
             if move_atr >= float(self.breakeven_activate_atr):
-                sl = max(sl, float(position.entry_px + self.breakeven_offset_atr * atr_now))
+                sl = max(
+                    sl,
+                    float(
+                        position.entry_px
+                        + self.breakeven_offset_atr * atr_now
+                    ),
+                )
 
             if move_atr >= float(self.trail_activate_atr):
-                sl = max(sl, float(close_now - self.trail_stop_atr_mult * atr_now))
+                sl = max(
+                    sl,
+                    float(
+                        close_now
+                        - self.trail_stop_atr_mult * atr_now
+                    ),
+                )
 
             if bool(self.invalidate_on_trend_break):
                 ema_fast = _f(prev_bar.get("ema_fast"), 0.0)
                 ema_slow = _f(prev_bar.get("ema_slow"), 0.0)
-                trend_break = bool(ema_fast <= ema_slow) if (ema_fast != 0.0 or ema_slow != 0.0) else False
+                trend_break = (
+                    bool(ema_fast <= ema_slow)
+                    if (ema_fast != 0.0 or ema_slow != 0.0)
+                    else False
+                )
                 if trend_break:
                     return ExitDecision(
                         action="close",
@@ -158,12 +300,77 @@ class TrendAtrDynamicExitPolicy:
                         tp_price=float(tp),
                         sl_price=float(sl),
                         trail_stop=float(sl),
-                        breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                        breakeven_armed=bool(
+                            move_atr
+                            >= float(self.breakeven_activate_atr)
+                        ),
                     )
 
-            max_hold_bars = int(dynamic_max_hold_bars if dynamic_max_hold_bars > 0 else self.max_hold_bars)
+            if (
+                exchange_time_exit_enabled
+                and exchange_hard_close_after_bars > 0
+                and int(position.bars_held)
+                >= exchange_hard_close_after_bars
+            ):
+                return ExitDecision(
+                    action="close",
+                    exit_reason="exchange_max_hold_timeout",
+                    exit_price=float(close_now),
+                    tp_price=float(tp),
+                    sl_price=float(sl),
+                    trail_stop=float(sl),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
+                    meta={
+                        "exchange_roe_pct": float(exchange_roe_pct),
+                        "exchange_hard_close_after_bars": int(
+                            exchange_hard_close_after_bars
+                        ),
+                    },
+                )
 
-            if max_hold_bars > 0 and int(position.bars_held) >= int(max_hold_bars):
+            if (
+                exchange_time_exit_enabled
+                and exchange_positive_after_bars > 0
+                and int(position.bars_held)
+                >= exchange_positive_after_bars
+                and float(exchange_roe_pct)
+                > float(exchange_positive_min_roe_pct)
+            ):
+                return ExitDecision(
+                    action="close",
+                    exit_reason="exchange_positive_roe_timeout",
+                    exit_price=float(close_now),
+                    tp_price=float(tp),
+                    sl_price=float(sl),
+                    trail_stop=float(sl),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
+                    meta={
+                        "exchange_roe_pct": float(exchange_roe_pct),
+                        "exchange_positive_after_bars": int(
+                            exchange_positive_after_bars
+                        ),
+                        "exchange_positive_min_roe_pct": float(
+                            exchange_positive_min_roe_pct
+                        ),
+                    },
+                )
+
+            max_hold_bars = int(
+                dynamic_max_hold_bars
+                if dynamic_max_hold_bars > 0
+                else self.max_hold_bars
+            )
+
+            if (
+                max_hold_bars > 0
+                and int(position.bars_held) >= int(max_hold_bars)
+            ):
                 return ExitDecision(
                     action="close",
                     exit_reason="time_stop",
@@ -171,7 +378,10 @@ class TrendAtrDynamicExitPolicy:
                     tp_price=float(tp),
                     sl_price=float(sl),
                     trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
                 )
 
             if low_now <= sl <= high_now:
@@ -182,8 +392,12 @@ class TrendAtrDynamicExitPolicy:
                     tp_price=float(tp),
                     sl_price=float(sl),
                     trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
                 )
+
             if low_now <= tp <= high_now:
                 return ExitDecision(
                     action="close",
@@ -192,7 +406,10 @@ class TrendAtrDynamicExitPolicy:
                     tp_price=float(tp),
                     sl_price=float(sl),
                     trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
                 )
 
             return ExitDecision(
@@ -201,27 +418,56 @@ class TrendAtrDynamicExitPolicy:
                 tp_price=float(tp),
                 sl_price=float(sl),
                 trail_stop=float(sl),
-                breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                breakeven_armed=bool(
+                    move_atr
+                    >= float(self.breakeven_activate_atr)
+                ),
             )
 
         if side == "short":
-            tp_atr_mult = float(self.tp_atr_mult * max(ctx_tp_mult, 0.1))
-            stop_atr_mult = float(self.stop_atr_mult * max(ctx_sl_mult, 0.1))
+            tp_atr_mult = float(
+                self.tp_atr_mult * max(ctx_tp_mult, 0.1)
+            )
+            stop_atr_mult = float(
+                self.stop_atr_mult * max(ctx_sl_mult, 0.1)
+            )
 
-            tp = float(position.entry_px - tp_atr_mult * atr_now)
-            sl = float(position.entry_px + stop_atr_mult * atr_now)
-            move_atr = float((position.entry_px - close_now) / atr_now)
+            tp = float(
+                position.entry_px - tp_atr_mult * atr_now
+            )
+            sl = float(
+                position.entry_px + stop_atr_mult * atr_now
+            )
+            move_atr = float(
+                (position.entry_px - close_now) / atr_now
+            )
 
             if move_atr >= float(self.breakeven_activate_atr):
-                sl = min(sl, float(position.entry_px - self.breakeven_offset_atr * atr_now))
+                sl = min(
+                    sl,
+                    float(
+                        position.entry_px
+                        - self.breakeven_offset_atr * atr_now
+                    ),
+                )
 
             if move_atr >= float(self.trail_activate_atr):
-                sl = min(sl, float(close_now + self.trail_stop_atr_mult * atr_now))
+                sl = min(
+                    sl,
+                    float(
+                        close_now
+                        + self.trail_stop_atr_mult * atr_now
+                    ),
+                )
 
             if bool(self.invalidate_on_trend_break):
                 ema_fast = _f(prev_bar.get("ema_fast"), 0.0)
                 ema_slow = _f(prev_bar.get("ema_slow"), 0.0)
-                trend_break = bool(ema_fast >= ema_slow) if (ema_fast != 0.0 or ema_slow != 0.0) else False
+                trend_break = (
+                    bool(ema_fast >= ema_slow)
+                    if (ema_fast != 0.0 or ema_slow != 0.0)
+                    else False
+                )
                 if trend_break:
                     return ExitDecision(
                         action="close",
@@ -230,12 +476,77 @@ class TrendAtrDynamicExitPolicy:
                         tp_price=float(tp),
                         sl_price=float(sl),
                         trail_stop=float(sl),
-                        breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                        breakeven_armed=bool(
+                            move_atr
+                            >= float(self.breakeven_activate_atr)
+                        ),
                     )
 
-            max_hold_bars = int(dynamic_max_hold_bars if dynamic_max_hold_bars > 0 else self.max_hold_bars)
+            if (
+                exchange_time_exit_enabled
+                and exchange_hard_close_after_bars > 0
+                and int(position.bars_held)
+                >= exchange_hard_close_after_bars
+            ):
+                return ExitDecision(
+                    action="close",
+                    exit_reason="exchange_max_hold_timeout",
+                    exit_price=float(close_now),
+                    tp_price=float(tp),
+                    sl_price=float(sl),
+                    trail_stop=float(sl),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
+                    meta={
+                        "exchange_roe_pct": float(exchange_roe_pct),
+                        "exchange_hard_close_after_bars": int(
+                            exchange_hard_close_after_bars
+                        ),
+                    },
+                )
 
-            if max_hold_bars > 0 and int(position.bars_held) >= int(max_hold_bars):
+            if (
+                exchange_time_exit_enabled
+                and exchange_positive_after_bars > 0
+                and int(position.bars_held)
+                >= exchange_positive_after_bars
+                and float(exchange_roe_pct)
+                > float(exchange_positive_min_roe_pct)
+            ):
+                return ExitDecision(
+                    action="close",
+                    exit_reason="exchange_positive_roe_timeout",
+                    exit_price=float(close_now),
+                    tp_price=float(tp),
+                    sl_price=float(sl),
+                    trail_stop=float(sl),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
+                    meta={
+                        "exchange_roe_pct": float(exchange_roe_pct),
+                        "exchange_positive_after_bars": int(
+                            exchange_positive_after_bars
+                        ),
+                        "exchange_positive_min_roe_pct": float(
+                            exchange_positive_min_roe_pct
+                        ),
+                    },
+                )
+
+            max_hold_bars = int(
+                dynamic_max_hold_bars
+                if dynamic_max_hold_bars > 0
+                else self.max_hold_bars
+            )
+
+            if (
+                max_hold_bars > 0
+                and int(position.bars_held) >= int(max_hold_bars)
+            ):
                 return ExitDecision(
                     action="close",
                     exit_reason="time_stop",
@@ -243,7 +554,10 @@ class TrendAtrDynamicExitPolicy:
                     tp_price=float(tp),
                     sl_price=float(sl),
                     trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
                 )
 
             if low_now <= sl <= high_now:
@@ -254,8 +568,12 @@ class TrendAtrDynamicExitPolicy:
                     tp_price=float(tp),
                     sl_price=float(sl),
                     trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
                 )
+
             if low_now <= tp <= high_now:
                 return ExitDecision(
                     action="close",
@@ -264,7 +582,10 @@ class TrendAtrDynamicExitPolicy:
                     tp_price=float(tp),
                     sl_price=float(sl),
                     trail_stop=float(sl),
-                    breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                    breakeven_armed=bool(
+                        move_atr
+                        >= float(self.breakeven_activate_atr)
+                    ),
                 )
 
             return ExitDecision(
@@ -273,10 +594,16 @@ class TrendAtrDynamicExitPolicy:
                 tp_price=float(tp),
                 sl_price=float(sl),
                 trail_stop=float(sl),
-                breakeven_armed=bool(move_atr >= float(self.breakeven_activate_atr)),
+                breakeven_armed=bool(
+                    move_atr
+                    >= float(self.breakeven_activate_atr)
+                ),
             )
 
-        return ExitDecision(action="hold", exit_reason="invalid_side")
+        return ExitDecision(
+            action="hold",
+            exit_reason="invalid_side",
+        )
 
 
 @dataclass
@@ -468,7 +795,22 @@ def build_exit_policy(cfg: dict[str, Any] | None) -> ExitPolicy:
             trail_activate_atr=_f(params.get("trail_activate_atr"), 1.0),
             trail_stop_atr_mult=_f(params.get("trail_stop_atr_mult"), 1.2),
             max_hold_bars=int(_f(params.get("max_hold_bars"), 0)),
-            invalidate_on_trend_break=bool(params.get("invalidate_on_trend_break", False)),
+            invalidate_on_trend_break=bool(
+                params.get("invalidate_on_trend_break", False)
+            ),
+            exchange_time_exit_enabled=bool(
+                params.get("exchange_time_exit_enabled", False)
+            ),
+            exchange_positive_after_bars=int(
+                _f(params.get("exchange_positive_after_bars"), 10)
+            ),
+            exchange_positive_min_roe_pct=_f(
+                params.get("exchange_positive_min_roe_pct"),
+                0.0,
+            ),
+            exchange_hard_close_after_bars=int(
+                _f(params.get("exchange_hard_close_after_bars"), 20)
+            ),
         )
 
     if family == "mean_reversion_basis_atr":

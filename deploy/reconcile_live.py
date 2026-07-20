@@ -1280,6 +1280,254 @@ for prefix, cfg in SYMBOLS.items():
 
     pos = bitget.fetch_open_positions(symbol)
     current_qty = current_signed_qty(pos)
+
+    # Exchange-aware production time exit.
+    #
+    # Bitget/CCXT payload confirmed in production:
+    # - position["percentage"] is exchange-calculated ROE in percent.
+    # - position["timestamp"] is the position creation time in milliseconds.
+    # - info["cTime"] is retained only as a defensive timestamp fallback.
+    #
+    # A triggered close stops reconciliation for this symbol so it cannot be
+    # reopened or resized during the same process execution.
+    exchange_time_exit_enabled = (
+        os.getenv("EXCHANGE_TIME_EXIT_ENABLED", "0")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    exchange_time_exit_dry_run = (
+        os.getenv("EXCHANGE_TIME_EXIT_DRY_RUN", "0")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    exchange_positive_after_hours = float(
+        os.getenv("EXCHANGE_POSITIVE_AFTER_HOURS", "10")
+    )
+    exchange_positive_min_roe_pct = float(
+        os.getenv("EXCHANGE_POSITIVE_MIN_ROE_PCT", "0")
+    )
+    exchange_hard_close_after_hours = float(
+        os.getenv("EXCHANGE_HARD_CLOSE_AFTER_HOURS", "20")
+    )
+
+    exchange_time_exit_reason = ""
+    exchange_time_exit_side = ""
+    exchange_time_exit_held_hours = None
+    exchange_time_exit_roe_pct = None
+    exchange_time_exit_timestamp_ms = None
+
+    if exchange_time_exit_enabled and abs(current_qty) > 1e-12:
+        now_ms = int(time.time() * 1000)
+
+        for exchange_position in list(pos or []):
+            if not isinstance(exchange_position, dict):
+                continue
+
+            try:
+                contracts = abs(
+                    float(exchange_position.get("contracts") or 0.0)
+                )
+            except (TypeError, ValueError):
+                contracts = 0.0
+
+            if contracts <= 1e-12:
+                continue
+
+            exchange_time_exit_side = str(
+                exchange_position.get("side") or ""
+            ).strip().lower()
+
+            if exchange_time_exit_side not in {"long", "short"}:
+                exchange_time_exit_side = (
+                    "long" if current_qty > 0.0 else "short"
+                )
+
+            info = exchange_position.get("info")
+            if not isinstance(info, dict):
+                info = {}
+
+            raw_timestamp = (
+                exchange_position.get("timestamp")
+                or info.get("cTime")
+            )
+
+            try:
+                exchange_time_exit_timestamp_ms = int(
+                    float(raw_timestamp)
+                )
+            except (TypeError, ValueError):
+                exchange_time_exit_timestamp_ms = None
+
+            if (
+                exchange_time_exit_timestamp_ms is not None
+                and 0 < exchange_time_exit_timestamp_ms < 10_000_000_000
+            ):
+                exchange_time_exit_timestamp_ms *= 1000
+
+            if (
+                exchange_time_exit_timestamp_ms is None
+                or exchange_time_exit_timestamp_ms <= 0
+            ):
+                print(
+                    "EXCHANGE_TIME_EXIT_SKIP -> "
+                    f"symbol={symbol} "
+                    f"side={exchange_time_exit_side} "
+                    f"timestamp={raw_timestamp} "
+                    "reason=missing_or_invalid_position_timestamp"
+                )
+                continue
+
+            exchange_time_exit_held_hours = max(
+                0.0,
+                (
+                    now_ms - exchange_time_exit_timestamp_ms
+                ) / 3_600_000.0,
+            )
+
+            raw_roe = exchange_position.get("percentage")
+            try:
+                exchange_time_exit_roe_pct = (
+                    None if raw_roe is None else float(raw_roe)
+                )
+            except (TypeError, ValueError):
+                exchange_time_exit_roe_pct = None
+
+            # The hard timeout is independent of ROE availability.
+            if (
+                exchange_hard_close_after_hours > 0.0
+                and exchange_time_exit_held_hours
+                >= exchange_hard_close_after_hours
+            ):
+                exchange_time_exit_reason = (
+                    "exchange_max_hold_timeout"
+                )
+
+            elif (
+                exchange_positive_after_hours > 0.0
+                and exchange_time_exit_held_hours
+                >= exchange_positive_after_hours
+                and exchange_time_exit_roe_pct is not None
+                and exchange_time_exit_roe_pct
+                > exchange_positive_min_roe_pct
+            ):
+                exchange_time_exit_reason = (
+                    "exchange_positive_roe_timeout"
+                )
+
+            print(
+                "EXCHANGE_TIME_EXIT_EVAL -> "
+                f"symbol={symbol} "
+                f"side={exchange_time_exit_side} "
+                f"held_hours={exchange_time_exit_held_hours:.6f} "
+                f"roe_pct={exchange_time_exit_roe_pct} "
+                f"positive_after_hours={exchange_positive_after_hours} "
+                f"positive_min_roe_pct={exchange_positive_min_roe_pct} "
+                f"hard_close_after_hours={exchange_hard_close_after_hours} "
+                f"decision={exchange_time_exit_reason or 'hold'}"
+            )
+
+            if exchange_time_exit_reason:
+                break
+
+    if exchange_time_exit_reason:
+        print(
+            "EXCHANGE_TIME_EXIT_TRIGGER -> "
+            f"symbol={symbol} "
+            f"side={exchange_time_exit_side} "
+            f"held_hours={exchange_time_exit_held_hours} "
+            f"roe_pct={exchange_time_exit_roe_pct} "
+            f"reason={exchange_time_exit_reason} "
+            f"live={LIVE_TRADING} "
+            f"dry_run={exchange_time_exit_dry_run}"
+        )
+
+        if exchange_time_exit_dry_run:
+            print(
+                "EXCHANGE_TIME_EXIT_DRY_RUN -> "
+                f"symbol={symbol} "
+                f"side={exchange_time_exit_side} "
+                f"held_hours={exchange_time_exit_held_hours} "
+                f"roe_pct={exchange_time_exit_roe_pct} "
+                f"reason={exchange_time_exit_reason} "
+                "action=would_close_position"
+            )
+
+        elif LIVE_TRADING:
+            bitget.flash_close_position(
+                symbol,
+                side=exchange_time_exit_side,
+            )
+
+            current_qty = refresh_current_qty(
+                bitget,
+                symbol,
+                attempts=3,
+                sleep_seconds=1.0,
+            )
+
+            print(
+                "EXCHANGE_TIME_EXIT_AFTER_CLOSE -> "
+                f"symbol={symbol} "
+                f"side={exchange_time_exit_side} "
+                f"reason={exchange_time_exit_reason} "
+                f"remaining_qty={current_qty}"
+            )
+
+            if abs(current_qty) > 1e-12:
+                raise RuntimeError(
+                    "Exchange time exit failed to flatten position: "
+                    f"symbol={symbol} "
+                    f"side={exchange_time_exit_side} "
+                    f"remaining_qty={current_qty}"
+                )
+
+        execution_snapshot[symbol] = {
+            "side": str(side),
+            "target_weight": float(target_weight),
+            "last": float(last),
+            "current_qty": float(current_qty),
+            "target_qty": float(target_qty),
+            "delta_qty": float(target_qty - current_qty),
+            "delta_notional": float(
+                abs(target_qty - current_qty) * last
+            ),
+            "action": str(exchange_time_exit_reason),
+            "blocked_reason": "",
+            "exchange_time_exit_enabled": True,
+            "exchange_position_side": str(exchange_time_exit_side),
+            "exchange_position_timestamp_ms": (
+                None
+                if exchange_time_exit_timestamp_ms is None
+                else int(exchange_time_exit_timestamp_ms)
+            ),
+            "exchange_held_hours": (
+                None
+                if exchange_time_exit_held_hours is None
+                else float(exchange_time_exit_held_hours)
+            ),
+            "exchange_roe_pct": (
+                None
+                if exchange_time_exit_roe_pct is None
+                else float(exchange_time_exit_roe_pct)
+            ),
+            "exchange_time_exit_dry_run": bool(
+                exchange_time_exit_dry_run
+            ),
+            "live_order_submitted": bool(
+                LIVE_TRADING
+                and not exchange_time_exit_dry_run
+            ),
+        }
+
+        clear_hold_state_symbol(hold_state, symbol)
+
+        print()
+
+        # Prevent immediate resize or re-entry after the timeout decision.
+        continue
+
     delta_qty = target_qty - current_qty
     delta_notional = abs(delta_qty) * last
 
