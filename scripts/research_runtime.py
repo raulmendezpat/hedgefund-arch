@@ -237,12 +237,26 @@ def _build_candidates_from_opportunities(opps) -> list[OpportunityCandidate]:
     candidates = []
     for opp in opps or []:
         meta = dict(getattr(opp, "meta", {}) or {})
+
+        candidate_ts = int(getattr(opp, "timestamp", 0) or 0)
+        candidate_symbol = str(getattr(opp, "symbol", "") or "")
+        candidate_strategy_id = str(getattr(opp, "strategy_id", "") or "")
+        candidate_side = str(getattr(opp, "side", "flat") or "flat")
+
+        if not str(meta.get("trace_candidate_id", "") or "").strip():
+            meta["trace_candidate_id"] = (
+                f"{candidate_ts}|"
+                f"{candidate_symbol}|"
+                f"{candidate_strategy_id}|"
+                f"{candidate_side}"
+            )
+
         candidates.append(
             OpportunityCandidate(
-                ts=int(getattr(opp, "timestamp", 0) or 0),
-                symbol=str(getattr(opp, "symbol", "") or ""),
-                strategy_id=str(getattr(opp, "strategy_id", "") or ""),
-                side=str(getattr(opp, "side", "flat") or "flat"),
+                ts=candidate_ts,
+                symbol=candidate_symbol,
+                strategy_id=candidate_strategy_id,
+                side=candidate_side,
                 signal_strength=float(getattr(opp, "strength", 0.0) or 0.0),
                 base_weight=float(meta.get("base_weight", 1.0) or 1.0),
                 signal_meta=meta,
@@ -3297,6 +3311,13 @@ def main() -> None:
         _cluster_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("after_cluster_controls_weights", {}) or {}).items()}
         _execution_stage_weights = {str(k): float(v or 0.0) for k, v in dict(_alloc_meta.get("performance_weights_by_symbol", {}) or {}).items()}
 
+        _execution_metadata = {
+            str(k): dict(v or {})
+            for k, v in dict(
+                _alloc_meta.get("performance_execution_metadata", {}) or {}
+            ).items()
+        }
+
         # Export contract:
         # gross_weight / active_symbols / effective_gross_weight must reflect the
         # final executable target weights exported in *_execution_target_weight.
@@ -3364,6 +3385,44 @@ def main() -> None:
             )
             _row[f"{_sym_key}_live_execution_max_target_weight"] = float(
                 _live_execution_max_target_weight(sym)
+            )
+
+            _exec_meta = dict(_execution_metadata.get(str(sym), {}) or {})
+
+            _row[f"{_sym_key}_trace_candidate_id"] = str(
+                _exec_meta.get("trace_candidate_id", "") or ""
+            )
+
+            _row[f"{_sym_key}_candidate_key"] = str(
+                _exec_meta.get("candidate_key", "") or ""
+            )
+
+            _row[f"{_sym_key}_strategy_id"] = str(
+                _exec_meta.get("strategy_id", "") or ""
+            )
+
+            _row[f"{_sym_key}_side"] = str(
+                _exec_meta.get("side", "") or ""
+            )
+
+            _row[f"{_sym_key}_policy_score"] = float(
+                _exec_meta.get("policy_score", 0.0) or 0.0
+            )
+
+            _row[f"{_sym_key}_p_win_prod"] = float(
+                _exec_meta.get("p_win_prod", 0.5) or 0.5
+            )
+
+            _row[f"{_sym_key}_expected_return"] = float(
+                _exec_meta.get("expected_return", 0.0) or 0.0
+            )
+
+            _row[f"{_sym_key}_bridge_projected_score"] = float(
+                _exec_meta.get("bridge_projected_score", 0.0) or 0.0
+            )
+
+            _row[f"{_sym_key}_alloc_input_id"] = str(
+                _exec_meta.get("alloc_input_id", "") or ""
             )
 
         rows.append(_row)
