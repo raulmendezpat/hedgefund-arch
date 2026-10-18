@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -102,6 +103,51 @@ class UniverseAndBandTests(unittest.TestCase):
         closing = d.loc[held_day + pd.Timedelta(days=6)]
         self.assertGreater(closing["turnover"], 0.0)
         self.assertLess(d.loc[d.index[-1], "gross_exposure"], 1.0 - 1e-9)
+
+
+class AttributionAndCostPanelTests(unittest.TestCase):
+    def test_detail_contributions_add_up_to_daily(self):
+        p = _panels()
+        p["funding"] = pd.DataFrame(0.0005, index=p["funding"].index, columns=p["funding"].columns)
+        cfg = MomentumConfig(**{**CFG.to_dict(), "fee": 0.0006, "slippage_bps": 3.0})
+        daily, parts = backtest(p, cfg, detail=True)
+        for k in ("gross", "funding", "cost"):
+            np.testing.assert_allclose(parts[k].sum(axis=1), daily[k], atol=1e-12)
+        pd.testing.assert_frame_equal(backtest(p, cfg), daily)
+
+    def test_per_asset_slippage_panel_overrides_flat_slippage(self):
+        p = _panels()
+        cfg = MomentumConfig(**{**CFG.to_dict(), "fee": 0.0, "slippage_bps": 3.0})
+        flat = backtest(p, cfg)
+        p_same = dict(p, slippage_bps=pd.DataFrame(3.0, index=p["exec_close"].index, columns=p["exec_close"].columns))
+        pd.testing.assert_frame_equal(backtest(p_same, cfg), flat)
+        p_wide = dict(p, slippage_bps=pd.DataFrame(30.0, index=p["exec_close"].index, columns=p["exec_close"].columns))
+        np.testing.assert_allclose(backtest(p_wide, cfg)["cost"], flat["cost"] * 10.0)
+
+
+class FundingAlignmentTests(unittest.TestCase):
+    def test_funding_events_are_charged_to_the_position_held_between_fills(self):
+        import tempfile
+
+        from hf_research.xs_momentum import load_daily_panels
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "ex"
+            (root / "1h").mkdir(parents=True)
+            (root / "funding").mkdir()
+            t = pd.date_range("2024-01-01", periods=24 * 4, freq="h", tz="UTC")
+            ms = t.as_unit("ms").asi8
+            pd.DataFrame({"timestamp": ms, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}).to_csv(
+                root / "1h" / "X_USDT_USDT.csv.gz", index=False, compression="gzip")
+            # Events at 00:00 (+3ms jitter) and 08:00 of Jan 2, and 00:00 of Jan 3.
+            ev = pd.to_datetime(["2024-01-02 00:00:00.003", "2024-01-02 08:00:00.000", "2024-01-03 00:00:00.000"], utc=True)
+            pd.DataFrame({"timestamp": ev.as_unit("ms").asi8, "funding_rate": [1.0, 10.0, 100.0]}).to_csv(
+                root / "funding" / "X_USDT_USDT.csv.gz", index=False, compression="gzip")
+            f = load_daily_panels(["X/USDT:USDT"], cache_dir=tmp, exchange="ex")["funding"]["X/USDT:USDT"]
+        # Fill at 01:00. Row Jan 1 holds 01:00 Jan 1 -> 01:00 Jan 2 (00:00 Jan 2 event);
+        # row Jan 2 holds 01:00 Jan 2 -> 01:00 Jan 3 (08:00 Jan 2 and 00:00 Jan 3 events).
+        self.assertEqual(float(f[f.index == pd.Timestamp("2024-01-01", tz="UTC")].iloc[0]), 1.0)
+        self.assertEqual(float(f[f.index == pd.Timestamp("2024-01-02", tz="UTC")].iloc[0]), 110.0)
 
 
 if __name__ == "__main__":

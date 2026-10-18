@@ -1,0 +1,43 @@
+{
+  "created_utc": "20261018T191928Z",
+  "months": [
+    "2026-08",
+    "2026-09",
+    "2026-10"
+  ],
+  "symbols_checked": 94,
+  "listed_on_bitget": 88,
+  "latest_month_top60_listed": 59,
+  "latest_month_top60_missing": [
+    "SAGA/USDT:USDT"
+  ],
+  "spread_bps_median": 3.3576152861358732,
+  "cost_bps_2000_median": 3.8160295312761328,
+  "cost_bps_10000_median": 6.210928375388058,
+  "cost_bps_50000_median": 12.24002015568243,
+  "cost_bps_2000_p90": 11.628282700339664,
+  "cost_bps_10000_p90": 21.994731626606306,
+  "cost_bps_50000_p90": 67.33400445683019,
+  "cost_bps_by_rank_tier": {
+    "1-10": {
+      "2000": 0.4196405822595728,
+      "10000": 0.9391644637052332,
+      "50000": 2.1306344119867426
+    },
+    "11-30": {
+      "2000": 2.1784542965452847,
+      "10000": 3.6118013415370465,
+      "50000": 7.785724909615821
+    },
+    "31-60": {
+      "2000": 3.551840379635851,
+      "10000": 5.427424621632371,
+      "50000": 11.335359974102289
+    }
+  },
+  "bitget_to_binance_quote_volume_note": "Bitget 24h volume is a single-day snapshot",
+  "bitget_quote_vol_24h_median": 2268949.122265,
+  "funding_daily_mean_bitget_avg": 0.00023237222365702482,
+  "funding_daily_mean_binance_avg": 0.00016591284564393942,
+  "funding_corr_median": 0.40511119152474134
+}

@@ -3,12 +3,14 @@
 Timing (no lookahead):
 - signal_close[d]: close of the 23:00 UTC 1h bar of day d (the daily close). Momentum and
   volatility at day d use signal closes <= d only.
-- exec_close[d]:   close of the 00:00 UTC bar of day d+1, i.e. one hour after the signal.
-  Weights decided at day d are filled at exec_close[d] and earn exec_close[d+1]/exec_close[d].
+- exec_close[d]:   close of the <exec_hour> UTC bar of day d+1 (default 00:00, i.e. one hour
+  after the signal). Weights decided at day d are filled at exec_close[d] and earn
+  exec_close[d+1]/exec_close[d].
 - Costs: |w_new - w_held| * (taker fee + slippage) at every fill, where w_held are the
-  previous weights after drifting with prices.
-- Funding: the position held over day d+1 pays sum(funding_rate) of that day times its weight
-  (longs pay positive funding, shorts receive it).
+  previous weights after drifting with prices. Slippage is cfg.slippage_bps, or a per-day,
+  per-asset panel when panels["slippage_bps"] is given.
+- Funding: every funding event between two consecutive fills is charged to the position held
+  in between (longs pay positive funding, shorts receive it).
 - Universe: optionally restricted per day by a boolean "eligible" panel (e.g. the point-in-time
   top-N liquidity membership of that month). A held asset that loses its price (delisting) is
   closed at its last available price.
@@ -54,9 +56,11 @@ class MomentumConfig:
 
 
 def load_daily_panels(
-    symbols: list[str], *, cache_dir: str = "data/cache", exchange: str = "binanceusdm"
+    symbols: list[str], *, cache_dir: str = "data/cache", exchange: str = "binanceusdm", exec_hour: int = 0
 ) -> dict[str, pd.DataFrame]:
     """signal_close / exec_close / funding panels indexed by UTC day, one column per symbol."""
+    # Fill for decision day d happens at the close of the exec bar: day d+1, (exec_hour + 1):00.
+    fill_offset = pd.Timedelta(hours=exec_hour + 1)
     sig, exe, fund = {}, {}, {}
     for s in symbols:
         df = pd.read_csv(_cache_path(cache_dir, exchange, s, "1h"))
@@ -65,15 +69,18 @@ def load_daily_panels(
         c = pd.Series(df["close"].astype(float).to_numpy(), index=t).sort_index()
         day = c.index.floor("D")
         sig[s] = c[c.index.hour == 23].set_axis(day[c.index.hour == 23])
-        # The 00:00 bar of day d+1 belongs to decision day d.
-        e = c[c.index.hour == 0]
+        # The exec_hour bar of day d+1 belongs to decision day d.
+        e = c[c.index.hour == exec_hour]
         exe[s] = e.set_axis(e.index.floor("D") - pd.Timedelta(days=1))
 
         fpath = _cache_path(cache_dir, exchange, s, "1h").parent.parent / "funding" / _cache_path(cache_dir, exchange, s, "1h").name
         if fpath.exists():
             f = pd.read_csv(fpath)
-            ft = pd.to_datetime(f["timestamp"], unit="ms", utc=True).dt.floor("D")
-            fund[s] = f.groupby(ft)["funding_rate"].sum()
+            # Row d holds the position from fill(d-1) to fill(d], i.e. funding events in
+            # (d + fill_offset, d + 1 day + fill_offset]. Timestamps carry a few ms of jitter.
+            ft = pd.to_datetime(f["timestamp"], unit="ms", utc=True).dt.round("min")
+            bucket = (ft - fill_offset - pd.Timedelta(milliseconds=1)).dt.floor("D")
+            fund[s] = f.groupby(bucket)["funding_rate"].sum()
     signal = pd.DataFrame(sig).sort_index()
     execp = pd.DataFrame(exe).reindex(signal.index)
     funding = pd.DataFrame(fund).reindex(signal.index).fillna(0.0)
@@ -124,10 +131,18 @@ def target_weights(signal_close: pd.DataFrame, cfg: MomentumConfig, eligible: pd
     return w
 
 
-def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig) -> pd.DataFrame:
-    """Daily P&L. Row d = return earned from exec_close[d-1] to exec_close[d]."""
+def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig, *, detail: bool = False):
+    """Daily P&L. Row d = return earned from exec_close[d-1] to exec_close[d].
+
+    With detail=True also returns per-asset daily contributions {"gross", "funding", "cost",
+    "weight"} (each day x asset) so P&L can be attributed to legs and symbols."""
     exe = panels["exec_close"]
     funding = panels["funding"]
+    slip = panels.get("slippage_bps")
+    if slip is not None:
+        unit_cost = (cfg.fee + slip.reindex(index=exe.index, columns=exe.columns).fillna(cfg.slippage_bps) / 10000.0)
+    else:
+        unit_cost = pd.DataFrame(cfg.cost_per_unit_turnover, index=exe.index, columns=exe.columns)
     targets = target_weights(panels["signal_close"], cfg, panels.get("eligible"))
     asset_ret = (exe / exe.shift(1) - 1.0).fillna(0.0)
     has_price = exe.notna()
@@ -135,19 +150,22 @@ def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig) -> pd.DataFra
     days = list(exe.index)
     held = pd.Series(0.0, index=exe.columns)
     rows = []
+    contrib = {k: [] for k in ("gross", "funding", "cost", "weight")}
     for n, d in enumerate(days):
         # 1) P&L of the position held since yesterday's fill.
-        gross = float((held * asset_ret.loc[d]).sum())
-        fund = float(-(held * funding.loc[d]).sum())
+        g_asset = held * asset_ret.loc[d]
+        f_asset = -(held * funding.loc[d])
+        gross = float(g_asset.sum())
+        fund = float(f_asset.sum())
+        held_before = held
         drifted = held * (1.0 + asset_ret.loc[d])
         total = float(1.0 + gross)
         held = drifted / total if total > 0 else drifted
         # 2) Positions in assets that lost their price (delisted) are closed at the last price.
-        cost = 0.0
-        turnover = 0.0
+        traded = pd.Series(0.0, index=exe.columns)
         dead = (held != 0.0) & ~has_price.loc[d]
         if dead.any():
-            turnover += float(held[dead].abs().sum())
+            traded = traded + held.where(dead, 0.0).abs()
             held = held.where(~dead, 0.0)
         # 3) Rebalance at today's exec close on the schedule (decided from today's signal close).
         if n % cfg.rebalance_days == 0:
@@ -159,14 +177,24 @@ def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig) -> pd.DataFra
                 resize = (held != 0.0) & (new != 0.0) & (np.sign(new) == np.sign(held))
                 small = resize & ((new - held).abs() < cfg.band)
                 new = new.where(~small, held)
-            turnover += float((new - held).abs().sum())
+            traded = traded + (new - held).abs()
             held = new
-        cost = turnover * cfg.cost_per_unit_turnover
+        turnover = float(traded.sum())
+        c_asset = traded * unit_cost.loc[d]
+        cost = float(c_asset.sum())
+        if detail:
+            contrib["gross"].append(g_asset)
+            contrib["funding"].append(f_asset)
+            contrib["cost"].append(c_asset)
+            contrib["weight"].append(held_before)
         rows.append(
             {"day": d, "gross": gross, "funding": fund, "cost": cost, "net": gross + fund - cost,
              "turnover": turnover, "gross_exposure": float(held.abs().sum()), "n_positions": int((held != 0).sum())}
         )
-    return pd.DataFrame(rows).set_index("day")
+    daily = pd.DataFrame(rows).set_index("day")
+    if not detail:
+        return daily
+    return daily, {k: pd.DataFrame(v, index=daily.index) for k, v in contrib.items()}
 
 
 def summarize(daily: pd.DataFrame, start: str | None = None, end: str | None = None) -> dict:
