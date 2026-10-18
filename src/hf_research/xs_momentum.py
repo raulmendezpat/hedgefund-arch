@@ -9,6 +9,9 @@ Timing (no lookahead):
   previous weights after drifting with prices.
 - Funding: the position held over day d+1 pays sum(funding_rate) of that day times its weight
   (longs pay positive funding, shorts receive it).
+- Universe: optionally restricted per day by a boolean "eligible" panel (e.g. the point-in-time
+  top-N liquidity membership of that month). A held asset that loses its price (delisting) is
+  closed at its last available price.
 """
 from __future__ import annotations
 
@@ -31,6 +34,8 @@ class MomentumConfig:
     min_assets: int = 8
     vol_window_days: int = 30
     vol_adjust_signal: bool = False
+    # Skip trades whose weight change is below this (absolute weight units); 0 = always trade.
+    band: float = 0.0
     fee: float = 0.0006
     slippage_bps: float = 3.0
 
@@ -41,7 +46,7 @@ class MomentumConfig:
     def key(self) -> str:
         return (
             f"{self.mode}|L{self.lookback_days}|S{self.skip_days}|R{self.rebalance_days}|"
-            f"{self.weighting}|f{self.select_frac}|va{int(self.vol_adjust_signal)}"
+            f"{self.weighting}|f{self.select_frac}|va{int(self.vol_adjust_signal)}|b{self.band}"
         )
 
     def to_dict(self) -> dict:
@@ -75,7 +80,17 @@ def load_daily_panels(
     return {"signal_close": signal, "exec_close": execp, "funding": funding}
 
 
-def target_weights(signal_close: pd.DataFrame, cfg: MomentumConfig) -> pd.DataFrame:
+def eligible_from_membership(membership: pd.DataFrame, index: pd.DatetimeIndex, columns) -> pd.DataFrame:
+    """Daily boolean panel: True when the symbol is in that calendar month's membership list.
+    Membership for a month must be computed from data before the month starts."""
+    months = pd.Series(index.strftime("%Y-%m"), index=index)
+    by_month = membership.groupby("month")["symbol"].apply(set).to_dict()
+    return pd.DataFrame(
+        {c: [c in by_month.get(m, set()) for m in months] for c in columns}, index=index
+    )
+
+
+def target_weights(signal_close: pd.DataFrame, cfg: MomentumConfig, eligible: pd.DataFrame | None = None) -> pd.DataFrame:
     """Target weights decided at each day's close (rows = decision day). NaN-safe, no lookahead."""
     px = signal_close
     mom = px.shift(cfg.skip_days) / px.shift(cfg.skip_days + cfg.lookback_days) - 1.0
@@ -83,6 +98,8 @@ def target_weights(signal_close: pd.DataFrame, cfg: MomentumConfig) -> pd.DataFr
     vol = rets.rolling(cfg.vol_window_days, min_periods=cfg.vol_window_days // 2).std()
     score = mom / vol if cfg.vol_adjust_signal else mom
     score = score.where(vol.notna())
+    if eligible is not None:
+        score = score.where(eligible.reindex(index=score.index, columns=score.columns).fillna(False).astype(bool))
 
     w = pd.DataFrame(0.0, index=px.index, columns=px.columns)
     for d in px.index:
@@ -111,8 +128,9 @@ def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig) -> pd.DataFra
     """Daily P&L. Row d = return earned from exec_close[d-1] to exec_close[d]."""
     exe = panels["exec_close"]
     funding = panels["funding"]
-    targets = target_weights(panels["signal_close"], cfg)
+    targets = target_weights(panels["signal_close"], cfg, panels.get("eligible"))
     asset_ret = (exe / exe.shift(1) - 1.0).fillna(0.0)
+    has_price = exe.notna()
 
     days = list(exe.index)
     held = pd.Series(0.0, index=exe.columns)
@@ -124,16 +142,26 @@ def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig) -> pd.DataFra
         drifted = held * (1.0 + asset_ret.loc[d])
         total = float(1.0 + gross)
         held = drifted / total if total > 0 else drifted
-        # 2) Rebalance at today's exec close on the schedule (decided from today's signal close).
+        # 2) Positions in assets that lost their price (delisted) are closed at the last price.
         cost = 0.0
         turnover = 0.0
+        dead = (held != 0.0) & ~has_price.loc[d]
+        if dead.any():
+            turnover += float(held[dead].abs().sum())
+            held = held.where(~dead, 0.0)
+        # 3) Rebalance at today's exec close on the schedule (decided from today's signal close).
         if n % cfg.rebalance_days == 0:
             new = targets.loc[d].fillna(0.0)
-            # Assets without an exec price today cannot be traded.
-            new = new.where(exe.loc[d].notna(), 0.0)
-            turnover = float((new - held).abs().sum())
-            cost = turnover * cfg.cost_per_unit_turnover
+            new = new.where(has_price.loc[d], 0.0)
+            if cfg.band > 0.0:
+                # Only resizes of an open position on the same side are skipped when small;
+                # opening, closing and flipping always trade.
+                resize = (held != 0.0) & (new != 0.0) & (np.sign(new) == np.sign(held))
+                small = resize & ((new - held).abs() < cfg.band)
+                new = new.where(~small, held)
+            turnover += float((new - held).abs().sum())
             held = new
+        cost = turnover * cfg.cost_per_unit_turnover
         rows.append(
             {"day": d, "gross": gross, "funding": fund, "cost": cost, "net": gross + fund - cost,
              "turnover": turnover, "gross_exposure": float(held.abs().sum()), "n_positions": int((held != 0).sum())}

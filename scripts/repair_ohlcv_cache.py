@@ -14,12 +14,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import time
 from pathlib import Path
 
 import pandas as pd
 
-from hf.data.ohlcv import _cache_path, drop_unclosed_candles, dt_to_ms_utc, timeframe_to_ms
+from hf.data.ohlcv import _cache_path, drop_unclosed_candles, dt_to_ms_utc, fetch_closed_window, timeframe_to_ms
 
 
 def _registry_symbols(path: str) -> list[str]:
@@ -30,25 +29,6 @@ def _registry_symbols(path: str) -> list[str]:
         if s and s not in out:
             out.append(s)
     return out
-
-
-def _fetch_window(ex, symbol: str, timeframe: str, since_ms: int, limit: int = 1000) -> pd.DataFrame:
-    rows = []
-    cur = int(since_ms)
-    now_ms = int(time.time() * 1000)
-    while cur <= now_ms:
-        batch = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=cur, limit=limit)
-        if not batch:
-            break
-        rows.extend(batch)
-        last_ts = int(batch[-1][0])
-        if last_ts < cur:
-            break
-        cur = last_ts + timeframe_to_ms(timeframe)
-    df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    if not df.empty:
-        df["timestamp"] = df["timestamp"].astype("int64")
-    return drop_unclosed_candles(df, timeframe)
 
 
 def main() -> None:
@@ -74,7 +54,7 @@ def main() -> None:
         cached = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["timestamp", *cols])
         if not cached.empty:
             cached["timestamp"] = cached["timestamp"].astype("int64")
-        fresh = _fetch_window(ex, symbol, args.timeframe, since_ms)
+        fresh = fetch_closed_window(ex, symbol, args.timeframe, since_ms)
 
         both = cached.merge(fresh, on="timestamp", suffixes=("_cached", "_fresh"))
         changed = int(

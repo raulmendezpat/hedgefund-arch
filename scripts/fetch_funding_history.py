@@ -25,6 +25,33 @@ def funding_cache_path(cache_dir: str, exchange: str, symbol: str) -> Path:
     return Path(cache_dir) / exchange / "funding" / f"{safe}.csv.gz"
 
 
+def update_funding(ex, symbol: str, since_ms: int, cache_dir: str, exchange: str) -> pd.DataFrame:
+    """Append funding rows after the cached max (or from since_ms) and write the merged file."""
+    path = funding_cache_path(cache_dir, exchange, symbol)
+    cached = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["timestamp", "funding_rate"])
+    cur = int(cached["timestamp"].max()) + 1 if len(cached) else int(since_ms)
+    now_ms = int(time.time() * 1000)
+    fetched = []
+    while cur < now_ms:
+        batch = ex.fetch_funding_rate_history(symbol, since=cur, limit=1000)
+        if not batch:
+            break
+        fetched.extend((int(b["timestamp"]), float(b["fundingRate"])) for b in batch)
+        last = int(batch[-1]["timestamp"])
+        if last < cur:
+            break
+        cur = last + 1
+    new = pd.DataFrame(fetched, columns=["timestamp", "funding_rate"])
+    merged = (
+        pd.concat([cached, new], ignore_index=True)
+        .drop_duplicates(subset=["timestamp"], keep="last")
+        .sort_values("timestamp")
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    merged.to_csv(path, index=False, compression="gzip")
+    return merged
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--strategy-registry", required=True)
@@ -39,32 +66,11 @@ def main() -> None:
     ex.load_markets()
     rows = json.loads(Path(args.strategy_registry).read_text(encoding="utf-8"))
     symbols = sorted({str(r["symbol"]) for r in rows if r.get("symbol")})
-    now_ms = int(time.time() * 1000)
 
     for symbol in symbols:
-        path = funding_cache_path(args.cache_dir, args.exchange, symbol)
-        cached = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["timestamp", "funding_rate"])
-        cur = int(cached["timestamp"].max()) + 1 if len(cached) else dt_to_ms_utc(args.since)
-        fetched = []
-        while cur < now_ms:
-            batch = ex.fetch_funding_rate_history(symbol, since=cur, limit=1000)
-            if not batch:
-                break
-            fetched.extend((int(b["timestamp"]), float(b["fundingRate"])) for b in batch)
-            last = int(batch[-1]["timestamp"])
-            if last < cur:
-                break
-            cur = last + 1
-        new = pd.DataFrame(fetched, columns=["timestamp", "funding_rate"])
-        merged = (
-            pd.concat([cached, new], ignore_index=True)
-            .drop_duplicates(subset=["timestamp"], keep="last")
-            .sort_values("timestamp")
-        )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        merged.to_csv(path, index=False, compression="gzip")
+        merged = update_funding(ex, symbol, dt_to_ms_utc(args.since), args.cache_dir, args.exchange)
         first = pd.to_datetime(merged["timestamp"].min(), unit="ms", utc=True) if len(merged) else None
-        print(f"{symbol}: rows={len(merged)} new={len(new)} first={first} mean_rate={merged['funding_rate'].mean():.6f}")
+        print(f"{symbol}: rows={len(merged)} first={first} mean_rate={merged['funding_rate'].mean():.6f}")
 
 
 if __name__ == "__main__":

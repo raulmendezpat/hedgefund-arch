@@ -1,0 +1,1423 @@
+{
+  "created_utc": "20261018T103314Z",
+  "git_sha": "4a79a94a681aa0c432294ebe304bc97fca778cf9",
+  "exchange": "binanceusdm",
+  "top_n": 60,
+  "window_days": 30,
+  "min_history_days": 60,
+  "markets_listed": 654,
+  "members_ever": 337,
+  "members_delisted": [
+    "AGIX/USDT:USDT",
+    "AI/USDT:USDT",
+    "AI16Z/USDT:USDT",
+    "ALPHA/USDT:USDT",
+    "AMB/USDT:USDT",
+    "ATA/USDT:USDT",
+    "BAKE/USDT:USDT",
+    "BID/USDT:USDT",
+    "BLZ/USDT:USDT",
+    "BNX/USDT:USDT",
+    "BOND/USDT:USDT",
+    "DEGO/USDT:USDT",
+    "DENT/USDT:USDT",
+    "FLM/USDT:USDT",
+    "FTM/USDT:USDT",
+    "FUN/USDT:USDT",
+    "HIFI/USDT:USDT",
+    "HIGH/USDT:USDT",
+    "HOOK/USDT:USDT",
+    "ICX/USDT:USDT",
+    "IP/USDT:USDT",
+    "LEVER/USDT:USDT",
+    "LINA/USDT:USDT",
+    "LRC/USDT:USDT",
+    "MKR/USDT:USDT",
+    "NEIROETH/USDT:USDT",
+    "NFP/USDT:USDT",
+    "NKN/USDT:USDT",
+    "OCEAN/USDT:USDT",
+    "OM/USDT:USDT",
+    "OMG/USDT:USDT",
+    "PERP/USDT:USDT",
+    "RDNT/USDT:USDT",
+    "REEF/USDT:USDT",
+    "REN/USDT:USDT",
+    "STG/USDT:USDT",
+    "STMX/USDT:USDT",
+    "STORJ/USDT:USDT",
+    "TON/USDT:USDT",
+    "TRU/USDT:USDT",
+    "UNFI/USDT:USDT",
+    "UXLINK/USDT:USDT",
+    "VANRY/USDT:USDT",
+    "VINE/USDT:USDT",
+    "WAVES/USDT:USDT",
+    "XEM/USDT:USDT"
+  ],
+  "excluded_bases": [
+    "BLUEBIRD",
+    "BTCDOM",
+    "BUSD",
+    "DAI",
+    "DEFI",
+    "EUR",
+    "FDUSD",
+    "FOOTBALL",
+    "PYUSD",
+    "TUSD",
+    "USDC",
+    "USDE",
+    "USDP"
+  ],
+  "hourly_status": {
+    "0G/USDT:USDT": {
+      "bars_1h": 9498,
+      "funding_rows": 3727
+    },
+    "1000BONK/USDT:USDT": {
+      "bars_1h": 25459,
+      "funding_rows": 6364
+    },
+    "1000FLOKI/USDT:USDT": {
+      "bars_1h": 30257,
+      "funding_rows": 3783
+    },
+    "1000LUNC/USDT:USDT": {
+      "bars_1h": 35996,
+      "funding_rows": 4500
+    },
+    "1000PEPE/USDT:USDT": {
+      "bars_1h": 30281,
+      "funding_rows": 3786
+    },
+    "1000RATS/USDT:USDT": {
+      "bars_1h": 24907,
+      "funding_rows": 6226
+    },
+    "1000SATS/USDT:USDT": {
+      "bars_1h": 24979,
+      "funding_rows": 6244
+    },
+    "1000SHIB/USDT:USDT": {
+      "bars_1h": 47680,
+      "funding_rows": 5961
+    },
+    "1000XEC/USDT:USDT": {
+      "bars_1h": 44574,
+      "funding_rows": 6035
+    },
+    "1INCH/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "1MBABYDOGE/USDT:USDT": {
+      "bars_1h": 18286,
+      "funding_rows": 4571
+    },
+    "AAVE/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "ACE/USDT:USDT": {
+      "bars_1h": 24839,
+      "funding_rows": 6466
+    },
+    "ACH/USDT:USDT": {
+      "bars_1h": 32011,
+      "funding_rows": 4003
+    },
+    "ACT/USDT:USDT": {
+      "bars_1h": 16941,
+      "funding_rows": 4234
+    },
+    "ADA/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "AEVO/USDT:USDT": {
+      "bars_1h": 22772,
+      "funding_rows": 5692
+    },
+    "AGIX/USDT:USDT": {
+      "bars_1h": 32155,
+      "funding_rows": 2565
+    },
+    "AGLD/USDT:USDT": {
+      "bars_1h": 28255,
+      "funding_rows": 3534
+    },
+    "AI/USDT:USDT": {
+      "bars_1h": 24333,
+      "funding_rows": 5045
+    },
+    "AI16Z/USDT:USDT": {
+      "bars_1h": 15692,
+      "funding_rows": 1847
+    },
+    "AIOT/USDT:USDT": {
+      "bars_1h": 12861,
+      "funding_rows": 3214
+    },
+    "AIXBT/USDT:USDT": {
+      "bars_1h": 15999,
+      "funding_rows": 3999
+    },
+    "AKE/USDT:USDT": {
+      "bars_1h": 9285,
+      "funding_rows": 2348
+    },
+    "ALCH/USDT:USDT": {
+      "bars_1h": 15574,
+      "funding_rows": 3893
+    },
+    "ALGO/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "ALICE/USDT:USDT": {
+      "bars_1h": 49014,
+      "funding_rows": 6885
+    },
+    "ALLO/USDT:USDT": {
+      "bars_1h": 8179,
+      "funding_rows": 2045
+    },
+    "ALPHA/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 5180
+    },
+    "ALT/USDT:USDT": {
+      "bars_1h": 23923,
+      "funding_rows": 5980
+    },
+    "AMB/USDT:USDT": {
+      "bars_1h": 31149,
+      "funding_rows": 4285
+    },
+    "ANIME/USDT:USDT": {
+      "bars_1h": 15184,
+      "funding_rows": 4075
+    },
+    "ANKR/USDT:USDT": {
+      "bars_1h": 50186,
+      "funding_rows": 6949
+    },
+    "APE/USDT:USDT": {
+      "bars_1h": 40218,
+      "funding_rows": 5028
+    },
+    "API3/USDT:USDT": {
+      "bars_1h": 40782,
+      "funding_rows": 8994
+    },
+    "APT/USDT:USDT": {
+      "bars_1h": 35047,
+      "funding_rows": 4383
+    },
+    "AR/USDT:USDT": {
+      "bars_1h": 44310,
+      "funding_rows": 5542
+    },
+    "ARB/USDT:USDT": {
+      "bars_1h": 31314,
+      "funding_rows": 3916
+    },
+    "ARC/USDT:USDT": {
+      "bars_1h": 15332,
+      "funding_rows": 3832
+    },
+    "ARIA/USDT:USDT": {
+      "bars_1h": 9838,
+      "funding_rows": 2574
+    },
+    "ARK/USDT:USDT": {
+      "bars_1h": 26995,
+      "funding_rows": 5402
+    },
+    "ARKM/USDT:USDT": {
+      "bars_1h": 28279,
+      "funding_rows": 3537
+    },
+    "ARPA/USDT:USDT": {
+      "bars_1h": 43806,
+      "funding_rows": 5476
+    },
+    "ASTER/USDT:USDT": {
+      "bars_1h": 9453,
+      "funding_rows": 2363
+    },
+    "ASTR/USDT:USDT": {
+      "bars_1h": 32215,
+      "funding_rows": 4030
+    },
+    "ATA/USDT:USDT": {
+      "bars_1h": 44982,
+      "funding_rows": 5170
+    },
+    "ATH/USDT:USDT": {
+      "bars_1h": 13530,
+      "funding_rows": 3382
+    },
+    "ATOM/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "AUCTION/USDT:USDT": {
+      "bars_1h": 24908,
+      "funding_rows": 6288
+    },
+    "AVAX/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "AXS/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 7326
+    },
+    "B/USDT:USDT": {
+      "bars_1h": 12329,
+      "funding_rows": 3082
+    },
+    "BAKE/USDT:USDT": {
+      "bars_1h": 47474,
+      "funding_rows": 4795
+    },
+    "BAN/USDT:USDT": {
+      "bars_1h": 16774,
+      "funding_rows": 4213
+    },
+    "BANANA/USDT:USDT": {
+      "bars_1h": 19063,
+      "funding_rows": 4920
+    },
+    "BANANAS31/USDT:USDT": {
+      "bars_1h": 13800,
+      "funding_rows": 3455
+    },
+    "BAND/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "BANK/USDT:USDT": {
+      "bars_1h": 13143,
+      "funding_rows": 3388
+    },
+    "BARD/USDT:USDT": {
+      "bars_1h": 9478,
+      "funding_rows": 3021
+    },
+    "BAT/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "BB/USDT:USDT": {
+      "bars_1h": 21309,
+      "funding_rows": 5326
+    },
+    "BCH/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "BEAT/USDT:USDT": {
+      "bars_1h": 8157,
+      "funding_rows": 2375
+    },
+    "BEL/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "BERA/USDT:USDT": {
+      "bars_1h": 14850,
+      "funding_rows": 3712
+    },
+    "BICO/USDT:USDT": {
+      "bars_1h": 26781,
+      "funding_rows": 3349
+    },
+    "BID/USDT:USDT": {
+      "bars_1h": 13848,
+      "funding_rows": 1842
+    },
+    "BIGTIME/USDT:USDT": {
+      "bars_1h": 26443,
+      "funding_rows": 6610
+    },
+    "BIO/USDT:USDT": {
+      "bars_1h": 15669,
+      "funding_rows": 4728
+    },
+    "BLESS/USDT:USDT": {
+      "bars_1h": 9360,
+      "funding_rows": 2339
+    },
+    "BLUR/USDT:USDT": {
+      "bars_1h": 30453,
+      "funding_rows": 4452
+    },
+    "BLZ/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6814
+    },
+    "BNB/USDT:USDT": {
+      "bars_1h": 58609,
+      "funding_rows": 6350
+    },
+    "BNT/USDT:USDT": {
+      "bars_1h": 27957,
+      "funding_rows": 3849
+    },
+    "BNX/USDT:USDT": {
+      "bars_1h": 32011,
+      "funding_rows": 4004
+    },
+    "BOME/USDT:USDT": {
+      "bars_1h": 22701,
+      "funding_rows": 5676
+    },
+    "BOND/USDT:USDT": {
+      "bars_1h": 26371,
+      "funding_rows": 3677
+    },
+    "BR/USDT:USDT": {
+      "bars_1h": 13821,
+      "funding_rows": 3454
+    },
+    "BSB/USDT:USDT": {
+      "bars_1h": 4966,
+      "funding_rows": 1241
+    },
+    "BTC/USDT:USDT": {
+      "bars_1h": 62320,
+      "funding_rows": 6350
+    },
+    "BTW/USDT:USDT": {
+      "bars_1h": 3259,
+      "funding_rows": 814
+    },
+    "C98/USDT:USDT": {
+      "bars_1h": 45150,
+      "funding_rows": 5644
+    },
+    "CAKE/USDT:USDT": {
+      "bars_1h": 25941,
+      "funding_rows": 6484
+    },
+    "CAP/USDT:USDT": {
+      "bars_1h": 2710,
+      "funding_rows": 678
+    },
+    "CELO/USDT:USDT": {
+      "bars_1h": 44334,
+      "funding_rows": 5542
+    },
+    "CELR/USDT:USDT": {
+      "bars_1h": 48698,
+      "funding_rows": 6088
+    },
+    "CFX/USDT:USDT": {
+      "bars_1h": 32059,
+      "funding_rows": 4009
+    },
+    "CHILLGUY/USDT:USDT": {
+      "bars_1h": 16555,
+      "funding_rows": 4138
+    },
+    "CHR/USDT:USDT": {
+      "bars_1h": 49106,
+      "funding_rows": 6139
+    },
+    "CHZ/USDT:USDT": {
+      "bars_1h": 50306,
+      "funding_rows": 6350
+    },
+    "CKB/USDT:USDT": {
+      "bars_1h": 31869,
+      "funding_rows": 3985
+    },
+    "CLO/USDT:USDT": {
+      "bars_1h": 8854,
+      "funding_rows": 2319
+    },
+    "COAI/USDT:USDT": {
+      "bars_1h": 9314,
+      "funding_rows": 3118
+    },
+    "COMP/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "COTI/USDT:USDT": {
+      "bars_1h": 49154,
+      "funding_rows": 7019
+    },
+    "COW/USDT:USDT": {
+      "bars_1h": 17060,
+      "funding_rows": 4264
+    },
+    "CRV/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "CTSI/USDT:USDT": {
+      "bars_1h": 43638,
+      "funding_rows": 5455
+    },
+    "CYBER/USDT:USDT": {
+      "bars_1h": 27693,
+      "funding_rows": 6806
+    },
+    "CYS/USDT:USDT": {
+      "bars_1h": 7438,
+      "funding_rows": 1859
+    },
+    "DASH/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "DEGO/USDT:USDT": {
+      "bars_1h": 16172,
+      "funding_rows": 2996
+    },
+    "DENT/USDT:USDT": {
+      "bars_1h": 48821,
+      "funding_rows": 5563
+    },
+    "DEXE/USDT:USDT": {
+      "bars_1h": 15910,
+      "funding_rows": 4282
+    },
+    "DOGE/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "DOGS/USDT:USDT": {
+      "bars_1h": 18789,
+      "funding_rows": 4696
+    },
+    "DOT/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "DUSK/USDT:USDT": {
+      "bars_1h": 41886,
+      "funding_rows": 6137
+    },
+    "DYDX/USDT:USDT": {
+      "bars_1h": 44742,
+      "funding_rows": 5595
+    },
+    "EDU/USDT:USDT": {
+      "bars_1h": 30405,
+      "funding_rows": 3807
+    },
+    "EGLD/USDT:USDT": {
+      "bars_1h": 50793,
+      "funding_rows": 6350
+    },
+    "EIGEN/USDT:USDT": {
+      "bars_1h": 17932,
+      "funding_rows": 4482
+    },
+    "ENA/USDT:USDT": {
+      "bars_1h": 22294,
+      "funding_rows": 5572
+    },
+    "ENJ/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7261
+    },
+    "ENS/USDT:USDT": {
+      "bars_1h": 42799,
+      "funding_rows": 5352
+    },
+    "ENSO/USDT:USDT": {
+      "bars_1h": 8857,
+      "funding_rows": 2355
+    },
+    "ESPORTS/USDT:USDT": {
+      "bars_1h": 10704,
+      "funding_rows": 3056
+    },
+    "ETC/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "ETH/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "ETHFI/USDT:USDT": {
+      "bars_1h": 22651,
+      "funding_rows": 5662
+    },
+    "EVAA/USDT:USDT": {
+      "bars_1h": 9120,
+      "funding_rows": 2279
+    },
+    "FARTCOIN/USDT:USDT": {
+      "bars_1h": 16000,
+      "funding_rows": 3999
+    },
+    "FET/USDT:USDT": {
+      "bars_1h": 32888,
+      "funding_rows": 4114
+    },
+    "FHE/USDT:USDT": {
+      "bars_1h": 13291,
+      "funding_rows": 3322
+    },
+    "FIL/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "FLM/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 8202
+    },
+    "FLOCK/USDT:USDT": {
+      "bars_1h": 9700,
+      "funding_rows": 2424
+    },
+    "FLOW/USDT:USDT": {
+      "bars_1h": 41071,
+      "funding_rows": 6390
+    },
+    "FORM/USDT:USDT": {
+      "bars_1h": 13874,
+      "funding_rows": 3468
+    },
+    "FTM/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 4892
+    },
+    "FUN/USDT:USDT": {
+      "bars_1h": 13586,
+      "funding_rows": 2823
+    },
+    "GALA/USDT:USDT": {
+      "bars_1h": 44551,
+      "funding_rows": 5571
+    },
+    "GAS/USDT:USDT": {
+      "bars_1h": 26144,
+      "funding_rows": 6574
+    },
+    "GIGGLE/USDT:USDT": {
+      "bars_1h": 8977,
+      "funding_rows": 2244
+    },
+    "GMT/USDT:USDT": {
+      "bars_1h": 40278,
+      "funding_rows": 5971
+    },
+    "GOAT/USDT:USDT": {
+      "bars_1h": 17373,
+      "funding_rows": 4342
+    },
+    "GRT/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "GTC/USDT:USDT": {
+      "bars_1h": 46927,
+      "funding_rows": 5910
+    },
+    "GUA/USDT:USDT": {
+      "bars_1h": 7224,
+      "funding_rows": 1905
+    },
+    "H/USDT:USDT": {
+      "bars_1h": 11521,
+      "funding_rows": 3295
+    },
+    "HBAR/USDT:USDT": {
+      "bars_1h": 48987,
+      "funding_rows": 6124
+    },
+    "HEI/USDT:USDT": {
+      "bars_1h": 14689,
+      "funding_rows": 3685
+    },
+    "HEMI/USDT:USDT": {
+      "bars_1h": 9966,
+      "funding_rows": 2493
+    },
+    "HIFI/USDT:USDT": {
+      "bars_1h": 27068,
+      "funding_rows": 4414
+    },
+    "HIGH/USDT:USDT": {
+      "bars_1h": 32384,
+      "funding_rows": 3673
+    },
+    "HOME/USDT:USDT": {
+      "bars_1h": 11879,
+      "funding_rows": 3314
+    },
+    "HOOK/USDT:USDT": {
+      "bars_1h": 32743,
+      "funding_rows": 3478
+    },
+    "HOT/USDT:USDT": {
+      "bars_1h": 48675,
+      "funding_rows": 6085
+    },
+    "HUMA/USDT:USDT": {
+      "bars_1h": 12237,
+      "funding_rows": 3058
+    },
+    "HYPE/USDT:USDT": {
+      "bars_1h": 12144,
+      "funding_rows": 3035
+    },
+    "HYPER/USDT:USDT": {
+      "bars_1h": 13053,
+      "funding_rows": 3412
+    },
+    "ICP/USDT:USDT": {
+      "bars_1h": 35576,
+      "funding_rows": 5959
+    },
+    "ICX/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6727
+    },
+    "ID/USDT:USDT": {
+      "bars_1h": 31316,
+      "funding_rows": 4412
+    },
+    "IMX/USDT:USDT": {
+      "bars_1h": 41047,
+      "funding_rows": 8436
+    },
+    "INJ/USDT:USDT": {
+      "bars_1h": 36560,
+      "funding_rows": 4572
+    },
+    "IO/USDT:USDT": {
+      "bars_1h": 20612,
+      "funding_rows": 5152
+    },
+    "IOST/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6568
+    },
+    "IOTA/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "IOTX/USDT:USDT": {
+      "bars_1h": 45439,
+      "funding_rows": 5682
+    },
+    "IP/USDT:USDT": {
+      "bars_1h": 14681,
+      "funding_rows": 3569
+    },
+    "JASMY/USDT:USDT": {
+      "bars_1h": 39415,
+      "funding_rows": 4930
+    },
+    "JELLYJELLY/USDT:USDT": {
+      "bars_1h": 13698,
+      "funding_rows": 3437
+    },
+    "JTO/USDT:USDT": {
+      "bars_1h": 25080,
+      "funding_rows": 6269
+    },
+    "JUP/USDT:USDT": {
+      "bars_1h": 23776,
+      "funding_rows": 5941
+    },
+    "KAIA/USDT:USDT": {
+      "bars_1h": 16388,
+      "funding_rows": 4181
+    },
+    "KAITO/USDT:USDT": {
+      "bars_1h": 14517,
+      "funding_rows": 3628
+    },
+    "KAVA/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 8124
+    },
+    "KITE/USDT:USDT": {
+      "bars_1h": 8496,
+      "funding_rows": 2123
+    },
+    "KNC/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "KSM/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "LAB/USDT:USDT": {
+      "bars_1h": 8780,
+      "funding_rows": 2583
+    },
+    "LAYER/USDT:USDT": {
+      "bars_1h": 14731,
+      "funding_rows": 5799
+    },
+    "LDO/USDT:USDT": {
+      "bars_1h": 35686,
+      "funding_rows": 4462
+    },
+    "LEVER/USDT:USDT": {
+      "bars_1h": 31150,
+      "funding_rows": 2665
+    },
+    "LIGHT/USDT:USDT": {
+      "bars_1h": 9263,
+      "funding_rows": 2386
+    },
+    "LINA/USDT:USDT": {
+      "bars_1h": 48939,
+      "funding_rows": 4660
+    },
+    "LINEA/USDT:USDT": {
+      "bars_1h": 9890,
+      "funding_rows": 2471
+    },
+    "LINK/USDT:USDT": {
+      "bars_1h": 59186,
+      "funding_rows": 6350
+    },
+    "LIT/USDT:USDT": {
+      "bars_1h": 7169,
+      "funding_rows": 1791
+    },
+    "LPT/USDT:USDT": {
+      "bars_1h": 43255,
+      "funding_rows": 9624
+    },
+    "LQTY/USDT:USDT": {
+      "bars_1h": 31630,
+      "funding_rows": 3957
+    },
+    "LRC/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6441
+    },
+    "LSK/USDT:USDT": {
+      "bars_1h": 23924,
+      "funding_rows": 7131
+    },
+    "LTC/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "LUNA2/USDT:USDT": {
+      "bars_1h": 35983,
+      "funding_rows": 5997
+    },
+    "LYN/USDT:USDT": {
+      "bars_1h": 9051,
+      "funding_rows": 2761
+    },
+    "M/USDT:USDT": {
+      "bars_1h": 11233,
+      "funding_rows": 3737
+    },
+    "MAGIC/USDT:USDT": {
+      "bars_1h": 32695,
+      "funding_rows": 5725
+    },
+    "MANA/USDT:USDT": {
+      "bars_1h": 49035,
+      "funding_rows": 6130
+    },
+    "MANTA/USDT:USDT": {
+      "bars_1h": 24092,
+      "funding_rows": 6022
+    },
+    "MASK/USDT:USDT": {
+      "bars_1h": 45079,
+      "funding_rows": 7882
+    },
+    "MAV/USDT:USDT": {
+      "bars_1h": 28966,
+      "funding_rows": 3624
+    },
+    "MEME/USDT:USDT": {
+      "bars_1h": 25918,
+      "funding_rows": 6478
+    },
+    "MEW/USDT:USDT": {
+      "bars_1h": 20468,
+      "funding_rows": 5116
+    },
+    "MINA/USDT:USDT": {
+      "bars_1h": 32375,
+      "funding_rows": 4060
+    },
+    "MKR/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 5135
+    },
+    "MON/USDT:USDT": {
+      "bars_1h": 8955,
+      "funding_rows": 2238
+    },
+    "MOODENG/USDT:USDT": {
+      "bars_1h": 17352,
+      "funding_rows": 4337
+    },
+    "MOVE/USDT:USDT": {
+      "bars_1h": 16268,
+      "funding_rows": 4102
+    },
+    "MTL/USDT:USDT": {
+      "bars_1h": 48651,
+      "funding_rows": 6302
+    },
+    "MUBARAK/USDT:USDT": {
+      "bars_1h": 13917,
+      "funding_rows": 3478
+    },
+    "MYX/USDT:USDT": {
+      "bars_1h": 11686,
+      "funding_rows": 4388
+    },
+    "NEAR/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "NEIRO/USDT:USDT": {
+      "bars_1h": 18287,
+      "funding_rows": 4571
+    },
+    "NEIROETH/USDT:USDT": {
+      "bars_1h": 18524,
+      "funding_rows": 2309
+    },
+    "NEO/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "NFP/USDT:USDT": {
+      "bars_1h": 24621,
+      "funding_rows": 5521
+    },
+    "NKN/USDT:USDT": {
+      "bars_1h": 48435,
+      "funding_rows": 6169
+    },
+    "NMR/USDT:USDT": {
+      "bars_1h": 29134,
+      "funding_rows": 6975
+    },
+    "NOM/USDT:USDT": {
+      "bars_1h": 9170,
+      "funding_rows": 2495
+    },
+    "NOT/USDT:USDT": {
+      "bars_1h": 21236,
+      "funding_rows": 5308
+    },
+    "OCEAN/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 4892
+    },
+    "OGN/USDT:USDT": {
+      "bars_1h": 48627,
+      "funding_rows": 6784
+    },
+    "OM/USDT:USDT": {
+      "bars_1h": 23468,
+      "funding_rows": 4623
+    },
+    "OMG/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 4896
+    },
+    "ONDO/USDT:USDT": {
+      "bars_1h": 24045,
+      "funding_rows": 6010
+    },
+    "ONE/USDT:USDT": {
+      "bars_1h": 48963,
+      "funding_rows": 6429
+    },
+    "ONG/USDT:USDT": {
+      "bars_1h": 25341,
+      "funding_rows": 6750
+    },
+    "ONT/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7705
+    },
+    "OP/USDT:USDT": {
+      "bars_1h": 38396,
+      "funding_rows": 4801
+    },
+    "ORCA/USDT:USDT": {
+      "bars_1h": 16339,
+      "funding_rows": 5102
+    },
+    "ORDI/USDT:USDT": {
+      "bars_1h": 25822,
+      "funding_rows": 6454
+    },
+    "PAXG/USDT:USDT": {
+      "bars_1h": 13680,
+      "funding_rows": 3420
+    },
+    "PENDLE/USDT:USDT": {
+      "bars_1h": 28280,
+      "funding_rows": 3543
+    },
+    "PENGU/USDT:USDT": {
+      "bars_1h": 16074,
+      "funding_rows": 4018
+    },
+    "PEOPLE/USDT:USDT": {
+      "bars_1h": 42222,
+      "funding_rows": 5280
+    },
+    "PERP/USDT:USDT": {
+      "bars_1h": 31726,
+      "funding_rows": 5295
+    },
+    "PIPPIN/USDT:USDT": {
+      "bars_1h": 15168,
+      "funding_rows": 5128
+    },
+    "PIXEL/USDT:USDT": {
+      "bars_1h": 23323,
+      "funding_rows": 5869
+    },
+    "PLAY/USDT:USDT": {
+      "bars_1h": 10657,
+      "funding_rows": 2689
+    },
+    "PNUT/USDT:USDT": {
+      "bars_1h": 16942,
+      "funding_rows": 4234
+    },
+    "POLYX/USDT:USDT": {
+      "bars_1h": 26144,
+      "funding_rows": 6636
+    },
+    "POPCAT/USDT:USDT": {
+      "bars_1h": 18885,
+      "funding_rows": 4720
+    },
+    "POWER/USDT:USDT": {
+      "bars_1h": 7585,
+      "funding_rows": 2081
+    },
+    "PROM/USDT:USDT": {
+      "bars_1h": 15382,
+      "funding_rows": 3903
+    },
+    "PUMP/USDT:USDT": {
+      "bars_1h": 11163,
+      "funding_rows": 3197
+    },
+    "PYTH/USDT:USDT": {
+      "bars_1h": 25460,
+      "funding_rows": 6364
+    },
+    "QTUM/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "RAVE/USDT:USDT": {
+      "bars_1h": 7387,
+      "funding_rows": 2056
+    },
+    "RAYSOL/USDT:USDT": {
+      "bars_1h": 16246,
+      "funding_rows": 4056
+    },
+    "RDNT/USDT:USDT": {
+      "bars_1h": 31006,
+      "funding_rows": 3311
+    },
+    "REEF/USDT:USDT": {
+      "bars_1h": 49539,
+      "funding_rows": 5473
+    },
+    "REN/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 4892
+    },
+    "RENDER/USDT:USDT": {
+      "bars_1h": 19536,
+      "funding_rows": 4883
+    },
+    "RESOLV/USDT:USDT": {
+      "bars_1h": 11877,
+      "funding_rows": 3746
+    },
+    "REZ/USDT:USDT": {
+      "bars_1h": 21620,
+      "funding_rows": 5404
+    },
+    "RIF/USDT:USDT": {
+      "bars_1h": 26230,
+      "funding_rows": 6632
+    },
+    "RIVER/USDT:USDT": {
+      "bars_1h": 8780,
+      "funding_rows": 3227
+    },
+    "RLC/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6448
+    },
+    "ROSE/USDT:USDT": {
+      "bars_1h": 42055,
+      "funding_rows": 5260
+    },
+    "RSR/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "RUNE/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "RVN/USDT:USDT": {
+      "bars_1h": 49515,
+      "funding_rows": 8462
+    },
+    "S/USDT:USDT": {
+      "bars_1h": 15360,
+      "funding_rows": 3839
+    },
+    "SAGA/USDT:USDT": {
+      "bars_1h": 22128,
+      "funding_rows": 5533
+    },
+    "SAHARA/USDT:USDT": {
+      "bars_1h": 11494,
+      "funding_rows": 3708
+    },
+    "SAND/USDT:USDT": {
+      "bars_1h": 50211,
+      "funding_rows": 6277
+    },
+    "SEI/USDT:USDT": {
+      "bars_1h": 27800,
+      "funding_rows": 3477
+    },
+    "SENT/USDT:USDT": {
+      "bars_1h": 8110,
+      "funding_rows": 2505
+    },
+    "SFP/USDT:USDT": {
+      "bars_1h": 49491,
+      "funding_rows": 6187
+    },
+    "SIGN/USDT:USDT": {
+      "bars_1h": 12911,
+      "funding_rows": 4813
+    },
+    "SIREN/USDT:USDT": {
+      "bars_1h": 13801,
+      "funding_rows": 3924
+    },
+    "SKL/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7518
+    },
+    "SKYAI/USDT:USDT": {
+      "bars_1h": 12553,
+      "funding_rows": 3137
+    },
+    "SLX/USDT:USDT": {
+      "bars_1h": 3339,
+      "funding_rows": 1025
+    },
+    "SNX/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "SOL/USDT:USDT": {
+      "bars_1h": 53403,
+      "funding_rows": 6425
+    },
+    "SOON/USDT:USDT": {
+      "bars_1h": 12314,
+      "funding_rows": 4166
+    },
+    "SPK/USDT:USDT": {
+      "bars_1h": 11713,
+      "funding_rows": 2927
+    },
+    "SPX/USDT:USDT": {
+      "bars_1h": 16246,
+      "funding_rows": 4060
+    },
+    "SSV/USDT:USDT": {
+      "bars_1h": 31966,
+      "funding_rows": 4000
+    },
+    "STG/USDT:USDT": {
+      "bars_1h": 36358,
+      "funding_rows": 4864
+    },
+    "STMX/USDT:USDT": {
+      "bars_1h": 48867,
+      "funding_rows": 6519
+    },
+    "STO/USDT:USDT": {
+      "bars_1h": 13292,
+      "funding_rows": 3444
+    },
+    "STORJ/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7046
+    },
+    "STRK/USDT:USDT": {
+      "bars_1h": 23297,
+      "funding_rows": 5824
+    },
+    "STX/USDT:USDT": {
+      "bars_1h": 32036,
+      "funding_rows": 4006
+    },
+    "SUI/USDT:USDT": {
+      "bars_1h": 30330,
+      "funding_rows": 3792
+    },
+    "SUSHI/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "SWARMS/USDT:USDT": {
+      "bars_1h": 15574,
+      "funding_rows": 3892
+    },
+    "SYN/USDT:USDT": {
+      "bars_1h": 19030,
+      "funding_rows": 4756
+    },
+    "TA/USDT:USDT": {
+      "bars_1h": 10899,
+      "funding_rows": 2724
+    },
+    "TAO/USDT:USDT": {
+      "bars_1h": 22076,
+      "funding_rows": 5518
+    },
+    "THETA/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "TIA/USDT:USDT": {
+      "bars_1h": 25984,
+      "funding_rows": 6495
+    },
+    "TLM/USDT:USDT": {
+      "bars_1h": 31150,
+      "funding_rows": 6472
+    },
+    "TNSR/USDT:USDT": {
+      "bars_1h": 22145,
+      "funding_rows": 6324
+    },
+    "TON/USDT:USDT": {
+      "bars_1h": 23062,
+      "funding_rows": 5064
+    },
+    "TRADOOR/USDT:USDT": {
+      "bars_1h": 9454,
+      "funding_rows": 2363
+    },
+    "TRB/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 9655
+    },
+    "TRU/USDT:USDT": {
+      "bars_1h": 31702,
+      "funding_rows": 3426
+    },
+    "TRUMP/USDT:USDT": {
+      "bars_1h": 15309,
+      "funding_rows": 3826
+    },
+    "TRX/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "TURBO/USDT:USDT": {
+      "bars_1h": 20899,
+      "funding_rows": 5224
+    },
+    "TUT/USDT:USDT": {
+      "bars_1h": 13849,
+      "funding_rows": 3461
+    },
+    "UAI/USDT:USDT": {
+      "bars_1h": 8303,
+      "funding_rows": 2430
+    },
+    "UB/USDT:USDT": {
+      "bars_1h": 9624,
+      "funding_rows": 2405
+    },
+    "UMA/USDT:USDT": {
+      "bars_1h": 30166,
+      "funding_rows": 6781
+    },
+    "UNFI/USDT:USDT": {
+      "bars_1h": 49611,
+      "funding_rows": 6740
+    },
+    "UNI/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "US/USDT:USDT": {
+      "bars_1h": 7440,
+      "funding_rows": 1859
+    },
+    "USELESS/USDT:USDT": {
+      "bars_1h": 10294,
+      "funding_rows": 2573
+    },
+    "USUAL/USDT:USDT": {
+      "bars_1h": 16053,
+      "funding_rows": 4012
+    },
+    "UXLINK/USDT:USDT": {
+      "bars_1h": 18307,
+      "funding_rows": 2255
+    },
+    "VANRY/USDT:USDT": {
+      "bars_1h": 22769,
+      "funding_rows": 5341
+    },
+    "VELVET/USDT:USDT": {
+      "bars_1h": 11041,
+      "funding_rows": 2759
+    },
+    "VET/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "VINE/USDT:USDT": {
+      "bars_1h": 15168,
+      "funding_rows": 2754
+    },
+    "VIRTUAL/USDT:USDT": {
+      "bars_1h": 16246,
+      "funding_rows": 4060
+    },
+    "VVV/USDT:USDT": {
+      "bars_1h": 15050,
+      "funding_rows": 3762
+    },
+    "W/USDT:USDT": {
+      "bars_1h": 22267,
+      "funding_rows": 5566
+    },
+    "WAVES/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 4892
+    },
+    "WCT/USDT:USDT": {
+      "bars_1h": 13223,
+      "funding_rows": 4172
+    },
+    "WIF/USDT:USDT": {
+      "bars_1h": 24092,
+      "funding_rows": 6022
+    },
+    "WLD/USDT:USDT": {
+      "bars_1h": 28366,
+      "funding_rows": 3546
+    },
+    "WLFI/USDT:USDT": {
+      "bars_1h": 10106,
+      "funding_rows": 2525
+    },
+    "WOO/USDT:USDT": {
+      "bars_1h": 39703,
+      "funding_rows": 4965
+    },
+    "XAUT/USDT:USDT": {
+      "bars_1h": 4940,
+      "funding_rows": 1234
+    },
+    "XEM/USDT:USDT": {
+      "bars_1h": 49323,
+      "funding_rows": 4708
+    },
+    "XLM/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "XMR/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "XPL/USDT:USDT": {
+      "bars_1h": 10129,
+      "funding_rows": 2531
+    },
+    "XRP/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "XTZ/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7753
+    },
+    "XVG/USDT:USDT": {
+      "bars_1h": 28822,
+      "funding_rows": 3620
+    },
+    "YFI/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "YGG/USDT:USDT": {
+      "bars_1h": 28087,
+      "funding_rows": 6827
+    },
+    "ZEC/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "ZEN/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 6350
+    },
+    "ZIL/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7290
+    },
+    "ZK/USDT:USDT": {
+      "bars_1h": 20471,
+      "funding_rows": 5162
+    },
+    "ZORA/USDT:USDT": {
+      "bars_1h": 10799,
+      "funding_rows": 2699
+    },
+    "ZRO/USDT:USDT": {
+      "bars_1h": 20396,
+      "funding_rows": 5098
+    },
+    "ZRX/USDT:USDT": {
+      "bars_1h": 50794,
+      "funding_rows": 7357
+    },
+    "\u5e01\u5b89\u4eba\u751f/USDT:USDT": {
+      "bars_1h": 8711,
+      "funding_rows": 2177
+    },
+    "\u9f99\u867e/USDT:USDT": {
+      "bars_1h": 5303,
+      "funding_rows": 1325
+    }
+  }
+}

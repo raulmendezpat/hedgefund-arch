@@ -173,6 +173,28 @@ def fetch_ohlcv_ccxt(
     return df_out
 
 
+def fetch_closed_window(ex, symbol: str, timeframe: str, since_ms: int, limit: int = 1000) -> pd.DataFrame:
+    """Paginate ex.fetch_ohlcv from since_ms to now and keep closed candles only."""
+    rows = []
+    cur = int(since_ms)
+    now_ms = int(time.time() * 1000)
+    step = timeframe_to_ms(timeframe)
+    while cur <= now_ms:
+        batch = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=cur, limit=limit)
+        if not batch:
+            break
+        rows.extend(batch)
+        last_ts = int(batch[-1][0])
+        if last_ts < cur:
+            break
+        cur = last_ts + step
+    df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    if not df.empty:
+        df["timestamp"] = df["timestamp"].astype("int64")
+        df = df.drop_duplicates(subset=["timestamp"], keep="last")
+    return drop_unclosed_candles(df, timeframe)
+
+
 def dt_to_ms_utc(s: str) -> int:
     # expects "YYYY-MM-DD HH:MM:SS"
     dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
