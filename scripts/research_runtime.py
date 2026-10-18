@@ -2020,6 +2020,9 @@ def compute_metrics(port_ret: pd.Series, equity: pd.Series) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--sim-entry-fill-mode", default="signal_close", choices=["signal_close", "prev_close_legacy"], help="Simulated entry fill price. prev_close_legacy has one bar of lookahead; use only to reproduce old results")
+    ap.add_argument("--sim-entry-fee-mode", default="taker", choices=["taker", "maker"], help="Fee charged on simulated entries (live entries are market orders)")
+    ap.add_argument("--sim-slippage-bps", type=float, default=3.0, help="Adverse slippage in bps applied to each simulated entry and exit fill")
     ap.add_argument("--exit-registry-json", default="", help="Optional exit policy registry JSON with default/strategy/strategy_side overrides")
     ap.add_argument("--name", required=True)
     ap.add_argument("--start", required=True)
@@ -2359,9 +2362,15 @@ def main() -> None:
     equity = 1000.0
     prev_alloc = None
 
+    _entry_fill_mode = str(getattr(args, "sim_entry_fill_mode", "signal_close") or "signal_close")
+    _entry_fee_mode = str(getattr(args, "sim_entry_fee_mode", "taker") or "taker")
+    _sim_slippage_bps = float(getattr(args, "sim_slippage_bps", 0.0) or 0.0)
+    _entry_slippage = _sim_slippage_bps / 10000.0
+
     lifecycle_engine = TradeLifecycleEngine(
         maker_fee=0.0002,
         taker_fee=0.0006,
+        exit_slippage_bps=_sim_slippage_bps,
         cooldown_after_close_bars=int(getattr(args, "shadow_cooldown_after_close_bars", 1) or 0),
     )
     target_lifecycle_engine = TargetPositionLifecycleEngine()
@@ -2895,24 +2904,37 @@ def main() -> None:
             _stale_bars_held = int(getattr(_pos, "bars_held", 0) or 0)
             _stale_strategy_id = str(getattr(_pos, "strategy_id", "") or "")
 
-            _decision = lifecycle_engine.evaluate_exit(
-                symbol=_sym,
-                prev_bar=_prev_bar,
-                current_bar=_current_bar,
-                exit_policy_cfg={"sl_mult": 0.0, "tp_mult": 0.0, "time_stop_bars": 0},
-                context={
-                    "target_weight": 0.0,
-                    "signal_side": "flat",
-                    "strategy_id": _stale_strategy_id,
-                    "ctx_exit_profile": "force_flat_cleanup",
-                    "ctx_tp_mult": 0.0,
-                    "ctx_sl_mult": 0.0,
-                    "ctx_time_stop_bars": 0,
-                },
-                exit_ts=int(_current_bar["timestamp"]),
-            )
+            if _entry_fill_mode != "prev_close_legacy":
+                # Target went flat on information from bar ts, so the position is closed
+                # with a market order at that bar's close (protective TP/SL for bar ts were
+                # already evaluated in the regular exit loop above).
+                _pos.bars_held += 1
+                _stale_closed = lifecycle_engine.force_close(
+                    symbol=_sym,
+                    exit_ts=int(_current_bar["timestamp"]),
+                    exit_price=_f(_current_bar.get("close"), _stale_entry_px),
+                    exit_reason="stale_shadow_cleanup",
+                ) is not None
+            else:
+                _decision = lifecycle_engine.evaluate_exit(
+                    symbol=_sym,
+                    prev_bar=_prev_bar,
+                    current_bar=_current_bar,
+                    exit_policy_cfg={"sl_mult": 0.0, "tp_mult": 0.0, "time_stop_bars": 0},
+                    context={
+                        "target_weight": 0.0,
+                        "signal_side": "flat",
+                        "strategy_id": _stale_strategy_id,
+                        "ctx_exit_profile": "force_flat_cleanup",
+                        "ctx_tp_mult": 0.0,
+                        "ctx_sl_mult": 0.0,
+                        "ctx_time_stop_bars": 0,
+                    },
+                    exit_ts=int(_current_bar["timestamp"]),
+                )
+                _stale_closed = str(getattr(_decision, "action", "")).lower() == "close"
 
-            if str(getattr(_decision, "action", "")).lower() == "close":
+            if _stale_closed:
                 _rec = lifecycle_engine.trade_log[-1]
                 lifecycle_balance += float(_rec.pnl)
                 lifecycle_event_rows.append(
@@ -3014,16 +3036,20 @@ def main() -> None:
                     shadow_entry_debug[sym] = _dbg
                     continue
 
-                prev_raw = df.iloc[i - 1]
-                entry_px = _f(prev_raw.get("close"), 0.0)
+                # The signal at ts is computed from bar ts (its close is already known), so the
+                # earliest realistic fill is that bar's close. "prev_close_legacy" reproduces the
+                # old behaviour, which filled at the previous close and leaked one bar of future.
+                _fill_i = i - 1 if _entry_fill_mode == "prev_close_legacy" else i
+                entry_px = _f(df.iloc[_fill_i].get("close"), 0.0)
+                if entry_px > 0.0 and _entry_slippage > 0.0:
+                    entry_px = entry_px * ((1.0 + _entry_slippage) if side == "long" else (1.0 - _entry_slippage))
 
                 prev_feats = {}
                 for feat_name, feat_series in feature_series_by_symbol[sym].items():
-                    if (i - 1) >= 0:
-                        try:
-                            prev_feats[feat_name] = float(feat_series.iloc[i - 1])
-                        except Exception:
-                            pass
+                    try:
+                        prev_feats[feat_name] = float(feat_series.iloc[_fill_i])
+                    except Exception:
+                        pass
 
                 atr = _f(prev_feats.get("atr"), 0.0)
                 adx = _f(prev_feats.get("adx"), float("nan"))
@@ -3044,7 +3070,7 @@ def main() -> None:
                 notional_frac = min(max(abs(target_weight), 0.01), 0.30)
                 notional = lifecycle_balance * notional_frac
                 qty = notional / entry_px
-                fee = notional * lifecycle_engine.maker_fee
+                fee = notional * (lifecycle_engine.taker_fee if _entry_fee_mode == "taker" else lifecycle_engine.maker_fee)
                 lifecycle_balance -= fee
 
                 _c_signal_meta = dict(getattr(c, "signal_meta", {}) or {})

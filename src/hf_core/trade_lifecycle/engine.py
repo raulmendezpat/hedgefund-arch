@@ -20,6 +20,8 @@ def _f(x: Any, default: float = 0.0) -> float:
 class TradeLifecycleEngine:
     maker_fee: float = 0.0
     taker_fee: float = 0.0
+    # Adverse slippage applied to every simulated exit fill (live exits are market/trigger-market).
+    exit_slippage_bps: float = 0.0
     cooldown_after_close_bars: int = 0
 
     open_positions: dict[str, PositionState] = field(default_factory=dict)
@@ -86,6 +88,10 @@ class TradeLifecycleEngine:
         exit_price: float,
         exit_reason: str,
     ) -> TradeRecord:
+        slip = float(self.exit_slippage_bps) / 10000.0
+        if slip > 0.0:
+            # Long exits sell (fill lower), short exits buy (fill higher).
+            exit_price = float(exit_price) * ((1.0 - slip) if str(position.side).lower() == "long" else (1.0 + slip))
         fee = float(abs(exit_price * position.qty) * self.taker_fee)
 
         if str(position.side).lower() == "long":

@@ -3,9 +3,35 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import time
 from typing import Optional
 
 import pandas as pd
+
+
+# Bars re-fetched behind the cached max on every refresh, so candles that were
+# stored while still forming (older cache versions) get overwritten.
+REFETCH_OVERLAP_BARS = 3
+
+_TF_UNIT_MS = {"m": 60_000, "h": 3_600_000, "d": 86_400_000, "w": 604_800_000}
+
+
+def timeframe_to_ms(timeframe: str) -> int:
+    tf = str(timeframe).strip()
+    unit = tf[-1].lower()
+    if unit not in _TF_UNIT_MS or not tf[:-1].isdigit():
+        raise ValueError(f"unsupported timeframe: {timeframe!r}")
+    return int(tf[:-1]) * _TF_UNIT_MS[unit]
+
+
+def drop_unclosed_candles(df: pd.DataFrame, timeframe: str, now_ms: Optional[int] = None) -> pd.DataFrame:
+    """Keep only candles whose period has fully elapsed (timestamp is the bar open)."""
+    if df is None or df.empty or "timestamp" not in df.columns:
+        return df
+    now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    tf_ms = timeframe_to_ms(timeframe)
+    ts = pd.to_numeric(df["timestamp"], errors="coerce")
+    return df[(ts + tf_ms) <= now_ms].copy()
 
 
 def _cache_path(cache_dir: str, exchange_id: str, symbol: str, timeframe: str) -> Path:
@@ -91,16 +117,20 @@ def fetch_ohlcv_ccxt(
     cur = int(start_ms)
     rows = []
 
-    # If bounded window and cache already covers the beginning, continue from cached max + 1.
+    tf_ms = timeframe_to_ms(timeframe)
+    overlap_ms = REFETCH_OVERLAP_BARS * tf_ms
+
+    # If bounded window and cache already covers the beginning, continue from the cached max
+    # (minus a small overlap so previously stored partial candles are repaired).
     if cached is not None and not cached.empty and end_ms is not None:
         have_min = int(cached["timestamp"].min())
         have_max = int(cached["timestamp"].max())
         if have_min <= int(start_ms) and have_max < int(end_ms):
-            cur = max(int(start_ms), have_max + 1)
+            cur = max(int(start_ms), have_max + 1 - overlap_ms)
 
-    # If we have cache, start from last+1 candle when refreshing without end_ms.
+    # If we have cache, restart a few bars behind the last cached candle when refreshing without end_ms.
     if cached is not None and not cached.empty and end_ms is None and refresh_if_no_end:
-        cur = int(cached["timestamp"].max()) + 1
+        cur = max(int(start_ms), int(cached["timestamp"].max()) + 1 - overlap_ms)
 
     while True:
         batch = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=cur, limit=limit)
@@ -119,12 +149,14 @@ def fetch_ohlcv_ccxt(
     df_new = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
     if not df_new.empty:
         df_new["timestamp"] = df_new["timestamp"].astype("int64")
+    # The exchange returns the still-forming candle last; never use or persist it.
+    df_new = drop_unclosed_candles(df_new, timeframe)
 
-    # Merge with cache and write back
+    # Merge with cache and write back. Fresh exchange rows win over cached ones.
     if use_cache and cache_path:
         if cached is not None and not cached.empty:
             merged = pd.concat([cached, df_new], ignore_index=True)
-            merged = merged.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+            merged = merged.drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp").reset_index(drop=True)
         else:
             merged = df_new
         merged.to_csv(cache_path, index=False, compression="gzip")
