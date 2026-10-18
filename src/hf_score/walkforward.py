@@ -56,6 +56,7 @@ def run_walkforward(
     embargo_bars: int,
     model_factory: Callable[[], object] = default_model,
     target_clip: float | None = 3.0,
+    min_train_rows: int = 5_000,
 ) -> pd.Series:
     """Out-of-sample predictions for every row whose ts falls in a test fold (NaN elsewhere)."""
     pred = pd.Series(np.nan, index=X.index)
@@ -65,13 +66,56 @@ def run_walkforward(
             continue
         # Purge: a training label must be fully realized before the embargoed boundary.
         train = (exit_ts < f.train_end) & y.notna()
-        if train.sum() < 5_000:
+        if train.sum() < min_train_rows:
             continue
         yt = y[train].clip(-target_clip, target_clip) if target_clip else y[train]
         model = model_factory()
         model.fit(X[train], yt)
         pred[test] = model.predict(X[test])
     return pred
+
+
+def run_walkforward_grouped(
+    X: pd.DataFrame,
+    y: pd.Series,
+    ts: pd.Series,
+    exit_ts: pd.Series,
+    groups: pd.Series,
+    *,
+    min_train_rows: int = 2_000,
+    **kwargs,
+) -> pd.Series:
+    """One independent walk-forward model per group (e.g. per symbol). Groups or folds with
+    too little history get no prediction rather than a fallback, so their gaps stay visible."""
+    pred = pd.Series(np.nan, index=X.index)
+    for _, idx in groups.groupby(groups).groups.items():
+        pred[idx] = run_walkforward(
+            X.loc[idx], y.loc[idx], ts.loc[idx], exit_ts.loc[idx], min_train_rows=min_train_rows, **kwargs
+        )
+    return pred
+
+
+def categorical_model(cat_index: int) -> Callable[[], HistGradientBoostingRegressor]:
+    """Global model that can split on a categorical column (integer codes) such as the symbol."""
+
+    def factory() -> HistGradientBoostingRegressor:
+        m = default_model()
+        m.set_params(categorical_features=[cat_index])
+        return m
+
+    return factory
+
+
+def monthly_ic(df: pd.DataFrame, score: str, outcome: str, *, min_rows: int = 50) -> pd.Series:
+    """Spearman IC of score vs outcome per calendar month (months with < min_rows are skipped).
+    Always returns a float Series, possibly empty."""
+    vals = {}
+    for month, g in df.groupby(df["ts"].dt.strftime("%Y-%m")):
+        if len(g) > min_rows:
+            ic = spearmanr(g[score], g[outcome]).statistic
+            if np.isfinite(ic):
+                vals[month] = float(ic)
+    return pd.Series(vals, dtype=float)
 
 
 def evaluate_scores(df: pd.DataFrame, score_cols: list[str], *, outcome: str = "net_R", gross: str = "gross_R") -> dict:
@@ -81,8 +125,8 @@ def evaluate_scores(df: pd.DataFrame, score_cols: list[str], *, outcome: str = "
     for col in score_cols:
         d = df[df[col].notna()]
         m = month[d.index]
-        ic_m = d.groupby(m).apply(lambda g: spearmanr(g[col], g[outcome]).statistic if len(g) > 50 else np.nan).dropna()
-        icg_m = d.groupby(m).apply(lambda g: spearmanr(g[col], g[gross]).statistic if len(g) > 50 else np.nan).dropna()
+        ic_m = monthly_ic(d, col, outcome)
+        icg_m = monthly_ic(d, col, gross)
         q = pd.qcut(d[col].rank(method="first"), 5, labels=False)
         quint = d.groupby(q).agg(n=(outcome, "size"), net_R=(outcome, "mean"), gross_R=(gross, "mean"))
         taken = d[d[col] > 0.0]

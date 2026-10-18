@@ -74,5 +74,47 @@ class WalkForwardTests(unittest.TestCase):
         self.assertTrue(pred[ts >= pd.Timestamp("2022-01-01", tz="UTC")].notna().all())
 
 
+class MonthlyIcTests(unittest.TestCase):
+    def test_sparse_months_give_empty_float_series(self):
+        from hf_score.walkforward import monthly_ic
+
+        df = pd.DataFrame({"ts": pd.date_range("2024-01-01", periods=10, freq="D", tz="UTC"),
+                           "s": np.arange(10.0), "y": np.arange(10.0), "sym": "A"})
+        ic = monthly_ic(df, "s", "y", min_rows=50)
+        self.assertTrue(ic.empty)
+        self.assertEqual(ic.dtype, float)
+        self.assertTrue(np.isnan(ic.mean()))
+        self.assertAlmostEqual(monthly_ic(df, "s", "y", min_rows=5).iloc[0], 1.0)
+
+
+class GroupedWalkForwardTests(unittest.TestCase):
+    def test_each_group_trains_only_on_its_own_rows(self):
+        from hf_score.walkforward import run_walkforward_grouped
+
+        seen_groups = []
+
+        class Spy:
+            def fit(self, X, y):
+                seen_groups.append(set(groups[X.index]))
+                return self
+
+            def predict(self, X):
+                return np.full(len(X), float(X["g"].iloc[0]))
+
+        ts1 = pd.date_range("2021-01-01", "2022-02-28", freq="h", tz="UTC")
+        ts = pd.Series(list(ts1) * 2)
+        groups = pd.Series(["A"] * len(ts1) + ["B"] * len(ts1))
+        X = pd.DataFrame({"g": [0.0] * len(ts1) + [1.0] * len(ts1)})
+        y = pd.Series(np.ones(len(ts)))
+        pred = run_walkforward_grouped(
+            X, y, ts, ts + pd.Timedelta(hours=1), groups,
+            first_test="2022-01-01", embargo_bars=48, model_factory=Spy,
+        )
+        self.assertTrue(all(len(s) == 1 for s in seen_groups))
+        oos = ts >= pd.Timestamp("2022-01-01", tz="UTC")
+        self.assertTrue((pred[oos & (groups == "A")] == 0.0).all())
+        self.assertTrue((pred[oos & (groups == "B")] == 1.0).all())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,150 @@
+{
+  "created_utc": "20261018T081916Z",
+  "git_sha": "ae5aab317432bb679c4107061c62cce44c22603d",
+  "strategy_registry": "artifacts/asset_universe_ab/rt_registry_base_plus_first_crypto_discovery.json",
+  "policy_config": "artifacts/policy_config.json",
+  "exchange": "binanceusdm",
+  "cache_dir": "data/cache",
+  "warmup_bars": 600,
+  "label_config": {
+    "exit_registry_path": "artifacts/exit_policy_registry.json",
+    "taker_fee": 0.0006,
+    "slippage_bps": 3.0,
+    "max_horizon_bars": 48,
+    "ctx_tp_mult": 1.0,
+    "ctx_sl_mult": 1.0,
+    "ctx_time_stop_bars": 12,
+    "dynamic_exit_tp_cap_atr": 2.0,
+    "dynamic_exit_allowlist": [
+      "BTC/USDT:USDT|long",
+      "BCH/USDT:USDT|long",
+      "XRP/USDT:USDT|long",
+      "AVAX/USDT:USDT|short",
+      "LINK/USDT:USDT|long"
+    ],
+    "forward_horizons": [
+      4,
+      8,
+      12,
+      24
+    ],
+    "excursion_horizon_bars": 24,
+    "round_trip_cost": 0.0018
+  },
+  "rows": 519207,
+  "rows_label_complete": 519089,
+  "symbols": {
+    "AAVE/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "ADA/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "AVAX/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "BCH/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "BNB/USDT:USDT": {
+      "first": "2020-03-06 08:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 58008
+    },
+    "BTC/USDT:USDT": {
+      "first": "2019-10-03 17:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 61719
+    },
+    "DOGE/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "DOT/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "ENA/USDT:USDT": {
+      "first": "2024-04-27 12:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 21692
+    },
+    "ETH/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "INJ/USDT:USDT": {
+      "first": "2022-09-11 02:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 35958
+    },
+    "LINK/USDT:USDT": {
+      "first": "2020-02-11 08:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 58584
+    },
+    "NEAR/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "ONDO/USDT:USDT": {
+      "first": "2024-02-14 13:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 23443
+    },
+    "RENDER/USDT:USDT": {
+      "first": "2024-08-20 10:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 18934
+    },
+    "SOL/USDT:USDT": {
+      "first": "2020-10-09 07:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 52801
+    },
+    "SUI/USDT:USDT": {
+      "first": "2023-05-28 16:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 29728
+    },
+    "TRX/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "XLM/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    },
+    "XRP/USDT:USDT": {
+      "first": "2021-01-26 00:00:00+00:00",
+      "last": "2026-10-18 07:00:00+00:00",
+      "bars": 50192
+    }
+  },
+  "overall": {
+    "mean_net_R": -0.0879133687268842,
+    "win_rate": 0.4179649347221767,
+    "mean_net_ret_bps": -15.6040757035497
+  },
+  "notes": [
+    "Each candidate is labeled independently, as if taken alone (no cooldown, overlap or allocation).",
+    "Entry at the signal bar close; exits by the production exit policy via TradeLifecycleEngine.",
+    "Exit registry params were tuned with the lookahead simulator; labels measure them as they are.",
+    "Allocator-driven closes (target weight to zero) are not modeled; the label is the exit-policy outcome."
+  ],
+  "seconds": 130.0
+}
