@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
-import os
 import sys
 import time
 from dataclasses import asdict
@@ -31,7 +30,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from hf_research.liquid_universe import bitget_symbol, crypto_perpetuals, monthly_membership, update_cache
+from hf_research import xs_signal
+from hf_research.ledger import Store, _iso
+from hf_research.liquid_universe import bitget_symbol
 from hf_research.paper_xs import (
     PRIMARY_STRATEGY,
     PaperBook,
@@ -42,48 +43,12 @@ from hf_research.paper_xs import (
     scheduled_fill,
     walk_book,
 )
-from hf_research.xs_momentum import MomentumConfig, backtest, load_daily_panels, target_weights
+from hf_research.xs_momentum import MomentumConfig, backtest, load_daily_panels
 
-BINANCE = "binanceusdm"
+BINANCE = xs_signal.BINANCE
 
 
 # ---------------------------------------------------------------- storage
-
-class Store:
-    def __init__(self, root: Path):
-        self.root = root
-
-    def path(self, name: str) -> Path:
-        return self.root / name
-
-    def load_state(self) -> dict:
-        p = self.path("state.json")
-        if not p.exists():
-            sys.exit(f"no paper book at {self.root}; run `init` first")
-        return json.loads(p.read_text())
-
-    def save_state(self, state: dict) -> None:
-        tmp = self.path("state.json.tmp")
-        tmp.write_text(json.dumps(state, indent=2, default=float))
-        os.replace(tmp, self.path("state.json"))
-
-    def append(self, name: str, rows: list[dict]) -> None:
-        if not rows:
-            return
-        with self.path(name).open("a") as f:
-            for r in rows:
-                f.write(json.dumps(r, default=float) + "\n")
-
-    def read(self, name: str) -> pd.DataFrame:
-        p = self.path(name)
-        if not p.exists():
-            return pd.DataFrame()
-        return pd.DataFrame([json.loads(x) for x in p.read_text().splitlines() if x.strip()])
-
-
-def _iso(ts: pd.Timestamp) -> str:
-    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 # ---------------------------------------------------------------- exchanges
 
@@ -95,12 +60,6 @@ def _bitget():
     listed = {k for k, v in markets.items()
               if v.get("swap") and v.get("linear") and v.get("settle") == "USDT" and v.get("active", True)}
     return ex, listed
-
-
-def _binance():
-    import ccxt
-
-    return ccxt.binanceusdm({"enableRateLimit": True, "timeout": 20000})
 
 
 def _mids(ex, symbols: list[str]) -> dict[str, float]:
@@ -116,53 +75,11 @@ def _mids(ex, symbols: list[str]) -> dict[str, float]:
 # ---------------------------------------------------------------- universe and signal
 
 def ensure_membership(store: Store, month: str, cfg: PaperConfig, cache_dir: str, log) -> pd.DataFrame:
-    """Membership of `month`, computed from Binance daily candles strictly before the month."""
-    path = store.path("membership.csv")
-    have = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["month", "symbol", "rank"])
-    if (have["month"] == month).any():
-        return have[have["month"] == month]
-    ex = _binance()
-    month_start = pd.Timestamp(f"{month}-01", tz="UTC")
-    since_ms = int((month_start - pd.Timedelta(days=cfg.min_history_days + cfg.window_days + 60)).value // 1_000_000)
-    daily = {}
-    markets = crypto_perpetuals(ex)
-    for k, m in enumerate(markets, start=1):
-        try:
-            daily[m["symbol"]] = update_cache(ex, m["symbol"], "1d", since_ms, cache_dir, BINANCE)
-        except Exception as exc:  # noqa: BLE001 - some delisted contracts reject history requests
-            log(f"skip 1d {m['symbol']}: {type(exc).__name__}")
-        if k % 100 == 0:
-            log(f"daily candles {k}/{len(markets)}")
-    m_new = monthly_membership(daily, top_n=cfg.top_n, window_days=cfg.window_days,
-                               min_history_days=cfg.min_history_days, months=[month])
-    if m_new.empty:
-        raise RuntimeError(f"could not build membership for {month}")
-    pd.concat([have, m_new], ignore_index=True).to_csv(path, index=False)
-    log(f"membership {month}: {len(m_new)} symbols")
-    return m_new
+    return xs_signal.ensure_membership(store.path("membership.csv"), month, cfg, cache_dir, log)
 
 
 def compute_targets(decision_day: pd.Timestamp, members: list[str], listed: set[str], cache_dir: str, log) -> dict:
-    """Target weights (Binance symbols) for the decision day plus the data used to build them."""
-    ex = _binance()
-    since_ms = int((decision_day - pd.Timedelta(days=120)).value // 1_000_000)
-    for s in members:
-        try:
-            update_cache(ex, s, "1h", since_ms, cache_dir, BINANCE)
-        except Exception as exc:  # noqa: BLE001
-            log(f"skip 1h {s}: {type(exc).__name__}")
-    tradable = [s for s in members if bitget_symbol(s, listed)]
-    panels = load_daily_panels(tradable, cache_dir=cache_dir, exchange=BINANCE)
-    sig = panels["signal_close"]
-    if decision_day not in sig.index or sig.loc[decision_day].notna().sum() < len(tradable) // 2:
-        raise RuntimeError(f"signal closes for {decision_day.date()} are not available yet")
-    eligible = pd.DataFrame(True, index=sig.index, columns=sig.columns)
-    w = target_weights(sig, MomentumConfig(**PRIMARY_STRATEGY), eligible).loc[decision_day]
-    w = w[w != 0.0]
-    return {"weights": {s: float(v) for s, v in w.items()},
-            "eligible": tradable,
-            "not_on_bitget": [s for s in members if s not in tradable],
-            "signal_close": {s: float(sig.loc[decision_day, s]) for s in w.index}}
+    return xs_signal.compute_targets(decision_day, members, listed, cache_dir, log)
 
 
 # ---------------------------------------------------------------- run cycle
