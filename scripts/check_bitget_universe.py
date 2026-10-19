@@ -24,18 +24,6 @@ import numpy as np
 import pandas as pd
 
 NOTIONALS = (2_000, 10_000, 50_000)
-# Same asset under a different ticker on Bitget (Binance base -> Bitget base).
-BASE_ALIASES = {"RAYSOL": "RAY"}
-
-
-def bitget_symbol(symbol: str, listed: set[str]) -> str | None:
-    """Bitget market for a Binance symbol: same name, 1000x-prefix variants, or a known alias."""
-    base, rest = symbol.split("/", 1)
-    candidates = [base, base.removeprefix("1000"), f"1000{base}", BASE_ALIASES.get(base, base)]
-    for b in candidates:
-        if f"{b}/{rest}" in listed:
-            return f"{b}/{rest}"
-    return None
 
 
 def book_cost_bps(book: dict, notional: float, side: str) -> float:
@@ -92,6 +80,7 @@ def main() -> None:
     import ccxt
 
     from hf.data.ohlcv import _cache_path
+    from hf_research.liquid_universe import bitget_symbol
 
     membership = pd.read_csv(args.membership)
     months = sorted(membership["month"].unique())[-args.months:]

@@ -42,6 +42,15 @@ class MembershipTests(unittest.TestCase):
         self.assertNotIn("NEW", m.loc[m["month"] == "2024-03", "symbol"].tolist())
         self.assertIn("NEW", m.loc[m["month"] == "2024-04", "symbol"].tolist())
 
+    def test_explicit_month_equals_default_ranking(self):
+        daily = {"A": _daily("2024-01-01", 120, 100.0), "B": _daily("2024-01-01", 120, 50.0)}
+        full = blu.monthly_membership(daily, top_n=2, window_days=30, min_history_days=20)
+        one = blu.monthly_membership(daily, top_n=2, window_days=30, min_history_days=20, months=["2024-03"])
+        pd.testing.assert_frame_equal(one.reset_index(drop=True), full[full["month"] == "2024-03"].reset_index(drop=True))
+        # A month that starts after the last data day can still be ranked from the days before it.
+        nxt = blu.monthly_membership(daily, top_n=2, window_days=30, min_history_days=20, months=["2024-05"])
+        self.assertEqual(nxt["symbol"].tolist(), ["A", "B"])
+
 
 if __name__ == "__main__":
     unittest.main()

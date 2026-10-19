@@ -131,8 +131,13 @@ def target_weights(signal_close: pd.DataFrame, cfg: MomentumConfig, eligible: pd
     return w
 
 
-def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig, *, detail: bool = False):
+def backtest(
+    panels: dict[str, pd.DataFrame], cfg: MomentumConfig, *, detail: bool = False, rebalance_on=None
+):
     """Daily P&L. Row d = return earned from exec_close[d-1] to exec_close[d].
+
+    Rebalances every cfg.rebalance_days rows from the first row, or exactly on the decision
+    days in `rebalance_on` when given (e.g. the days a paper/live book actually traded).
 
     With detail=True also returns per-asset daily contributions {"gross", "funding", "cost",
     "weight"} (each day x asset) so P&L can be attributed to legs and symbols."""
@@ -148,6 +153,8 @@ def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig, *, detail: bo
     has_price = exe.notna()
 
     days = list(exe.index)
+    if rebalance_on is not None:
+        rebalance_on = set(pd.DatetimeIndex(rebalance_on))
     held = pd.Series(0.0, index=exe.columns)
     rows = []
     contrib = {k: [] for k in ("gross", "funding", "cost", "weight")}
@@ -168,7 +175,8 @@ def backtest(panels: dict[str, pd.DataFrame], cfg: MomentumConfig, *, detail: bo
             traded = traded + held.where(dead, 0.0).abs()
             held = held.where(~dead, 0.0)
         # 3) Rebalance at today's exec close on the schedule (decided from today's signal close).
-        if n % cfg.rebalance_days == 0:
+        due = (d in rebalance_on) if rebalance_on is not None else (n % cfg.rebalance_days == 0)
+        if due:
             new = targets.loc[d].fillna(0.0)
             new = new.where(has_price.loc[d], 0.0)
             if cfg.band > 0.0:

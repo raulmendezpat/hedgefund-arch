@@ -18,66 +18,13 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
-
-from hf.data.ohlcv import _cache_path, dt_to_ms_utc, fetch_closed_window
-
-EXCLUDED_BASES = {
-    "USDC", "BUSD", "TUSD", "FDUSD", "DAI", "USDP", "USDE", "PYUSD", "EUR", "BTCDOM", "DEFI", "FOOTBALL", "BLUEBIRD",
-}
-
-
-def crypto_perpetuals(ex) -> list[dict]:
-    out = []
-    for m in ex.load_markets().values():
-        info = m.get("info", {}) or {}
-        if not (m.get("swap") and m.get("linear") and m.get("quote") == "USDT" and m.get("settle") == "USDT"):
-            continue
-        if info.get("contractType") != "PERPETUAL" or info.get("status") not in {"TRADING", "SETTLING"}:
-            continue
-        if str(m.get("base", "")).upper() in EXCLUDED_BASES:
-            continue
-        out.append({"symbol": m["symbol"], "status": info.get("status"), "onboard_ms": int(info.get("onboardDate") or 0)})
-    return sorted(out, key=lambda r: r["symbol"])
-
-
-def update_cache(ex, symbol: str, timeframe: str, since_ms: int, cache_dir: str, exchange: str) -> pd.DataFrame:
-    """Fetch from the cached max (minus 3 bars) or since_ms, merge with fresh rows winning, write back."""
-    path = _cache_path(cache_dir, exchange, symbol, timeframe)
-    cached = pd.read_csv(path) if path.exists() else pd.DataFrame()
-    start = since_ms
-    if len(cached):
-        cached["timestamp"] = cached["timestamp"].astype("int64")
-        if int(cached["timestamp"].min()) <= since_ms:
-            start = int(cached["timestamp"].max()) - 3 * (int(cached["timestamp"].diff().median()) or 3_600_000)
-    fresh = fetch_closed_window(ex, symbol, timeframe, start)
-    merged = pd.concat([cached, fresh], ignore_index=True) if len(cached) else fresh
-    if len(merged):
-        merged = merged.drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        merged.to_csv(path, index=False, compression="gzip")
-    return merged
-
-
-def monthly_membership(daily: dict[str, pd.DataFrame], *, top_n: int, window_days: int, min_history_days: int) -> pd.DataFrame:
-    qv = {}
-    for sym, df in daily.items():
-        if df.empty:
-            continue
-        t = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-        qv[sym] = pd.Series((df["close"] * df["volume"]).to_numpy(), index=t)
-    panel = pd.DataFrame(qv).sort_index()
-    rows = []
-    for month in pd.date_range(panel.index.min().normalize() + pd.offsets.MonthBegin(1), panel.index.max(), freq="MS"):
-        hist = panel[panel.index < month]
-        recent = hist.tail(window_days)
-        eligible = hist.notna().sum() >= min_history_days
-        # A symbol that stopped trading before the window has no recent rows and drops out.
-        med = recent.median().where(eligible & recent.notna().sum().ge(window_days // 2)).dropna()
-        for rank, (sym, v) in enumerate(med.sort_values(ascending=False).head(top_n).items(), start=1):
-            rows.append({"month": month.strftime("%Y-%m"), "symbol": sym, "rank": rank, "median_quote_volume": float(v)})
-    return pd.DataFrame(rows)
-
+from hf.data.ohlcv import dt_to_ms_utc
+from hf_research.liquid_universe import (  # noqa: F401  (re-exported for tests)
+    EXCLUDED_BASES,
+    crypto_perpetuals,
+    monthly_membership,
+    update_cache,
+)
 
 def main() -> None:
     ap = argparse.ArgumentParser()
