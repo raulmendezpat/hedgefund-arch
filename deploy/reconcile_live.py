@@ -1113,6 +1113,11 @@ bitget = BitgetFutures(SECRET)
 
 
 def ensure_leverage(bitget, symbol: str, leverage: int = 2):
+    if not LIVE_TRADING:
+        # Dry runs must not change account settings either.
+        print(f"MARGIN_MODE_DRYRUN -> symbol={symbol} would ensure margin_mode=isolated leverage={leverage}")
+        return
+
     active_pos = []
     active_orders = []
     active_trigger_orders = []
@@ -1172,6 +1177,19 @@ if not RUNTIME_CSV.exists():
     raise FileNotFoundError(f"reconcile runtime csv not found: {RUNTIME_CSV}")
 
 df = pd.read_csv(RUNTIME_CSV, low_memory=False)
+
+# Refuse to trade on a stale runtime row (e.g. the cache stopped refreshing): the last row's bar
+# must be recent. "ts" is the open time of the last closed 1h bar.
+MAX_ROW_AGE_HOURS = float(os.getenv("RECONCILE_MAX_ROW_AGE_HOURS", "3"))
+if "ts" not in df.columns or df.empty:
+    raise RuntimeError(f"runtime csv has no rows or no ts column: {RUNTIME_CSV}")
+_last_row_ts = pd.to_datetime(df["ts"].iloc[-1], utc=True)
+_last_row_age_h = (pd.Timestamp.now(tz="UTC") - _last_row_ts).total_seconds() / 3600.0
+print(f"runtime_last_row_ts: {_last_row_ts} age_hours={_last_row_age_h:.2f} max={MAX_ROW_AGE_HOURS}")
+if _last_row_age_h > MAX_ROW_AGE_HOURS:
+    raise RuntimeError(
+        f"stale runtime row: ts={_last_row_ts} is {_last_row_age_h:.1f}h old (> {MAX_ROW_AGE_HOURS}h); not reconciling"
+    )
 
 SYMBOLS = build_runtime_symbols(df)
 print("runtime_symbols:", list(SYMBOLS.keys()))
