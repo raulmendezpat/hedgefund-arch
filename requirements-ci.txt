@@ -1,0 +1,10 @@
+# Exact versions of the runtime and test dependencies, mirrored from the working .venv.
+# Used by CI (.github/workflows/tests.yml); refresh when the local environment is upgraded.
+ccxt==4.5.47
+joblib==1.5.3
+numpy==2.4.4
+pandas==3.0.2
+pytest==9.1.1
+scikit-learn==1.8.0
+scipy==1.17.1
+ta==0.11.0
