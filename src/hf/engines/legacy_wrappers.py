@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from hf.core.types import Candle, Signal, RegimeState, Allocation
-from hf.core.interfaces import SignalEngine, RegimeEngine, CapitalAllocator, PortfolioEngine
+from hf.core.interfaces import SignalEngine, RegimeEngine, CapitalAllocator
 
 
 # ----------------------------
@@ -69,21 +69,6 @@ class DynamicAllocator(CapitalAllocator):
             return Allocation(weights={LEGACY_SYMBOLS["BTC"]: 0.0, LEGACY_SYMBOLS["SOL"]: 0.0}, meta={"case": "both_off_cash"})
         # default: sticky if possible else 0
         return Allocation(weights={LEGACY_SYMBOLS["BTC"]: 0.0, LEGACY_SYMBOLS["SOL"]: 0.0}, meta={"case": "both_off_default"})
-
-
-@dataclass
-class LegacyBacktestPortfolioEngine(PortfolioEngine):
-    """
-    Temporary wrapper: executes legacy backtester module main().
-    This is a bridge so the new repo can run the same workflow end-to-end.
-    """
-    def step(self, candles: Dict[str, Candle], signals: Dict[str, Signal], allocation: Allocation) -> Dict[str, float]:
-        raise NotImplementedError("Legacy backtester runs as a batch job; use run_legacy_backtest().")
-
-    def run_legacy_backtest(self) -> None:
-        # Run legacy backtester as-is.
-        import hf.legacy.ltb.envelope.backtest_portfolio_regime_switch_cached_v2_modefixed_v8ml as bt
-        bt.main()
 
 
 @dataclass

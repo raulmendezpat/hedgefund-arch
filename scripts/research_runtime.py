@@ -2330,10 +2330,10 @@ def main() -> None:
 
     # Production execution observability:
     # research_runtime exports raw executable intent in *_execution_target_weight.
-    # live reconcile applies deploy/live_execution_config.json max_target_weight caps
+    # live reconcile applies config/legacy_live_execution_config.json max_target_weight caps
     # before order sizing. Keep raw intent unchanged, but also export a capped view
     # so production metrics match the real live execution contract.
-    live_execution_config_path = Path("deploy/live_execution_config.json")
+    live_execution_config_path = Path("config/legacy_live_execution_config.json")
     live_execution_default_symbol_config = {}
     live_execution_symbol_overrides = {}
     if live_execution_config_path.exists():

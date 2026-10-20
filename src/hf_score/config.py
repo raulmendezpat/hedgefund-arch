@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 class LabelConfig:
     """How a candidate is turned into a realized outcome.
 
-    Defaults mirror deploy/run_prod_candidate_bch_doge_guarded.sh: exit registry
+    Defaults mirror the retired production bot (run_prod_candidate_bch_doge_guarded.sh): exit registry
     artifacts/exit_policy_registry.json, Dynamic Exit V1.2 TP cap of 2.0 ATR on the
     allowlisted asset/sides, shadow exit context defaults (tp/sl mult 1.0, 12-bar time stop).
     """
