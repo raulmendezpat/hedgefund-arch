@@ -5,8 +5,8 @@ hf_research.xs_signal). What differs is that the exchange account is the source 
 positions and equity are read from Bitget on every run, never from a simulation.
 
 Guardrails (all evaluated before any order is built):
-- Kill switch: equity drawdown from its peak >= max_drawdown -> flatten everything and halt
-  until an operator resets it.
+- Kill switch: equity drawdown from its peak >= max_drawdown -> flatten everything and pause
+  until an operator reviews it and runs reset-risk (a review pause, not a retirement).
 - Daily loss: equity below the UTC day-start equity by >= max_daily_loss -> reduce-only until
   the next UTC day (positions can shrink or close, never grow or open).
 - Sanity limits: a target weight above max_symbol_weight, gross exposure above gross_leverage,
@@ -42,7 +42,7 @@ class LiveConfig:
     max_symbol_weight: float = 0.10  # primary targets are ~0.04 per symbol
     max_order_usdt: float = 5_000.0
     min_order_usdt: float = 5.0
-    max_drawdown: float = 0.25
+    max_drawdown: float = 0.35  # ~ the worst hourly drawdown of the x1 backtest (-26% IS, -35% OOS)
     max_daily_loss: float = 0.08
     min_signal_coverage: float = 0.9
     max_position_drift: float = 0.01  # post-trade |w_actual - w_target| reported as a breach

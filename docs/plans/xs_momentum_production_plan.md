@@ -57,7 +57,7 @@ Revisión tras el rebalanceo n.º 12 del paper (ejecución del **2027-01-11**). 
 - **Capital inicial: 1,000 USDT** *(propuesta, por confirmar; alternativas: 300 o 3,000)*.
   - Son unos 42 USDT por pata, por encima del mínimo de Bitget (~5 USDT) y con poco error
     de redondeo.
-  - Pérdida máxima antes del kill switch: ~250 USDT.
+  - Pérdida máxima antes del kill switch: ~350 USDT.
 - **Servidor: VPS con IP fija** *(propuesta, por confirmar; alternativa: este Mac)*.
   - La API key de la subcuenta se amarra a esa IP.
   - Permisos de la key: solo futuros, lectura y operación; nunca retiros.
@@ -97,7 +97,8 @@ El escalado **no** depende del retorno obtenido: cuatro semanas buenas o malas s
 ## 4. Criterios de parada
 
 **Automáticos** (ya implementados en el ejecutor):
-- **Drawdown ≥ 25 % desde el máximo:** kill switch. Cierra todo y se detiene.
+- **Drawdown ≥ 35 % desde el máximo:** kill switch como **pausa de revisión**. Cierra todo y
+  se detiene hasta la revisión.
   `reset-risk` solo después de la revisión de §4.3; nunca el mismo día.
 - **Pérdida diaria ≥ 8 %:** modo solo-reducir hasta el día UTC siguiente.
 - **Límites de sanidad:** peso > 10 %, bruto > 1x, orden > 5,000 USDT o precio faltante.
@@ -111,20 +112,22 @@ El escalado **no** depende del retorno obtenido: cuatro semanas buenas o malas s
 - **Brecha vivo vs paper peor que −5 %/año sostenida en 2 revisiones:** se detiene y se
   investiga la ejecución.
 
-**Decisión abierta: umbral del kill switch** *(por decidir)*.
+**Umbral del kill switch: −35 %, como pausa** *(decidido el 2026-10-21; antes era −25 %)*.
 - El backtest x1 con marcas horarias (`docs/plans/vol_targeting_hypothesis.md`) habría tocado
   −25 % en 2021-08-26 y en 2024-08-28. Su peor caída horaria fue −26 % en desarrollo y −35 %
   fuera de muestra.
-- Con −25 %, una caída normal para esta estrategia la detiene.
-- Opciones:
-  - subir el umbral a ~−40 %;
-  - mantener −25 % sabiendo que es probable que se active;
-  - mantenerlo como pausa de revisión y no como cierre definitivo, que es lo que ya dice el
-    punto siguiente.
+- Con −25 %, una caída normal para la estrategia la habría detenido antes de su mejor tramo.
+- −35 % es aproximadamente la peor caída observada: tocarlo significa que la estrategia está
+  fuera de lo que mostró el backtest.
 
 **Revisión tras un kill switch:**
-- **Causa de mercado** (la estrategia simplemente perdió): se reinicia en la etapa inicial
-  solo si el backtest muestra drawdowns comparables.
+- **Causa de mercado** (la estrategia simplemente perdió): es una pausa, no un retiro.
+  - Se compara la caída con la del backtest en el mismo período, corriendo el backtest hasta la
+    fecha.
+  - Si es comparable, se reanuda con `reset-risk --confirm`, que reinicia el máximo de
+    referencia.
+  - La etapa de capital la sigue rigiendo la regla de retorno acumulado < −15 %.
+  - Si la caída es claramente peor que la del backtest, se detiene y se revisa la hipótesis.
 - **Causa de implementación:** se corrige, pasa por CI y se hace dry-run antes de reiniciar.
 
 ## 5. Riesgo de cola del lado corto
@@ -134,7 +137,7 @@ Ejemplo observado: BR subió +47 % en un día mientras estaba en corto en la sim
 
 **Decisión: aceptar y vigilar** *(propuesta, por confirmar)*. Motivos:
 - No se cambia la hipótesis probada.
-- Las guardas automáticas (−8 % diario, −25 % total) acotan la pérdida de la cartera.
+- Las guardas automáticas (−8 % diario, −35 % total) acotan la pérdida de la cartera.
 - **Alerta por posición** (implementada el 2026-10-20): el monitor avisa una vez por
   posición y rebalanceo cuando una sola posición pierde más de 1.5 % del equity desde el
   último rebalanceo, tanto en el paper como en vivo. Solo avisa; no opera.

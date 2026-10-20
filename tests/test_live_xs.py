@@ -39,8 +39,8 @@ class RiskTests(unittest.TestCase):
         r = new_risk_state(1000.0, T("2026-11-02 01:00"))
         self.assertEqual(check_risk(r, 1100.0, T("2026-11-03 01:00"), CFG)[0], "ok")
         self.assertEqual(r["peak_equity"], 1100.0)
-        self.assertEqual(check_risk(r, 1100 * 0.76, T("2026-11-10 01:00"), CFG)[0], "ok")
-        self.assertEqual(check_risk(r, 1100 * 0.75, T("2026-11-11 01:00"), CFG)[0], "halt")
+        self.assertEqual(check_risk(r, 1100 * 0.66, T("2026-11-10 01:00"), CFG)[0], "ok")
+        self.assertEqual(check_risk(r, 1100 * 0.65, T("2026-11-11 01:00"), CFG)[0], "halt")
         self.assertEqual(check_risk(r, 2000.0, T("2026-11-12 01:00"), CFG)[0], "halted")
 
     def test_daily_loss_is_reduce_only_until_next_day(self):
@@ -304,7 +304,7 @@ class RunnerTests(unittest.TestCase):
         os.environ["LIVE_TRADING"] = "1"
         self._run("2026-10-26 01:07")
         self.acct.px["AAA/USDT:USDT"] = 0.0  # the 50 AAA long goes to zero: -500 USDT
-        self.acct.cash -= 2500.0  # plus 2500 more lost: equity ~7000, a 30% drawdown from the peak
+        self.acct.cash -= 3500.0  # plus 3500 more lost: equity ~6000, a 40% drawdown from the peak
         store = self._run("2026-10-27 05:07")
         self.assertEqual(self.acct.pos, {})
         self.assertTrue(store.load_state()["risk"]["halted"])
@@ -317,7 +317,7 @@ class RunnerTests(unittest.TestCase):
         os.environ["LIVE_TRADING"] = "1"
         self._run("2026-10-26 01:07")
         self.acct.px["AAA/USDT:USDT"] = 0.0
-        self.acct.cash -= 2500.0
+        self.acct.cash -= 3500.0
         self.acct.fail_symbols = {"BBB/USDT:USDT"}  # the BBB close is rejected during the flatten
         store = self._run("2026-10-27 05:07")
         self.assertEqual(list(self.acct.pos), ["BBB/USDT:USDT"])
