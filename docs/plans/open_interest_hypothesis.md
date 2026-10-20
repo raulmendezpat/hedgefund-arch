@@ -101,3 +101,56 @@ Se informa la fracción de las 18 combinaciones con Sharpe fuera de muestra ≥ 
 - **Herencia del momentum:** se hereda el universo y la construcción del momentum, así que los
   resultados pueden estar correlacionados con él. Por eso se informa la correlación y la
   combinación.
+
+## Resultado (2026-10-21): primaria rechazada; una secundaria (flujo agresivo) amerita pre-registración nueva
+
+Corrida: `scripts/run_open_interest.py` → `artifacts/research/open_interest_v1/`. Datos:
+`scripts/fetch_binance_metrics.py`, 144,638 días-símbolo, 12.7 % sin dato.
+
+**Cobertura:**
+- Antes de 2021-12 el archivo solo tiene datos de ~2 % del universo.
+- Por la regla del 80 %, el desarrollo empieza el **2021-12-01**: son 2 años.
+
+### Primaria: reversión del apalancamiento acumulado (rechazada en todo)
+
+| Criterio | Umbral | Resultado | ¿Cumple? |
+|---|---|---|---|
+| Sharpe fuera de muestra | ≥ 0.7 | −0.76 | no |
+| Sharpe de desarrollo | ≥ 0.4 | −0.67 | no |
+| Peor caída fuera de muestra | ≥ −35 % | −75 % | no |
+| Sharpe sin los 5 mejores símbolos | ≥ 0.4 | −1.43 | no |
+| Bootstrap P(Sharpe ≤ 0) | < 10 % | 86 % | no |
+
+- **No hay señal en ninguna dirección:**
+  - La dirección opuesta, informada solo como control, también pierde: −0.81 en desarrollo y
+    −0.22 fuera de muestra.
+  - Con rotación de 88 veces el capital al año, los costos (~13 %/año) se comen todo.
+- **Grilla:** 0 de 18 combinaciones con Sharpe ≥ 0.5 y mediana −0.88. Con rebalanceo cada
+  3 días y un 10 % por lado, la cuenta se pierde entera.
+- **Combinación con momentum:** empeora. Sharpe 0.03 contra 1.00.
+
+### Secundarias (exploratorias: 3 pruebas extra, no deciden nada)
+
+| Señal | Sharpe desarrollo | Sharpe fuera de muestra | Peor caída fuera | Precio / funding / costos fuera (%/año) | Correlación con momentum (fuera) |
+|---|---|---|---|---|---|
+| S1 posicionamiento minorista (contraria) | 1.87 | 0.73 | −39 % | +8.7 / +16.8 / −5.4 | 0.38 |
+| S2 flujo agresivo (seguidora) | 1.28 | 0.93 | −25 % | +25.4 / +8.9 / −9.8 | 0.38 |
+| S3 OI × signo del precio | −0.51 | −1.18 | −76 % | −18.9 / −3.2 / −11.9 | — |
+
+- **S2** (comprar las monedas con más presión compradora agresiva en 7 días y vender en corto
+  las de más presión vendedora):
+  - Es la única con retorno de precio consistente: +27 %/año en desarrollo y +25 %/año fuera de
+    muestra.
+  - Sharpe por año: 2022 1.51 · 2023 1.13 · 2024 −0.17 · 2025 0.66 · 2026 2.00.
+  - Combinada con momentum a la misma volatilidad (exploratorio): Sharpe 0.87 contra 0.22 en
+    desarrollo, y 1.19 contra 1.03 fuera de muestra.
+- **S1:** fuera de muestra vive casi solo del funding (+16.8 %/año). En la práctica es un carry
+  disfrazado. Además, 2024 tuvo Sharpe −1.39.
+- **S3:** igual de mala que la primaria.
+
+**Conclusión:**
+- La reversión del apalancamiento no existe en estos datos.
+- S2 cumple la regla de esta pre-registración (Sharpe fuera de muestra ≥ 0.7), pero salió de entre
+  4 pruebas y todo el historial disponible ya fue mirado.
+- La única validación honesta que queda es **un paper con una pre-registración nueva**, porque no
+  hay datos históricos sin mirar.
