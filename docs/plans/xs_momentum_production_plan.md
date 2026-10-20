@@ -111,6 +111,17 @@ El escalado **no** depende del retorno obtenido: cuatro semanas buenas o malas s
 - **Brecha vivo vs paper peor que −5 %/año sostenida en 2 revisiones:** se detiene y se
   investiga la ejecución.
 
+**Decisión abierta: umbral del kill switch** *(por decidir)*.
+- El backtest x1 con marcas horarias (`docs/plans/vol_targeting_hypothesis.md`) habría tocado
+  −25 % en 2021-08-26 y en 2024-08-28. Su peor caída horaria fue −26 % en desarrollo y −35 %
+  fuera de muestra.
+- Con −25 %, una caída normal para esta estrategia la detiene.
+- Opciones:
+  - subir el umbral a ~−40 %;
+  - mantener −25 % sabiendo que es probable que se active;
+  - mantenerlo como pausa de revisión y no como cierre definitivo, que es lo que ya dice el
+    punto siguiente.
+
 **Revisión tras un kill switch:**
 - **Causa de mercado** (la estrategia simplemente perdió): se reinicia en la etapa inicial
   solo si el backtest muestra drawdowns comparables.

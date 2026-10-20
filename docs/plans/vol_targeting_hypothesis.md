@@ -100,3 +100,46 @@ base.
 - No se modelan los tramos de margen por tamaño de posición ni el ADL del exchange.
 - El slippage no crece con el tamaño. Con x3 y x4, una cuenta grande pagaría más impacto de lo
   modelado.
+
+## Resultado (2026-10-21): volatility targeting rechazado; apalancamiento > x1 no aceptable
+
+Corrida: `scripts/run_vol_targeting.py` → `artifacts/research/vol_targeting_v1/`.
+
+### Volatility targeting (x1)
+
+| Criterio | Base | Con targeting | ¿Cumple? |
+|---|---|---|---|
+| Sharpe fuera de muestra (≥ base + 0.10) | 1.00 | 0.71 | no |
+| Sharpe de desarrollo (≥ base) | 0.33 | 0.48 | sí |
+| Peor caída fuera de muestra, a igual volatilidad | −32.4 % | −36.5 % | no |
+| Peor mes fuera de muestra, a igual volatilidad | −11.9 % | −14.5 % | no |
+
+- **Bootstrap:** probabilidad de que la mejora del Sharpe fuera de muestra sea ≤ 0 = 98 %. La
+  mediana de la mejora es −0.28.
+- **Grilla:** ninguna de las 9 combinaciones supera a la base fuera de muestra; la mediana es 0.71.
+- **Lectura:** el momentum de este universo no tiene la estructura "volatilidad alta → retorno
+  malo" que el targeting explota. Sus mejores semanas (colas positivas) llegan con volatilidad
+  alta, y el targeting las recorta. Es coherente con el carácter de "lotería" ya observado: el
+  retorno depende de pocas subidas grandes.
+
+### Apalancamiento (cuenta simulada hora a hora, mantenimiento 2 %, cada período desde 1)
+
+| Base | CAGR desarrollo | CAGR fuera de muestra | Peor caída horaria (desarrollo / fuera) | Peor ventana 30 d | Ventanas 30 d ≥ +10 % / ≤ −10 % (fuera) |
+|---|---|---|---|---|---|
+| x1 | 5.5 % | 31 % | −26 % / −35 % | −19 % | 19 % / 4 % |
+| x2 | 4.5 % | 51 % | −46 % / −59 % | −37 % | 32 % / 17 % |
+| x3 | 0.2 % | 63 % | −62 % / −76 % | −54 % | 37 % / 26 % |
+| x4 | −11 % | 63 % | −76 % / −86 % | −70 % | 41 % / 32 % |
+
+- **Liquidaciones:** ninguna. Las pérdidas llegan de a poco, no de golpe.
+- **Mismas caídas, sin más retorno:** las caídas crecen proporcionalmente, pero el retorno no
+  acompaña. En desarrollo, x3 y x4 terminan en cero o en pérdida por el arrastre de volatilidad.
+- **Veredicto:** solo x1, de la base y del targeting, cumple las reglas pre-registradas.
+  x2 a x4 se rechazan.
+
+### Hallazgo para el plan de producción
+
+Con x1, el kill switch de −25 % se habría disparado en ambos períodos: 2021-08-26 en desarrollo
+y 2024-08-28 fuera de muestra (peor caída horaria −26 % y −35 %). Con ese umbral, la estrategia
+se habría detenido antes de su mejor tramo (2025–2026). Queda como decisión abierta en
+`xs_momentum_production_plan.md` §4.
