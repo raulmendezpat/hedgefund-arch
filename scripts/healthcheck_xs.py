@@ -27,7 +27,8 @@ from types import SimpleNamespace
 import pandas as pd
 
 from hf_research.live_xs import position_losses
-from hf_research.paper_xs import due_decision_day, scheduled_fill
+from hf_research.paper_tsmom import due_daily_decision
+from hf_research.paper_xs import due_decision_day
 
 EVENT_LEVEL = {
     "rebalance": "info",
@@ -114,9 +115,13 @@ def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float
 
     cfg = SimpleNamespace(**state["config"])
     last_dd = pd.Timestamp(state["last_decision_day"], tz="UTC") if state.get("last_decision_day") else None
-    d, status = due_decision_day(now, pd.Timestamp(state["start"]), last_dd, cfg)
+    daily = not hasattr(cfg, "decision_weekday")  # weekly momentum books carry a decision weekday
+    if daily:
+        d, status, _ = due_daily_decision(now, pd.Timestamp(state["start"]), last_dd, cfg)
+    else:
+        d, status = due_decision_day(now, pd.Timestamp(state["start"]), last_dd, cfg)
     if status == "due":
-        late_h = (now - scheduled_fill(d, cfg)).total_seconds() / 3600.0
+        late_h = (now - d - pd.Timedelta(days=1, hours=cfg.fill_hour_utc)).total_seconds() / 3600.0
         if late_h > overdue_hours:
             conditions["overdue"] = f"rebalanceo {d.date()} pendiente hace {late_h:.1f} h"
 
@@ -124,6 +129,8 @@ def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float
     start = seen.get("events", len(events))  # first check: existing events are history, not news
     for ev in events[start:]:
         level = EVENT_LEVEL.get(ev.get("type"))
+        if level == "info" and daily and ev.get("type") == "rebalance":
+            continue  # daily books rebalance every day; the heartbeat covers them
         if level:
             notices.append(Notice(level, r.name, _describe(ev)))
     tracebacks = {}
