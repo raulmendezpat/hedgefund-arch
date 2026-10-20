@@ -124,8 +124,9 @@ Ejemplo observado: BR subió +47 % en un día mientras estaba en corto en la sim
 **Decisión: aceptar y vigilar** *(propuesta, por confirmar)*. Motivos:
 - No se cambia la hipótesis probada.
 - Las guardas automáticas (−8 % diario, −25 % total) acotan la pérdida de la cartera.
-- **Pendiente de implementar:** una alerta del monitor cuando una sola posición pierda más
-  de 1.5 % del equity desde la última ejecución.
+- **Alerta por posición** (implementada el 2026-10-20): el monitor avisa una vez por
+  posición y rebalanceo cuando una sola posición pierde más de 1.5 % del equity desde el
+  último rebalanceo, tanto en el paper como en vivo. Solo avisa; no opera.
 
 Las variantes (un stop por posición, o no shortear tokens con menos de 90 días listados)
 son **hipótesis nuevas**: requieren su propio backtest y su propio paper antes de entrar a

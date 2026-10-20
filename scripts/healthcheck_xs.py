@@ -5,6 +5,8 @@ It only reads the runners' state, events and logs; it never touches them. Alerts
 - overdue: a scheduled rebalance is still pending --overdue-hours after its fill time.
 - errors: new Python tracebacks in a runner's logs.
 - events: notable new events (rebalance, missed rebalance, kill switch, aborts, ...).
+- position loss: one position lost more than --position-loss of equity since the last rebalance
+  (live runners report it as an event; for the paper book the monitor measures it itself).
 Condition alerts (stale, overdue) notify when they start and when they clear, not every hour.
 A daily heartbeat at --heartbeat-hour (local time) confirms the monitor itself is alive.
 
@@ -24,6 +26,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from hf_research.live_xs import position_losses
 from hf_research.paper_xs import due_decision_day, scheduled_fill
 
 EVENT_LEVEL = {
@@ -36,6 +39,7 @@ EVENT_LEVEL = {
     "verify_failed": "alert",
     "delisted_close": "info",
     "risk_reset": "info",
+    "position_loss": "alert",
 }
 
 
@@ -66,12 +70,36 @@ def _describe(ev: dict) -> str:
         extra = f", equity {eq:,.2f}" if isinstance(eq, (int, float)) else ""
         errs = f", {ev['n_errors']} errores" if ev.get("n_errors") else ""
         return f"rebalanceo {ev.get('decision_day')}: {ev.get('n_orders')} órdenes{errs}{extra}"
+    if t == "position_loss":
+        return f"{ev['symbol']} pierde {ev['loss_frac']:.1%} de la cartera desde el último rebalanceo"
     detail = ev.get("reason") or ev.get("decision_day") or ev.get("symbol") or ""
     return f"{t}: {detail}".rstrip(": ")
 
 
-def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float, overdue_hours: float
-                 ) -> tuple[list[Notice], dict, dict]:
+def paper_position_losses(state: dict, ref: dict | None, threshold: float) -> tuple[list[str], dict]:
+    """Paper book positions newly past the loss threshold since the last rebalance.
+
+    The reference (prices and equity) is taken at the first check after each rebalance; the paper
+    marks its book hourly, so that is the fill-time mark."""
+    book = state.get("book") or {}
+    qty, px = book.get("qty", {}), book.get("last_px", {})
+    dd = state.get("last_decision_day")
+    if ref is None or ref.get("decision_day") != dd:
+        ref = {"decision_day": dd, "equity": float(book.get("equity", 0.0)), "px": dict(px), "alerted": []}
+    ref["px"] = {s: p for s, p in ref["px"].items() if s in qty}
+    for s in qty:
+        if s in px:
+            ref["px"].setdefault(s, px[s])
+    texts = []
+    for s, loss in position_losses(qty, ref["px"], px, ref["equity"], threshold).items():
+        if s not in ref["alerted"]:
+            ref["alerted"].append(s)
+            texts.append(f"{s} pierde {loss:.1%} de la cartera desde el último rebalanceo")
+    return texts, ref
+
+
+def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float, overdue_hours: float,
+                 position_loss: float = 0.015) -> tuple[list[Notice], dict, dict]:
     """Returns (notices for new events and errors, current conditions {key: text}, updated cursor)."""
     notices, conditions = [], {}
     state_path = r.state_dir / "state.json"
@@ -108,11 +136,16 @@ def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float
         new = sum(max(0, n - old_tb.get(k, 0)) for k, n in tracebacks.items())
         if new:
             notices.append(Notice("alert", r.name, f"{new} error(es) nuevo(s) de Python en los logs de {r.log_dir}"))
-    return notices, conditions, {"events": len(events), "tracebacks": tracebacks}
+    cursor = {"events": len(events), "tracebacks": tracebacks}
+    if "book" in state:
+        texts, cursor["pos_ref"] = paper_position_losses(state, seen.get("pos_ref"), position_loss)
+        notices += [Notice("alert", r.name, t) for t in texts]
+    return notices, conditions, cursor
 
 
 def run_check(runners: list[Runner], hc_state: dict, now: pd.Timestamp, *, stale_hours: float = 2.25,
-              overdue_hours: float = 3.0, heartbeat_hour: int = 9, local_tz: str | None = None
+              overdue_hours: float = 3.0, position_loss: float = 0.015, heartbeat_hour: int = 9,
+              local_tz: str | None = None
               ) -> tuple[list[Notice], dict]:
     """One pass over every runner; returns (notices to send, new monitor state)."""
     out: list[Notice] = []
@@ -120,7 +153,8 @@ def run_check(runners: list[Runner], hc_state: dict, now: pd.Timestamp, *, stale
     summary = []
     for r in runners:
         seen = hc_state.get("runners", {}).get(r.name, {})
-        notices, conditions, cursor = check_runner(r, now, seen, stale_hours=stale_hours, overdue_hours=overdue_hours)
+        notices, conditions, cursor = check_runner(r, now, seen, stale_hours=stale_hours, overdue_hours=overdue_hours,
+                                                   position_loss=position_loss)
         out += notices
         new_state["runners"][r.name] = cursor
         before = hc_state.get("conditions", {}).get(r.name, {})
@@ -164,6 +198,8 @@ def main() -> None:
     ap.add_argument("--state-file", default="runtime/healthcheck/state.json")
     ap.add_argument("--stale-hours", type=float, default=2.25)
     ap.add_argument("--overdue-hours", type=float, default=3.0)
+    ap.add_argument("--position-loss", type=float, default=0.015,
+                    help="alert when one position loses this share of equity since the last rebalance")
     ap.add_argument("--heartbeat-hour", type=int, default=9, help="local hour of the daily 'all OK' notice")
     ap.add_argument("--no-notify", action="store_true", help="print only")
     ap.add_argument("--now", default="", help="override the clock (testing only)")
@@ -178,7 +214,8 @@ def main() -> None:
     path = Path(args.state_file)
     hc_state = json.loads(path.read_text()) if path.exists() else {}
     notices, new_state = run_check(runners, hc_state, now, stale_hours=args.stale_hours,
-                                   overdue_hours=args.overdue_hours, heartbeat_hour=args.heartbeat_hour)
+                                   overdue_hours=args.overdue_hours, position_loss=args.position_loss,
+                                   heartbeat_hour=args.heartbeat_hour)
     for n in notices:
         print(f"[{now:%Y-%m-%dT%H:%M:%SZ}] {n.level.upper()} [{n.runner}] {n.text}", flush=True)
         if not args.no_notify:

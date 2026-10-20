@@ -46,6 +46,7 @@ class LiveConfig:
     max_daily_loss: float = 0.08
     min_signal_coverage: float = 0.9
     max_position_drift: float = 0.01  # post-trade |w_actual - w_target| reported as a breach
+    position_loss_alert: float = 0.015  # alert when one position loses this share of equity since the last rebalance
     taker_fee: float = 0.0006
     decision_weekday: int = 6  # Sunday
     fill_hour_utc: int = 1
@@ -85,6 +86,24 @@ def check_risk(risk: dict, equity: float, now: pd.Timestamp, cfg: LiveConfig) ->
     if day_loss >= cfg.max_daily_loss:
         return "reduce_only", f"daily loss {day_loss:.1%} >= {cfg.max_daily_loss:.0%}"
     return "ok", ""
+
+
+def position_losses(qty: dict[str, float], ref_px: dict[str, float], px: dict[str, float], ref_equity: float,
+                    threshold: float) -> dict[str, float]:
+    """Positions whose loss since their reference price exceeds `threshold` of the reference equity.
+
+    Returns {symbol: loss as a positive fraction of equity}. Alert only: nothing is traded on it."""
+    out = {}
+    if ref_equity <= 0:
+        return out
+    for s, q in qty.items():
+        p0, p1 = ref_px.get(s), px.get(s)
+        if not q or p0 is None or p1 is None or not (math.isfinite(p0) and math.isfinite(p1)):
+            continue
+        loss = -q * (p1 - p0) / ref_equity
+        if loss > threshold:
+            out[s] = float(loss)
+    return out
 
 
 # ---------------------------------------------------------------- cash flows

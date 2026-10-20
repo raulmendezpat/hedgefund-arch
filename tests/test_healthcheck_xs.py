@@ -85,6 +85,24 @@ class HealthcheckTests(unittest.TestCase):
         notices, _ = self._check("2026-10-20 11:20", st)
         self.assertEqual([n.level for n in notices if n.runner == "paper"], ["alert"])
 
+    def test_paper_position_loss_alerts_once_per_rebalance(self):
+        self.state.update(last_decision_day="2026-10-25", last_run="2026-10-26T02:05:00Z",
+                          book={"equity": 10_000.0, "qty": {"BR/USDT:USDT": -400.0}, "last_px": {"BR/USDT:USDT": 1.0}})
+        self._save()
+        notices, st = self._check("2026-10-26 01:20", {})  # reference taken at the fill-time mark
+        self.assertEqual([n for n in notices if n.runner == "paper"], [])
+        self.state["book"]["last_px"]["BR/USDT:USDT"] = 1.47  # short squeeze: -188 USDT = 1.9%
+        self._save()
+        notices, st = self._check("2026-10-26 02:20", st)
+        self.assertEqual(self.texts([n for n in notices if n.runner == "paper"]),
+                         [("alert", "BR/USDT:USDT pierde 1.9% de la cartera desde el último rebalanceo")])
+        notices, st = self._check("2026-10-26 03:20", st)  # already alerted this week
+        self.assertEqual([n for n in notices if n.runner == "paper"], [])
+        self.state["last_decision_day"] = "2026-11-01"
+        self._save()
+        _, st = self._check("2026-11-02 01:20", st)
+        self.assertEqual(st["runners"]["paper"]["pos_ref"]["px"], {"BR/USDT:USDT": 1.47})
+
     def test_daily_heartbeat_once_per_day(self):
         notices, st = self._check("2026-10-20 08:20", {})
         self.assertEqual([n for n in notices if n.runner == "monitor"], [])

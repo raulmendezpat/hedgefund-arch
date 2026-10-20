@@ -19,6 +19,7 @@ from hf_research.live_xs import (
     flatten_orders,
     new_risk_state,
     position_drift,
+    position_losses,
     reduce_only_targets,
 )
 
@@ -50,6 +51,16 @@ class RiskTests(unittest.TestCase):
     def test_reduce_only_targets_never_grow_open_or_flip(self):
         t = reduce_only_targets({"A": 0.05, "B": 0.02, "C": -0.04, "D": 0.03}, {"A": 0.03, "B": 0.04, "C": 0.04})
         self.assertEqual(t, {"A": 0.03, "B": 0.02, "C": 0.0})  # A kept, B shrinks, C closes, D not opened
+
+
+class PositionLossTests(unittest.TestCase):
+    def test_short_squeeze_and_long_drop_past_threshold(self):
+        qty = {"S": -100.0, "L": 10.0, "OK": 5.0}
+        ref = {"S": 1.0, "L": 10.0, "OK": 10.0}
+        px = {"S": 1.47, "L": 8.0, "OK": 9.0}  # S +47% short: -47 USDT; L -20%: -20; OK: -5
+        self.assertEqual(position_losses(qty, ref, px, 2000.0, 0.015), {"S": 47.0 / 2000.0})
+        self.assertEqual(set(position_losses(qty, ref, px, 1000.0, 0.015)), {"S", "L"})
+        self.assertEqual(position_losses(qty, ref, {"S": float("nan")}, 1000.0, 0.015), {})
 
 
 class BuildOrdersTests(unittest.TestCase):
@@ -390,6 +401,20 @@ class RunnerTests(unittest.TestCase):
         rep = runner.report(store)
         self.assertEqual(rep["n_fills"], 2)
         self.assertAlmostEqual(rep["by_rebalance"]["2026-10-25"]["slippage_bps_weighted"], 10.0)
+
+    def test_position_loss_alert_once_per_rebalance(self):
+        os.environ["LIVE_TRADING"] = "1"
+        store = self._run("2026-10-26 01:07")  # short 25 BBB at 20
+        self.acct.px["BBB/USDT:USDT"] = 30.0  # +50%: -250 USDT = 2.5% of equity
+        self._run("2026-10-26 05:07")
+        self._run("2026-10-26 06:07")
+        ev = store.read("events.jsonl")
+        alerts = ev[ev["type"] == "position_loss"]
+        self.assertEqual(alerts["symbol"].tolist(), ["BBB/USDT:USDT"])
+        self.assertAlmostEqual(alerts["loss_frac"].iloc[0], 0.025)
+        self.acct.px["BBB/USDT:USDT"] = 20.0
+        self._run("2026-11-02 01:07")  # new rebalance: new reference, alerts re-armed
+        self.assertEqual(store.load_state()["position_ref"]["alerted"], [])
 
     def test_failed_order_is_retried_next_hour_from_actual_positions(self):
         os.environ["LIVE_TRADING"] = "1"

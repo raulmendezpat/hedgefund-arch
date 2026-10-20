@@ -59,6 +59,7 @@ from hf_research.live_xs import (
     new_cash_flows,
     new_risk_state,
     position_drift,
+    position_losses,
 )
 from hf_research.paper_xs import PRIMARY_STRATEGY, due_decision_day, first_decision_day_after, scheduled_fill
 
@@ -252,6 +253,25 @@ def track_cash_flows(state: dict, acct, equity: float, now: pd.Timestamp, events
     log(f"cash flow {net:+.2f} USDT ({len(fresh)} transfer(s)); risk baselines {'shifted' if applied else 'not set yet'}")
 
 
+def watch_position_losses(state: dict, positions: dict[str, float], mids: dict[str, float], equity: float,
+                          cfg: LiveConfig, now: pd.Timestamp, events: list, log) -> None:
+    """Event (once per position and rebalance) when one position has lost more than
+    cfg.position_loss_alert of equity since the last rebalance. Alert only: it trades nothing."""
+    ref = state.get("position_ref") or {"equity": equity, "px": {}, "alerted": []}
+    ref["px"] = {s: p for s, p in ref["px"].items() if s in positions}
+    for s in positions:
+        if s in mids:
+            ref["px"].setdefault(s, mids[s])  # held without a reference (e.g. after a restart): start now
+    for s, loss in position_losses(positions, ref["px"], mids, ref["equity"], cfg.position_loss_alert).items():
+        if s in ref["alerted"]:
+            continue
+        ref["alerted"].append(s)
+        events.append({"ts": _iso(now), "type": "position_loss", "symbol": s, "loss_frac": loss,
+                       "qty": positions[s], "ref_px": ref["px"][s], "px": mids[s]})
+        log(f"position loss alert: {s} down {loss:.2%} of equity since the last rebalance")
+    state["position_ref"] = ref
+
+
 def record_fills(store: Store, acct, new_rows: list[dict], now: pd.Timestamp, log, max_age_days: int = 7) -> None:
     """Fetch execution prices for sent orders that have none recorded yet (this run's and earlier ones)."""
     done = store.read("fills.jsonl")
@@ -386,6 +406,7 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
     status, reason = check_risk(state["risk"], equity, now, cfg)
     mids = acct.mids(sorted(positions))
     gross = sum(abs(q * mids[s]) for s, q in positions.items()) / equity if positions and equity > 0 else 0.0
+    watch_position_losses(state, positions, mids, equity, cfg, now, events, log)
 
     if status in ("halt", "halted"):
         if status == "halt":
@@ -458,6 +479,8 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
                        "skipped": skipped, "drift": drift, "targets": tgt["weights"], "bitget_map": to_bg,
                        "intended": intended, "eligible": tgt["eligible"], "not_on_bitget": tgt["not_on_bitget"],
                        "coverage": tgt["coverage"]})
+        if live:  # the week's loss per position is measured from the prices it was rebalanced at
+            state["position_ref"] = {"equity": equity, "px": {s: all_mids[s] for s in intended}, "alerted": []}
         if not errors:
             state["last_decision_day"] = tag
         log(f"rebalance {tag}: {len(orders)} orders ({'sent' if live else 'not sent'}), {len(errors)} errors, "
