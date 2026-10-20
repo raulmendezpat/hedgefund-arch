@@ -82,6 +82,35 @@ def carry_targets(fund_ann: pd.DataFrame, tradable: pd.DataFrame, cfg: CarryConf
     return w
 
 
+def delisted_at(perps: list[str], cache_dir: str = "data/cache", exchange: str = "binanceusdm",
+                min_bars: int = 24) -> dict[str, pd.Timestamp]:
+    """Start of the final run of flat, zero-volume 1h bars (>= min_bars long) per perp.
+
+    Binance keeps returning candles frozen at the settlement price after a contract is delisted;
+    from that moment the perp leg can no longer hedge the spot leg."""
+    out = {}
+    for s in perps:
+        path = _cache_path(cache_dir, exchange, s, "1h")
+        if not path.exists():
+            continue
+        df = drop_unclosed_candles(pd.read_csv(path), "1h").drop_duplicates("timestamp", keep="last")
+        live = ~((df["high"] == df["low"]) & (df["volume"] == 0))
+        tail = len(df) - (int(live.to_numpy().nonzero()[0][-1]) + 1 if live.any() else 0)
+        if tail >= min_bars:
+            out[s] = pd.to_datetime(df["timestamp"].iloc[len(df) - tail], unit="ms", utc=True)
+    return out
+
+
+def mask_delisted(exec_close: pd.DataFrame, delisted: dict[str, pd.Timestamp], exec_hour: int = 0) -> pd.DataFrame:
+    """Drop perp fill prices at or after the delisting (row d fills at day d+1, exec_hour:00)."""
+    out = exec_close.copy()
+    fill_time = out.index + pd.Timedelta(days=1, hours=exec_hour)
+    for s, t in delisted.items():
+        if s in out:
+            out.loc[fill_time >= t, s] = float("nan")
+    return out
+
+
 def load_spot_exec(spot_map: dict[str, str], index: pd.DatetimeIndex, cache_dir: str = "data/cache",
                    exchange: str = "binance", exec_hour: int = 0) -> pd.DataFrame:
     """Spot fill prices aligned with the perp exec_close (the exec_hour bar of day d+1 -> row d)."""

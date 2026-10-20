@@ -22,8 +22,10 @@ from hf_research.funding_carry import (
     SPOT_PREFIX,
     CarryConfig,
     carry_targets,
+    delisted_at,
     fee_series,
     load_spot_exec,
+    mask_delisted,
     signal_funding,
     spot_col,
     trailing_funding_ann,
@@ -97,11 +99,13 @@ def main() -> None:
     base = load_daily_panels(perps, cache_dir=args.cache_dir)
     idx = base["signal_close"].index
     spot_exec = load_spot_exec(spot_map, idx, args.cache_dir)
-    exec_close = pd.concat([base["exec_close"], spot_exec], axis=1)
+    delisted = delisted_at(perps, args.cache_dir)
+    perp_exec = mask_delisted(base["exec_close"], delisted)  # frozen post-delisting candles cannot hedge
+    exec_close = pd.concat([perp_exec, spot_exec], axis=1)
     has_spot = pd.DataFrame({p: spot_exec[spot_col(p)].notna() if spot_col(p) in spot_exec else False
                              for p in perps}, index=idx)
     eligible = eligible_from_membership(membership, idx, perps)
-    tradable = eligible & base["exec_close"][perps].notna() & has_spot
+    tradable = eligible & perp_exec[perps].notna() & has_spot
     panels = {"exec_close": exec_close, "funding": base["funding"]}
     slip = {k: slippage_panel(membership, idx, perps, t) for k, t in TIERS.items()}
     daily_fund = signal_funding(perps, idx, args.cache_dir)
@@ -115,7 +119,7 @@ def main() -> None:
 
     cfg = CarryConfig()
     report: dict = {"config": cfg.to_dict(), "criteria": CRITERIA,
-                    "data": {"perps": len(perps), "with_spot": int(len(spot_exec.columns)),
+                    "data": {"perps": len(perps), "with_spot": int(len(spot_exec.columns)), "delisted_perps": len(delisted),
                              "first_day": str(idx[0].date()), "last_day": str(idx[-1].date())}}
 
     daily, parts = run(cfg, detail=True)

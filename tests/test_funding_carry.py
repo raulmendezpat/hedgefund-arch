@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 
 import numpy as np
 import pandas as pd
 
 from hf_research.engine import backtest_weights
-from hf_research.funding_carry import CarryConfig, carry_targets, fee_series, spot_col, trailing_funding_ann
+from hf.data.ohlcv import _cache_path
+from hf_research.funding_carry import (CarryConfig, carry_targets, delisted_at, fee_series, mask_delisted, spot_col,
+                                         trailing_funding_ann)
 
 IDX = pd.date_range("2024-01-01", periods=6, freq="D", tz="UTC")
 
@@ -37,6 +40,26 @@ class CarryTargetTests(unittest.TestCase):
         fa = trailing_funding_ann(daily, 3)
         self.assertTrue(fa["A"].iloc[:2].isna().all())
         self.assertAlmostEqual(fa["A"].iloc[2], 0.0001 * 365)
+
+
+class DelistingTests(unittest.TestCase):
+    def test_frozen_tail_masks_fills_from_the_delisting(self):
+        t = pd.date_range("2024-01-01", periods=96, freq="h", tz="UTC")
+        live = 50
+        df = pd.DataFrame({"timestamp": (t - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(milliseconds=1), "open": 1.0,
+                           "high": [1.1] * live + [0.5] * (96 - live), "low": [0.9] * live + [0.5] * (96 - live),
+                           "close": [1.0] * live + [0.5] * (96 - live), "volume": [10.0] * live + [0.0] * (96 - live)})
+        df.loc[10, ["high", "low", "volume"]] = [1.0, 1.0, 0.0]  # an isolated quiet bar is not a delisting
+        with tempfile.TemporaryDirectory() as d:
+            path = _cache_path(d, "binanceusdm", "X/USDT:USDT", "1h")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(path, index=False)
+            out = delisted_at(["X/USDT:USDT"], d)
+        self.assertEqual(out["X/USDT:USDT"], t[live])
+        exe = pd.DataFrame({"X/USDT:USDT": 1.0}, index=pd.date_range("2023-12-31", periods=4, freq="D", tz="UTC"))
+        masked = mask_delisted(exe, out)
+        # Row d fills at day d+1 00:00; the delisting is 2024-01-03 02:00, so the 01-03 row (fill 01-04) is gone.
+        self.assertEqual(masked["X/USDT:USDT"].notna().tolist(), [True, True, True, False])
 
 
 class CarryEngineTests(unittest.TestCase):

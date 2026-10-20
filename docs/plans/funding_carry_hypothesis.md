@@ -100,3 +100,50 @@ Se reporta qué fracción de la grilla supera Sharpe 1.0 fuera de muestra.
   cuentas distintas. Por eso se reporta el riesgo de margen.
 - **Efectivo sin rendimiento:** no se modela el rendimiento de stablecoins sobre el efectivo
   ocioso.
+
+## Resultado (2026-10-20): hipótesis rechazada
+
+Corrida: `scripts/run_funding_carry.py` → `artifacts/research/funding_carry_v1/`. 337 perpetuos
+del top-60; 270 con par spot en Binance; 46 contratos deslistados.
+
+**Corrección de datos (no de parámetros).** Después del delisting, Binance sigue entregando
+velas del perpetuo congeladas en el precio de liquidación, con volumen cero. La primera corrida
+mantenía esos pares abiertos con la cobertura rota; DEGO sola restaba −8.9 %. Ahora el
+perpetuo se considera muerto desde el inicio de su racha final de velas planas sin volumen
+(≥24 h), y el par se cierra ahí. Antes de la corrección el Sharpe fuera de muestra era −0.37.
+
+| Criterio (fuera de muestra) | Umbral | Resultado | ¿Cumple? |
+|---|---|---|---|
+| Sharpe | ≥ 1.5 | 1.13 | no |
+| Meses positivos | ≥ 70 % | 38 % | no |
+| Peor caída | ≥ −10 % | −3.7 % | sí |
+| Sharpe sin los 5 mejores símbolos | ≥ 1.0 | 1.14 | sí |
+| Sharpe en desarrollo | ≥ 0.5 | 3.73 | sí |
+
+- **Retorno:** CAGR fuera de muestra 2.7 % con volatilidad 2.3 %. Funding +5.8 %/año, costos
+  −3.4 %/año, precio +0.2 %/año: la cobertura funciona.
+- **El edge se está extinguiendo:**
+  - Sharpe por año: 2021 8.6 · 2022 −2.6 · 2023 2.3 · 2024 7.8 · 2025 0.6 · 2026 −1.9.
+  - Desde 2025 casi todos los meses son levemente negativos: el funding promedio ya no paga
+    la rotación.
+- **Meses positivos bajos con Sharpe positivo:** el retorno se concentra en pocos meses de
+  funding alto (2024-03 +3.4 %, 2025-03 +3.3 %). El resto son pérdidas pequeñas por costos.
+- **Costos ×2:** Sharpe fuera de muestra 0.34.
+- **Grilla:**
+  - 59 % de las configuraciones con Sharpe fuera de muestra ≥ 1; mediana 1.33.
+  - Las de entrada 20 % rinden más, entre 8 y 13 %/año.
+  - Es una lectura posterior a ver los datos, así que no habilita a cambiar el primario.
+- **Combinación con momentum:**
+  - En el papel cumple: Sharpe fuera de muestra 1.49 contra 1.00, y peor caída −24 % contra
+    −32 %.
+  - Pero exige escalar el carry ×19 para igualar la volatilidad de momentum, unas 13 veces el
+    capital en notional por pata.
+  - Con un short que llegó a subir 93 % en un día (1000SHIB) y una pérdida del perpetuo de hasta
+    44 % del margen libre ya sin apalancar, esa escala no es implementable. **No se considera
+    válida.**
+- **Riesgo de delisting:** aun con la corrección, DEGO costó −1.5 %. El spot se desplomó
+  mientras el perpetuo seguía en el universo. Es un riesgo real de la estrategia, no un
+  artefacto.
+
+**Conclusión:** el carry de funding delta-neutral, con costos realistas, rinde un 2–4 %/año con
+muy baja volatilidad, y la tendencia de 2025–2026 es negativa. No pasa al paper.
