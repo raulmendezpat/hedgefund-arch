@@ -246,6 +246,39 @@ class RunnerTests(unittest.TestCase):
         self._run("2026-11-02 01:07")  # halted: no rebalance
         self.assertEqual(len(self.acct.calls), n)
 
+    def test_kill_switch_retries_flatten_while_positions_remain(self):
+        os.environ["LIVE_TRADING"] = "1"
+        self._run("2026-10-26 01:07")
+        self.acct.px["AAA/USDT:USDT"] = 0.0
+        self.acct.cash -= 2500.0
+        self.acct.fail_symbols = {"BBB/USDT:USDT"}  # the BBB close is rejected during the flatten
+        store = self._run("2026-10-27 05:07")
+        self.assertEqual(list(self.acct.pos), ["BBB/USDT:USDT"])
+        self.acct.fail_symbols = set()
+        self._run("2026-10-27 06:07")  # still halted, but the leftover position is closed
+        self.assertEqual(self.acct.pos, {})
+        self.assertIn("kill_switch_retry", store.read("events.jsonl")["type"].tolist())
+        self.assertTrue(store.load_state()["risk"]["halted"])
+
+    def test_failed_post_trade_check_keeps_ownership_and_order_log(self):
+        os.environ["LIVE_TRADING"] = "1"
+        acct, reads = self.acct, {"n": 0}
+        real_positions = acct.positions
+
+        def flaky_positions():
+            reads["n"] += 1
+            if reads["n"] == 2:  # the post-trade read
+                raise ConnectionError("timeout")
+            return real_positions()
+
+        acct.positions = flaky_positions
+        store = self._run("2026-10-26 01:07")
+        self.assertEqual(store.load_state()["managed_symbols"], ["AAA/USDT:USDT", "BBB/USDT:USDT"])
+        self.assertEqual(len(store.read("orders.jsonl")), 2)
+        self.assertIn("verify_failed", store.read("events.jsonl")["type"].tolist())
+        self._run("2026-10-26 02:07")  # its own positions are not treated as foreign
+        self.assertNotIn("abort", store.read("events.jsonl")["type"].tolist())
+
     def test_failed_order_is_retried_next_hour_from_actual_positions(self):
         os.environ["LIVE_TRADING"] = "1"
         self.acct.fail_symbols = {"BBB/USDT:USDT"}

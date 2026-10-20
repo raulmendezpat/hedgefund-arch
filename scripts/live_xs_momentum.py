@@ -36,6 +36,7 @@ import sys
 import time
 from pathlib import Path
 
+import ccxt
 import pandas as pd
 
 from hf_research import xs_signal
@@ -75,8 +76,6 @@ class BitgetAccount:
     """The few account operations the runner needs, on top of ccxt (one-way mode, USDT-M)."""
 
     def __init__(self, creds: dict):
-        import ccxt
-
         self.ex = ccxt.bitget({**creds, "enableRateLimit": True, "timeout": 20000, "options": {"defaultType": "swap"}})
         markets = self.ex.load_markets()
         self.listed = {k for k, v in markets.items()
@@ -104,7 +103,11 @@ class BitgetAccount:
         out = {}
         for s, t in self.ex.fetch_tickers(symbols).items():
             bid, ask, last = t.get("bid"), t.get("ask"), t.get("last")
-            out[s] = (bid + ask) / 2.0 if bid and ask else float(last)
+            if bid and ask:
+                out[s] = (bid + ask) / 2.0
+            elif last:
+                out[s] = float(last)
+            # no quote at all: left out, so build_orders refuses to trade on a missing price
         return out
 
     def to_precision(self, symbol: str, qty: float) -> float:
@@ -207,9 +210,13 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
         if status == "halt":
             log(f"KILL SWITCH: {reason}")
             events.append({"ts": _iso(now), "type": "kill_switch", "reason": reason, "equity": equity})
-            order_rows += execute(acct, flatten_orders(positions, mids), live, f"kill{now:%Y%m%d%H}", cfg, positions, now)
         else:
             log(f"halted ({reason}); run reset-risk after review")
+            if positions:  # an earlier flatten left something open: keep trying every hour
+                events.append({"ts": _iso(now), "type": "kill_switch_retry", "open": sorted(positions)})
+                log(f"kill switch retry: still open {sorted(positions)}")
+        if positions:
+            order_rows += execute(acct, flatten_orders(positions, mids), live, f"kill{now:%Y%m%d%H}", cfg, positions, now)
         finish(equity, {"gross_exposure": gross, "n_positions": len(positions), "risk_status": status})
         return
 
@@ -232,7 +239,7 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
             orders, skipped, intended = build_orders(
                 targets, positions, all_mids, equity, cfg, PRIMARY_STRATEGY["band"], acct.to_precision,
                 reduce_only_mode=(status == "reduce_only"))
-        except (RuntimeError, SanityError) as exc:
+        except (RuntimeError, SanityError, ccxt.BaseError) as exc:
             # Retried next hour; after max_fill_delay_hours the week becomes a missed rebalance.
             kind = "sanity_abort" if isinstance(exc, SanityError) else "rebalance_postponed"
             events.append({"ts": _iso(now), "type": kind, "decision_day": str(d.date()), "reason": str(exc)})
@@ -241,19 +248,29 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
             return
 
         tag = str(d.date())
-        if live and not positions:
-            try:
-                acct.ensure_one_way()
-            except Exception as exc:  # noqa: BLE001 - usually "already one-way"
-                log(f"set_position_mode: {exc}")
+        if live:
+            # Persist ownership before sending: if this process dies mid-rebalance, the next run must
+            # still recognise these positions as its own instead of aborting on "foreign" ones.
+            state["managed_symbols"] = sorted(set(state["managed_symbols"]) | {o.symbol for o in orders})
+            store.save_state(state)
+            if not positions:
+                try:
+                    acct.ensure_one_way()
+                except Exception as exc:  # noqa: BLE001 - usually "already one-way"
+                    log(f"set_position_mode: {exc}")
         order_rows += execute(acct, orders, live, tag, cfg, positions, now)
         errors = [r for r in order_rows if r.get("error")]
         drift = {}
         if live:
-            state["managed_symbols"] = sorted(set(state["managed_symbols"]) | {o.symbol for o in orders})
-            positions_after, _ = acct.positions()
-            equity_after = acct.equity()
-            drift = position_drift(intended, positions_after, all_mids, equity_after, cfg)
+            try:
+                positions_after, _ = acct.positions()
+                equity_after = acct.equity()
+                drift = position_drift(intended, positions_after, all_mids, equity_after, cfg)
+            except Exception as exc:  # noqa: BLE001 - orders are already sent: record them regardless
+                drift = None
+                events.append({"ts": _iso(now), "type": "verify_failed", "decision_day": tag,
+                               "reason": f"{type(exc).__name__}: {exc}"})
+                log(f"post-trade verification failed: {exc}")
         events.append({"ts": _iso(now), "type": "rebalance", "decision_day": tag, "risk_status": status,
                        "delay_hours": (now - scheduled_fill(d, cfg)).total_seconds() / 3600.0,
                        "equity_before": equity, "n_orders": len(orders), "n_errors": len(errors),
@@ -263,7 +280,7 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
         if not errors:
             state["last_decision_day"] = tag
         log(f"rebalance {tag}: {len(orders)} orders ({'sent' if live else 'not sent'}), {len(errors)} errors, "
-            f"{len(drift)} drift breaches")
+            f"{'unverified' if drift is None else len(drift)} drift breaches")
 
     finish(equity, {"gross_exposure": gross, "n_positions": len(positions), "risk_status": status})
     log(f"equity {equity:.2f} positions {len(positions)} gross {gross:.2f} risk {status} {reason}".rstrip())
