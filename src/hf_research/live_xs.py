@@ -15,7 +15,9 @@ Guardrails (all evaluated before any order is built):
 - Foreign positions (symbols this executor never traded) or hedge-mode positions abort the run:
   the executor must own a dedicated one-way-mode (sub)account.
 
-Deposits and withdrawals move equity too: after one, reset the risk state (peak/day start).
+Deposits and withdrawals move equity too. The runner reads the account's transfer bills every
+run and shifts peak and day-start equity by the net amount (apply_cash_flow), so a transfer is
+never mistaken for a profit or a loss.
 """
 from __future__ import annotations
 
@@ -83,6 +85,52 @@ def check_risk(risk: dict, equity: float, now: pd.Timestamp, cfg: LiveConfig) ->
     if day_loss >= cfg.max_daily_loss:
         return "reduce_only", f"daily loss {day_loss:.1%} >= {cfg.max_daily_loss:.0%}"
     return "ok", ""
+
+
+# ---------------------------------------------------------------- cash flows
+
+# Bitget USDT-M futures bill types that move money in or out of the futures account. Moves
+# between cross and isolated margin stay inside it and are not cash flows.
+EXTERNAL_TRANSFER_TYPES = (
+    "trans_from_contract", "trans_to_contract", "trans_from_exchange", "trans_to_exchange",
+    "trans_from_otc", "trans_to_otc", "trans_from_strategy", "trans_to_strategy",
+)
+CASH_FLOW_OVERLAP_MS = 2 * 3600 * 1000  # re-query this far back: bills can appear late
+
+
+def apply_cash_flow(risk: dict, amount: float) -> None:
+    """Shift peak and day-start equity by a deposit (+) or withdrawal (-)."""
+    risk["peak_equity"] = float(risk["peak_equity"]) + amount
+    risk["day_start_equity"] = float(risk["day_start_equity"]) + amount
+
+
+def new_cash_flows(cf_state: dict, flows: list[dict], now_ms: int) -> tuple[list[dict], dict]:
+    """Flows not seen before, and the next cursor state.
+
+    Each run queries [since_ms - CASH_FLOW_OVERLAP_MS, now]; ids seen inside the overlap window
+    are remembered so a bill is counted exactly once even if it shows up late."""
+    seen = set(cf_state.get("seen", []))
+    fresh = [f for f in flows if f["id"] not in seen]
+    keep_from = now_ms - CASH_FLOW_OVERLAP_MS
+    return fresh, {"since_ms": now_ms, "seen": sorted(f["id"] for f in flows if f["ts"] >= keep_from)}
+
+
+# ---------------------------------------------------------------- fills
+
+def fill_record(order: dict, fill: dict) -> dict:
+    """Execution quality of one sent order: slippage against the pre-trade mid (positive = cost)
+    and fees, both in bps of the filled notional."""
+    avg, filled, mid = float(fill["average"]), float(fill["filled"]), float(order["mid"])
+    sign = 1.0 if order["side"] == "buy" else -1.0
+    notional = filled * avg
+    fee = float(fill.get("fee_usdt") or 0.0)
+    has_mid = math.isfinite(mid) and mid > 0  # kill-switch orders may have no reference mid
+    return {"ts": order["ts"], "tag": order["tag"], "symbol": order["symbol"], "side": order["side"],
+            "reason": order["reason"], "order_id": fill["id"], "client_oid": order["client_oid"],
+            "qty": float(order["qty"]), "filled": filled, "mid": mid, "avg_px": avg, "notional_usdt": notional,
+            "slippage_bps": sign * (avg / mid - 1.0) * 1e4 if has_mid else float("nan"),
+            "slippage_usdt": sign * filled * (avg - mid) if has_mid else float("nan"),
+            "fee_usdt": fee, "fee_bps": fee / notional * 1e4 if notional else float("nan")}
 
 
 # ---------------------------------------------------------------- orders

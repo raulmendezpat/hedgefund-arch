@@ -155,6 +155,10 @@ class FakeAccount:
         self.listed = set(self.px)
         self.calls: list[tuple] = []
         self.fail_symbols: set[str] = set()
+        self.flows: list[dict] = []  # transfer bills: {"id", "ts" (ms), "type", "amount"}
+        self.flows_error: Exception | None = None
+        self.fills: dict[str, dict] = {}
+        self.fills_pending: set[str] = set()  # order ids whose fill is not visible yet
 
     def equity(self):
         return self.cash + sum(q * (self.px[s] - self.entry[s]) for s, q in self.pos.items())
@@ -190,7 +194,18 @@ class FakeAccount:
         else:
             self.pos[o.symbol] = q1
             self.entry[o.symbol] = self.px[o.symbol]
+        avg = self.px[o.symbol] * (1.001 if o.side == "buy" else 0.999)  # 10 bps worse than the mid
+        self.fills[oid] = {"id": oid, "filled": o.qty, "average": avg, "fee_usdt": 0.0006 * o.qty * avg}
         return {"id": oid, "status": "closed"}
+
+    def order_fill(self, order_id, symbol):
+        self.calls.append(("fill", order_id))
+        return None if order_id in self.fills_pending else self.fills.get(order_id)
+
+    def cash_flows(self, since_ms, until_ms):
+        if self.flows_error:
+            raise self.flows_error
+        return [f for f in self.flows if since_ms <= f["ts"] <= until_ms]
 
 
 WEIGHTS = {"AAA/USDT:USDT": 0.05, "BBB/USDT:USDT": -0.05}
@@ -319,6 +334,62 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("verify_failed", store.read("events.jsonl")["type"].tolist())
         self._run("2026-10-26 02:07")  # its own positions are not treated as foreign
         self.assertNotIn("abort", store.read("events.jsonl")["type"].tolist())
+
+    @staticmethod
+    def _ms(s):
+        return int(pd.Timestamp(s, tz="UTC").value // 1_000_000)
+
+    def test_withdrawal_shifts_risk_baselines_instead_of_tripping_kill_switch(self):
+        os.environ["LIVE_TRADING"] = "1"
+        self._run("2026-10-26 01:07")
+        self.acct.cash -= 4000.0  # a 40% withdrawal would otherwise read as a 40% drawdown
+        self.acct.flows.append({"id": "b1", "ts": self._ms("2026-10-26 01:30"), "type": "trans_to_contract",
+                                "amount": -4000.0})
+        store = self._run("2026-10-26 02:07")
+        risk = store.load_state()["risk"]
+        self.assertFalse(risk["halted"])
+        self.assertAlmostEqual(risk["peak_equity"], 6000.0, places=0)
+        self.assertEqual(self.acct.pos["AAA/USDT:USDT"], 50.0)  # nothing was flattened
+        ev = store.read("events.jsonl")
+        self.assertEqual(ev[ev["type"] == "cash_flow"]["net_usdt"].tolist(), [-4000.0])
+        self._run("2026-10-26 03:07")  # still inside the overlap window: not counted twice
+        self.assertAlmostEqual(store.load_state()["risk"]["peak_equity"], 6000.0, places=0)
+
+    def test_transfers_before_the_first_run_are_history(self):
+        self.acct.flows.append({"id": "b0", "ts": self._ms("2026-10-26 00:30"), "type": "trans_from_contract",
+                                "amount": 10_000.0})
+        store = self._run("2026-10-26 00:50", mode="dry-run")
+        store = self._run("2026-10-26 01:50", mode="dry-run")
+        self.assertNotIn("cash_flow", store.read("events.jsonl")["type"].tolist())
+        self.assertAlmostEqual(store.load_state()["risk"]["peak_equity"], 10_000.0)
+
+    def test_failed_transfer_query_is_logged_and_retried(self):
+        store = self._run("2026-10-26 00:07", mode="dry-run")
+        self.acct.flows_error = ConnectionError("timeout")
+        self.acct.flows.append({"id": "b2", "ts": self._ms("2026-10-26 00:30"), "type": "trans_from_contract",
+                                "amount": 500.0})
+        self._run("2026-10-26 01:07", mode="dry-run")
+        self.assertIn("cash_flow_check_failed", store.read("events.jsonl")["type"].tolist())
+        self.acct.flows_error = None
+        self._run("2026-10-26 02:07", mode="dry-run")  # the cursor did not move: the deposit is found
+        ev = store.read("events.jsonl")
+        self.assertEqual(ev[ev["type"] == "cash_flow"]["net_usdt"].tolist(), [500.0])
+
+    def test_fills_are_recorded_late_and_reported(self):
+        os.environ["LIVE_TRADING"] = "1"
+        self.acct.fills_pending = {runner.client_oid("2026-10-25", runner.OrderIntent(
+            "BBB/USDT:USDT", "sell", 25.0, False, 20.0, 0.0, -0.05, "open"))}
+        store = self._run("2026-10-26 01:07")
+        self.assertEqual(store.read("fills.jsonl")["symbol"].tolist(), ["AAA/USDT:USDT"])
+        self.acct.fills_pending = set()
+        self._run("2026-10-26 02:07")  # the late fill is picked up, the recorded one is not re-fetched
+        fills = store.read("fills.jsonl")
+        self.assertEqual(sorted(fills["symbol"]), ["AAA/USDT:USDT", "BBB/USDT:USDT"])
+        self.assertTrue(((fills["slippage_bps"] - 10.0).abs() < 1e-6).all())
+        self.assertTrue(((fills["fee_bps"] - 6.0).abs() < 1e-6).all())
+        rep = runner.report(store)
+        self.assertEqual(rep["n_fills"], 2)
+        self.assertAlmostEqual(rep["by_rebalance"]["2026-10-25"]["slippage_bps_weighted"], 10.0)
 
     def test_failed_order_is_retried_next_hour_from_actual_positions(self):
         os.environ["LIVE_TRADING"] = "1"

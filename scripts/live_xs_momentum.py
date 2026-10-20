@@ -20,6 +20,8 @@ Subcommands:
   run         one hourly cycle
 Each --mode keeps its own state directory (runtime/live/xs_momentum_v1/<mode>).
   status      print the state, risk and the latest events
+  report      execution quality: slippage and fees by liquidity tier and by rebalance, against
+              the backtest cost model and (with --paper-dir) the paper runner
   reset-risk  clear a kill-switch halt and restart peak/day-start equity (after a review, or
               after deposits/withdrawals); needs --confirm
 
@@ -44,12 +46,17 @@ from hf_research import xs_signal
 from hf_research.ledger import Store, _iso
 from hf_research.liquid_universe import bitget_symbol
 from hf_research.live_xs import (
+    CASH_FLOW_OVERLAP_MS,
+    EXTERNAL_TRANSFER_TYPES,
     LiveConfig,
     OrderIntent,
     SanityError,
+    apply_cash_flow,
     build_orders,
     check_risk,
+    fill_record,
     flatten_orders,
+    new_cash_flows,
     new_risk_state,
     position_drift,
 )
@@ -168,6 +175,28 @@ class BitgetAccount:
                                  {"reduceOnly": o.reduce_only, "marginMode": cfg.margin_mode, "clientOid": client_oid})
         return {"id": r.get("id"), "status": r.get("status"), "filled": r.get("filled"), "average": r.get("average")}
 
+    def order_fill(self, order_id: str, symbol: str) -> dict | None:
+        """Average price, filled quantity and fee of a sent order; None while it is still open."""
+        r = self.ex.fetch_order(order_id, symbol)
+        if r.get("status") not in ("closed", "canceled") or not r.get("filled") or not r.get("average"):
+            return None
+        fee = r.get("fee") or {}
+        fee_usdt = abs(float(fee.get("cost") or 0.0)) if fee.get("currency") in (None, "USDT") else float("nan")
+        return {"id": order_id, "filled": float(r["filled"]), "average": float(r["average"]), "fee_usdt": fee_usdt}
+
+    def cash_flows(self, since_ms: int, until_ms: int) -> list[dict]:
+        """Transfers in (+) and out (-) of the USDT-M futures account between two times (ms)."""
+        out = []
+        for business_type in EXTERNAL_TRANSFER_TYPES:
+            data = self.ex.privateMixGetV2MixAccountBill({**PRODUCT, "businessType": business_type,
+                                                          "startTime": since_ms, "endTime": until_ms, "limit": 100})
+            bills = (data.get("data") or {}).get("bills", [])
+            if len(bills) >= 100:
+                raise RuntimeError(f"{business_type}: 100+ transfer bills in one window; check the account by hand")
+            out += [{"id": b["billId"], "ts": int(b["cTime"]), "type": business_type, "amount": float(b["amount"])}
+                    for b in bills if b.get("coin", "USDT") == "USDT"]
+        return sorted(out, key=lambda f: f["ts"])
+
 
 def _account(args) -> BitgetAccount:
     return BitgetAccount(load_credentials(args.secret_file))
@@ -197,17 +226,137 @@ def execute(acct, orders: list[OrderIntent], live: bool, tag: str, cfg: LiveConf
     return rows
 
 
+def track_cash_flows(state: dict, acct, equity: float, now: pd.Timestamp, events: list, log) -> None:
+    """Shift the risk baselines by transfers in/out since the last run, so they are not P&L.
+
+    The first run only records which transfers already exist (they are in the equity the risk
+    state starts from). A failed query leaves the cursor alone and is retried next run."""
+    now_ms = int(now.value // 1_000_000)
+    cf = state.get("cash_flow")
+    since = (cf["since_ms"] if cf else now_ms) - CASH_FLOW_OVERLAP_MS
+    try:
+        flows = acct.cash_flows(since, now_ms)
+    except Exception as exc:  # noqa: BLE001 - never block trading on this; the guardrails stay conservative
+        events.append({"ts": _iso(now), "type": "cash_flow_check_failed", "reason": f"{type(exc).__name__}: {exc}"})
+        log(f"cash flow check failed: {exc}")
+        return
+    fresh, state["cash_flow"] = new_cash_flows(cf or {}, flows, now_ms)
+    if cf is None or not fresh:
+        return
+    net = sum(f["amount"] for f in fresh)
+    applied = state.get("risk") is not None
+    if applied:
+        apply_cash_flow(state["risk"], net)
+    events.append({"ts": _iso(now), "type": "cash_flow", "net_usdt": net, "flows": fresh, "equity": equity,
+                   "risk_adjusted": applied})
+    log(f"cash flow {net:+.2f} USDT ({len(fresh)} transfer(s)); risk baselines {'shifted' if applied else 'not set yet'}")
+
+
+def record_fills(store: Store, acct, new_rows: list[dict], now: pd.Timestamp, log, max_age_days: int = 7) -> None:
+    """Fetch execution prices for sent orders that have none recorded yet (this run's and earlier ones)."""
+    done = store.read("fills.jsonl")
+    done_ids = set(done["order_id"]) if len(done) else set()
+    old = store.read("orders.jsonl")
+    rows = (old.to_dict("records") if len(old) else []) + list(new_rows)
+    cutoff = now - pd.Timedelta(days=max_age_days)
+    out = []
+    for r in rows:
+        oid = (r.get("response") or {}).get("id") if isinstance(r.get("response"), dict) else None
+        if not r.get("sent") or not oid or oid in done_ids or pd.Timestamp(r["ts"]) < cutoff:
+            continue
+        try:
+            fill = acct.order_fill(oid, r["symbol"])
+        except Exception as exc:  # noqa: BLE001 - retried next run
+            log(f"fill lookup failed {r['symbol']} {oid}: {type(exc).__name__}")
+            continue
+        if fill:
+            out.append(fill_record(r, fill))
+            done_ids.add(oid)
+    store.append("fills.jsonl", out)
+    if out:
+        log(f"recorded {len(out)} fill(s); median slippage {pd.Series([f['slippage_bps'] for f in out]).median():.1f} bps")
+
+
+# ---------------------------------------------------------------- report
+
+MODEL_COST_BPS = {"1-10": 3.0, "11-30": 6.0, "31-60": 12.0}  # the backtest's tiered cost assumption
+
+
+def add_tiers(fills: pd.DataFrame, events: pd.DataFrame, membership: pd.DataFrame, day_col: str) -> pd.DataFrame:
+    """Liquidity tier (rank in that month's universe) of each filled Bitget symbol."""
+    f = fills.copy()
+    inv = {}
+    if len(events) and "bitget_map" in events:
+        for m in events.loc[events["type"] == "rebalance", "bitget_map"].dropna():
+            inv.update({bg: bn for bn, bg in m.items()})
+    f["binance_symbol"] = f["symbol"].map(lambda s: inv.get(s, s))
+    f["month"] = pd.to_datetime(f[day_col], errors="coerce").dt.strftime("%Y-%m")
+    if len(membership):
+        f = f.merge(membership[["month", "symbol", "rank"]].rename(columns={"symbol": "binance_symbol"}),
+                    on=["month", "binance_symbol"], how="left")
+    else:
+        f["rank"] = float("nan")
+    f["tier"] = pd.cut(f["rank"].fillna(999), [0, 10, 30, 60, 10_000], labels=[*MODEL_COST_BPS, "out"]).astype(str)
+    return f
+
+
+def report(store: Store, paper_dir: str = "") -> dict:
+    fills, events = store.read("fills.jsonl"), store.read("events.jsonl")
+    membership = pd.read_csv(store.path("membership.csv")) if store.path("membership.csv").exists() else pd.DataFrame()
+    out: dict = {"n_fills": int(len(fills))}
+    if len(events):
+        cf = events[events["type"] == "cash_flow"]
+        out["cash_flows_usdt"] = float(cf["net_usdt"].sum()) if len(cf) else 0.0
+    if not len(fills):
+        return out
+    f = add_tiers(fills, events, membership, "tag")
+    paper = pd.DataFrame()
+    if paper_dir:
+        pstore = Store(Path(paper_dir))
+        pf = pstore.read("fills.jsonl")
+        if len(pf):
+            pm = pd.read_csv(pstore.path("membership.csv")) if pstore.path("membership.csv").exists() else pd.DataFrame()
+            paper = add_tiers(pf, pstore.read("events.jsonl"), pm, "decision_day")
+    tiers = {}
+    for tier, g in f.groupby("tier"):
+        row = {"n": int(len(g)), "live_slippage_bps_median": float(g["slippage_bps"].median()),
+               "live_fee_bps_median": float(g["fee_bps"].median()), "model_cost_bps": MODEL_COST_BPS.get(tier)}
+        if len(paper):
+            p = paper[paper["tier"] == tier]
+            row["paper_slippage_bps_median"] = float(p["slippage_bps"].median()) if len(p) else None
+        tiers[tier] = row
+    out["by_tier"] = tiers
+    days = {}
+    for tag, g in f.groupby("tag"):
+        row = {"n": int(len(g)), "turnover_usdt": float(g["notional_usdt"].sum()),
+               "slippage_usdt": float(g["slippage_usdt"].sum()), "fees_usdt": float(g["fee_usdt"].sum()),
+               "slippage_bps_weighted": float(g["slippage_usdt"].sum() / g["notional_usdt"].sum() * 1e4)}
+        if len(paper):
+            p = paper[paper["decision_day"] == tag]
+            if len(p):
+                row["paper_slippage_bps_weighted"] = float(p["slippage_usdt"].sum() / p["notional_usdt"].sum() * 1e4)
+        days[tag] = row
+    out["by_rebalance"] = days
+    return out
+
+
 def run_cycle(store: Store, args, account_factory=_account) -> None:
     state = store.load_state()
     cfg = LiveConfig(**state["config"])
     now = pd.Timestamp.now(tz="UTC") if not args.now else pd.Timestamp(args.now, tz="UTC")
     live = args.mode == "live"
     events, order_rows = [], []
+    acct = None
 
     def log(msg: str) -> None:
         print(f"[{_iso(now)}] [{args.mode}] {msg}", flush=True)
 
     def finish(equity: float | None, extra: dict | None = None) -> None:
+        if live and acct is not None:
+            try:
+                record_fills(store, acct, order_rows, now, log)
+            except Exception as exc:  # noqa: BLE001 - must never block saving state and the order log
+                log(f"recording fills failed: {type(exc).__name__}: {exc}")
         store.append("events.jsonl", events)
         store.append("orders.jsonl", order_rows)
         if equity is not None:
@@ -221,6 +370,7 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
     acct = account_factory(args)
     equity = acct.equity()
     positions, meta = acct.positions()
+    track_cash_flows(state, acct, equity, now, events, log)
 
     hedged = [m["symbol"] for m in meta if m.get("hedged")]
     foreign = sorted(set(positions) - set(state["managed_symbols"]))
@@ -321,12 +471,13 @@ def run_cycle(store: Store, args, account_factory=_account) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["init", "run", "status", "reset-risk"])
+    ap.add_argument("command", choices=["init", "run", "status", "report", "reset-risk"])
     ap.add_argument("--state-dir", default="", help="default: runtime/live/xs_momentum_v1/<mode>")
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--mode", choices=["dry-run", "live"], default="dry-run")
     ap.add_argument("--secret-file", default="")
     ap.add_argument("--confirm", action="store_true")
+    ap.add_argument("--paper-dir", default="", help="report: paper state dir to compare execution costs with")
     ap.add_argument("--now", default="", help="override the clock (testing only)")
     args = ap.parse_args()
 
@@ -353,6 +504,10 @@ def main() -> None:
         if len(ev):
             print(ev.tail(10).drop(columns=[c for c in ("targets", "bitget_map", "intended", "eligible") if c in ev],
                                    errors="ignore").to_string())
+        return
+
+    if args.command == "report":
+        print(json.dumps(report(store, args.paper_dir), indent=2, default=float))
         return
 
     if args.command == "reset-risk":
