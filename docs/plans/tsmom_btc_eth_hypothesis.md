@@ -84,3 +84,53 @@ Se informa qué fracción de las 24 combinaciones tiene Sharpe fuera de muestra 
   separa el aporte de largos y cortos y se compara con comprar y mantener.
 - **Fuente de datos:** los datos son de Binance y la ejecución sería en Bitget. En BTC y ETH la
   diferencia de precio y de funding es pequeña.
+
+## Resultado (2026-10-21): rechazada por poco; es la candidata más robusta hasta ahora
+
+Corrida: `scripts/run_tsmom.py` → `artifacts/research/tsmom_btc_eth_v1/`.
+
+| Criterio | Umbral | Resultado | ¿Cumple? |
+|---|---|---|---|
+| Sharpe fuera de muestra | ≥ 0.7 | 0.63 | no |
+| Peor caída fuera de muestra | ≥ −30 % | −33.7 % | no |
+| Sharpe de desarrollo | ≥ 0.5 | 1.10 | sí |
+| Cada activo fuera de muestra > 0 | > 0 | BTC 0.46 · ETH 0.70 | sí |
+
+| Combinación con momentum cruzado (fuera de muestra) | Momentum solo | Combinado | ¿Cumple? |
+|---|---|---|---|
+| Sharpe (≥ +0.15) | 1.00 | 1.11 (+0.11) | no |
+| Peor caída | −32.4 % | −24.6 % | sí |
+| Exposición bruta de la TSMOM a la escala (p95 ≤ 2) | — | 0.93 | sí |
+
+En desarrollo, la combinación también mejora: Sharpe 0.55 contra 0.33 y peor caída −16 % contra
+−24 %. La correlación diaria con el momentum fuera de muestra es 0.12.
+
+**Por qué es la más robusta de todo lo probado** (aun sin pasar):
+- **Años:** Sharpe positivo en los 7, de 2020 a 2026: 2.14 · 1.03 · 0.41 · 0.66 · 0.43 · 0.58 · 1.01.
+- **Grilla:**
+  - Las 24 combinaciones tienen Sharpe positivo fuera de muestra; el 62 % supera 0.5.
+  - Medianas: 0.57 fuera de muestra y 1.19 en desarrollo.
+- **Costos ×2:** Sharpe fuera de muestra 0.52. La rotación es baja y los costos de BTC y ETH,
+  mínimos.
+- **Bootstrap:** probabilidad de que el Sharpe fuera de muestra sea ≤ 0 = 13 %.
+- **Sin depender de un activo:** BTC y ETH son positivos por separado.
+- **No es beta disfrazada:** la correlación con comprar y mantener fuera de muestra es −0.06.
+  Comprar y mantener tuvo Sharpe 0.39, con una caída de −38 % a la misma volatilidad.
+- **Cuenta horaria:** peor caída −34 % fuera de muestra, sin tocar el kill switch de −35 % por
+  muy poco.
+
+**Debilidades:**
+- **Retorno por lado:**
+  - Desarrollo: largos +35 %/año, cortos +0.5 %/año.
+  - Fuera de muestra: largos +17 %/año, cortos +6.5 %/año.
+  - Los cortos solo aportaron en el período reciente.
+- **Funding:** cuesta 2.4–6.5 %/año, porque los largos pagan funding.
+- **Meses positivos:** 38 % fuera de muestra. Gana con pocas tendencias largas.
+
+**Lecturas posteriores a ver los datos (no habilitan a cambiar el primario):** la variante solo
+largo (0.85) y la de solo 60 días (0.92) tuvieron mejor Sharpe fuera de muestra. Elegirlas ahora
+sería sobreajuste a un período mayormente alcista.
+
+**Conclusión:** la hipótesis, tal como se registró, no pasa. Si se quiere seguir, lo honesto es
+validarla con datos nuevos: un paper de la configuración primaria sin cambios, con su propia
+compuerta pre-registrada. No corresponde ajustar los umbrales.
