@@ -84,7 +84,9 @@ def compute_targets(decision_day: pd.Timestamp, members: list[str], listed: set[
 
 # ---------------------------------------------------------------- run cycle
 
-def run_cycle(store: Store, args) -> None:
+def run_cycle(store: Store, args, targets_fn=None) -> None:
+    """One hourly cycle. `targets_fn(decision_day, members, listed, cache_dir, log)` builds the
+    weekly targets (default: the momentum signal); other weekly cross-sectional papers pass theirs."""
     state = store.load_state()
     cfg = PaperConfig(**state["config"])
     book = PaperBook.from_dict(state["book"])
@@ -141,7 +143,7 @@ def run_cycle(store: Store, args) -> None:
     elif status == "due":
         membership = ensure_membership(store, d.strftime("%Y-%m"), cfg, args.cache_dir, log)
         try:
-            tgt = compute_targets(d, sorted(membership["symbol"]), listed, args.cache_dir, log)
+            tgt = (targets_fn or compute_targets)(d, sorted(membership["symbol"]), listed, args.cache_dir, log)
         except RuntimeError as exc:
             log(f"rebalance postponed: {exc}")
             tgt = None
@@ -175,7 +177,8 @@ def run_cycle(store: Store, args) -> None:
                          "delay_hours": (now - scheduled_fill(d, cfg)).total_seconds() / 3600.0,
                          "equity_before": equity0, "equity_after": book.equity, "n_orders": len(plan),
                          "targets": tgt["weights"], "bitget_map": to_bg, "eligible": tgt["eligible"],
-                         "not_on_bitget": tgt["not_on_bitget"], "signal_close": tgt["signal_close"]}
+                         "not_on_bitget": tgt["not_on_bitget"], "signal_close": tgt["signal_close"],
+                         **({"scores": tgt["scores"]} if "scores" in tgt else {})}
             events.append(rebalance)
             state["last_decision_day"] = str(d.date())
             gross = sum(abs(w) for w in book.weights().values())
@@ -201,6 +204,17 @@ def run_cycle(store: Store, args) -> None:
 
 # ---------------------------------------------------------------- report
 
+def _momentum_replay(reb: pd.DataFrame, days: pd.Series, args) -> pd.DataFrame:
+    """Same decision days and eligible sets, Binance prices and funding, backtest costs."""
+    syms = sorted({s for el in reb["eligible"] for s in el})
+    panels = load_daily_panels(syms, cache_dir=args.cache_dir, exchange=BINANCE)
+    elig = pd.DataFrame(False, index=panels["signal_close"].index, columns=panels["signal_close"].columns)
+    for dday, el in zip(days, reb["eligible"]):
+        if dday in elig.index:
+            elig.loc[dday, [s for s in el if s in elig.columns]] = True
+    return backtest(dict(panels, eligible=elig), MomentumConfig(**PRIMARY_STRATEGY), rebalance_on=days)
+
+
 PREREGISTERED_CHECKS = {
     "min_rebalances": 12,
     "max_missed_rebalances": 1,
@@ -210,7 +224,9 @@ PREREGISTERED_CHECKS = {
 }
 
 
-def report(store: Store, args) -> dict:
+def report(store: Store, args, model_fn=None) -> dict:
+    """`model_fn(rebalance_events, decision_days, args)` -> daily model net returns to track the paper
+    against (default: the momentum replay below)."""
     state = store.load_state()
     eq = store.read("equity.jsonl")
     ev = store.read("events.jsonl")
@@ -273,14 +289,8 @@ def report(store: Store, args) -> dict:
     # Model replay: same decision days and eligible sets, Binance prices and funding, backtest costs.
     if len(reb) and len(paper) >= 2:
         days = pd.to_datetime(reb["decision_day"]).dt.tz_localize("UTC")
-        syms = sorted({s for el in reb["eligible"] for s in el})
-        panels = load_daily_panels(syms, cache_dir=args.cache_dir, exchange=BINANCE)
-        elig = pd.DataFrame(False, index=panels["signal_close"].index, columns=panels["signal_close"].columns)
-        for dday, el in zip(days, reb["eligible"]):
-            if dday in elig.index:
-                elig.loc[dday, [s for s in el if s in elig.columns]] = True
         start = days.min()
-        model = backtest(dict(panels, eligible=elig), MomentumConfig(**PRIMARY_STRATEGY), rebalance_on=days)
+        model = (model_fn or _momentum_replay)(reb, days, args)
         model = model[model.index >= start]["net"]
         both = pd.concat([paper.rename("paper"), model.rename("model")], axis=1, sort=True).dropna()
         if len(both) >= 2:
