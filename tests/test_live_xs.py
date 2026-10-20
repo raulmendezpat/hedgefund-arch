@@ -105,6 +105,47 @@ class BuildOrdersTests(unittest.TestCase):
         self.assertAlmostEqual(d["B"], 0.03)
 
 
+class CredentialFileTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = {k: os.environ.pop(k, None) for k in (*runner.ENV_KEYS.values(), "BITGET_ENV_FILE")}
+
+    def tearDown(self):
+        for k, v in self.saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+        self.tmp.cleanup()
+
+    def _write(self, text, mode=0o600):
+        p = Path(self.tmp.name) / "bitget.env"
+        p.write_text(text)
+        p.chmod(mode)
+        os.environ["BITGET_ENV_FILE"] = str(p)
+        return p
+
+    def test_values_are_data_not_shell(self):
+        marker = Path(self.tmp.name) / "pwned"
+        self._write(f"# comment\nexport BITGET_API_KEY=k$HOME\nBITGET_API_SECRET='s ec;ret'\n"
+                    f"BITGET_API_PASSPHRASE=\"p$(touch {marker})\"\n\ntouch {marker}\n")
+        creds = runner.load_credentials("")
+        self.assertEqual(creds, {"apiKey": "k$HOME", "secret": "s ec;ret", "password": f"p$(touch {marker})"})
+        self.assertFalse(marker.exists())
+
+    def test_environment_variables_take_precedence(self):
+        self._write("BITGET_API_KEY=file\nBITGET_API_SECRET=file\nBITGET_API_PASSPHRASE=file\n")
+        os.environ["BITGET_API_KEY"] = "env"
+        self.assertEqual(runner.load_credentials("")["apiKey"], "env")
+
+    def test_refuses_readable_file_and_missing_keys(self):
+        self._write("BITGET_API_KEY=a\nBITGET_API_SECRET=b\nBITGET_API_PASSPHRASE=c\n", mode=0o644)
+        with self.assertRaises(SystemExit):
+            runner.load_credentials("")
+        self._write("BITGET_API_KEY=a\n")
+        with self.assertRaises(SystemExit):
+            runner.load_credentials("")
+
+
 class FakeAccount:
     def __init__(self, equity=10_000.0):
         self.cash = equity

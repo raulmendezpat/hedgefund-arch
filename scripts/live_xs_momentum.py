@@ -9,10 +9,11 @@ Modes:
                   orders and never changes account settings (leverage, margin or position mode).
   --mode live     sends market orders. Also requires the environment variable LIVE_TRADING=1.
 
-Credentials (read only when a command needs the account):
-  BITGET_API_KEY, BITGET_API_SECRET, BITGET_API_PASSPHRASE environment variables, or
+Credentials (read only when a command needs the account; first match wins):
   --secret-file pointing to a JSON file with apiKey / secret / password (optionally nested under
-  "envelope"). Use a key without withdrawal permission, restricted to the host IP.
+  "envelope"); else the BITGET_API_KEY, BITGET_API_SECRET, BITGET_API_PASSPHRASE environment
+  variables; else those keys read as plain KEY=VALUE data from $BITGET_ENV_FILE (default
+  ~/.config/hedgefund/bitget.env, must be chmod 600). Use a key without withdrawal permission.
 
 Subcommands:
   init        create the state (first rebalance = first scheduled fill after now)
@@ -59,16 +60,46 @@ PRODUCT = {"productType": "USDT-FUTURES"}
 
 # ---------------------------------------------------------------- exchange adapter
 
+ENV_KEYS = {"apiKey": "BITGET_API_KEY", "secret": "BITGET_API_SECRET", "password": "BITGET_API_PASSPHRASE"}
+DEFAULT_ENV_FILE = "~/.config/hedgefund/bitget.env"
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """KEY=VALUE lines read as plain data (never executed by a shell): blank lines and # comments
+    are ignored, an optional `export ` prefix and one pair of surrounding quotes are stripped.
+
+    Refuses a file that group or others can read, since it holds trading credentials."""
+    mode = path.stat().st_mode
+    if mode & 0o077:
+        sys.exit(f"{path} is accessible by other users (mode {oct(mode & 0o777)}); run: chmod 600 {path}")
+    out = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip().removeprefix("export ").strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        out[key] = value
+    return out
+
+
 def load_credentials(secret_file: str) -> dict:
+    """--secret-file (JSON), else environment variables, else $BITGET_ENV_FILE / ~/.config/hedgefund/bitget.env."""
     if secret_file:
         d = json.loads(Path(secret_file).read_text())
         d = d.get("envelope", d)
-        creds = {k: d.get(k) for k in ("apiKey", "secret", "password")}
+        creds = {k: d.get(k) for k in ENV_KEYS}
     else:
-        creds = {"apiKey": os.getenv("BITGET_API_KEY"), "secret": os.getenv("BITGET_API_SECRET"),
-                 "password": os.getenv("BITGET_API_PASSPHRASE")}
+        creds = {k: os.getenv(v) for k, v in ENV_KEYS.items()}
+        env_file = Path(os.getenv("BITGET_ENV_FILE") or DEFAULT_ENV_FILE).expanduser()
+        if not all(creds.values()) and env_file.exists():
+            values = read_env_file(env_file)
+            creds = {k: creds[k] or values.get(v) for k, v in ENV_KEYS.items()}
     if not all(creds.values()):
-        sys.exit("missing Bitget credentials (BITGET_API_KEY / BITGET_API_SECRET / BITGET_API_PASSPHRASE or --secret-file)")
+        sys.exit("missing Bitget credentials (BITGET_API_KEY / BITGET_API_SECRET / BITGET_API_PASSPHRASE, "
+                 f"$BITGET_ENV_FILE, {DEFAULT_ENV_FILE} or --secret-file)")
     return creds
 
 
