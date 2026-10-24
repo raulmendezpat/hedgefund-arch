@@ -53,8 +53,10 @@ def ensure_membership(path: Path, month: str, cfg, cache_dir: str, log) -> pd.Da
 
 
 def compute_targets(decision_day: pd.Timestamp, members: list[str], listed: set[str], cache_dir: str, log,
-                    *, min_coverage: float = 0.5) -> dict:
+                    *, min_coverage: float = 0.5, strategy: dict = PRIMARY_STRATEGY) -> dict:
     """Target weights (Binance symbols) for the decision day plus the data used to build them.
+
+    `strategy` holds MomentumConfig fields (default: the pre-registered primary).
 
     Raises RuntimeError when fewer than `min_coverage` of the tradable members have a signal
     close for the decision day (data not refreshed yet, or an exchange outage)."""
@@ -73,7 +75,7 @@ def compute_targets(decision_day: pd.Timestamp, members: list[str], listed: set[
         raise RuntimeError(f"signal closes for {decision_day.date()} cover {coverage:.0%} of members "
                            f"(need {min_coverage:.0%})")
     eligible = pd.DataFrame(True, index=sig.index, columns=sig.columns)
-    w = target_weights(sig, MomentumConfig(**PRIMARY_STRATEGY), eligible).loc[decision_day]
+    w = target_weights(sig, MomentumConfig(**strategy), eligible).loc[decision_day]
     w = w[w != 0.0]
     return {"weights": {s: float(v) for s, v in w.items()},
             "eligible": tradable,

@@ -204,15 +204,16 @@ def run_cycle(store: Store, args, targets_fn=None) -> None:
 
 # ---------------------------------------------------------------- report
 
-def _momentum_replay(reb: pd.DataFrame, days: pd.Series, args) -> pd.DataFrame:
-    """Same decision days and eligible sets, Binance prices and funding, backtest costs."""
+def _momentum_replay(reb: pd.DataFrame, days: pd.Series, args, strategy: dict = PRIMARY_STRATEGY) -> pd.DataFrame:
+    """Same decision days and eligible sets, Binance prices and funding, backtest costs.
+    `strategy` holds MomentumConfig fields (default: the primary)."""
     syms = sorted({s for el in reb["eligible"] for s in el})
     panels = load_daily_panels(syms, cache_dir=args.cache_dir, exchange=BINANCE)
     elig = pd.DataFrame(False, index=panels["signal_close"].index, columns=panels["signal_close"].columns)
     for dday, el in zip(days, reb["eligible"]):
         if dday in elig.index:
             elig.loc[dday, [s for s in el if s in elig.columns]] = True
-    return backtest(dict(panels, eligible=elig), MomentumConfig(**PRIMARY_STRATEGY), rebalance_on=days)
+    return backtest(dict(panels, eligible=elig), MomentumConfig(**strategy), rebalance_on=days)
 
 
 PREREGISTERED_CHECKS = {
