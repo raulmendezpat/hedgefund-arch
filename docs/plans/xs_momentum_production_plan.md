@@ -7,6 +7,9 @@ constancia aquí del motivo, con fecha, **antes** de mirar los datos que motivar
 Las decisiones marcadas como *propuesta, por confirmar* son las opciones por defecto;
 falta la confirmación del dueño de la cuenta.
 
+**Enmienda del 2026-10-26 (§8):** arranque acelerado con 300 USDT el 2026-11-16, sujeto a una
+puerta corta; sin escalar hasta que se cumpla la puerta original del 2027-01-11.
+
 ## 0. Qué se pone en producción
 
 La hipótesis registrada, sin cambios:
@@ -165,3 +168,69 @@ producción. No se aplican a mitad de la prueba.
 | 2027-01-11 | Rebalanceo n.º 12: revisión de la puerta (§1) |
 | ~2027-01-18 | Arranque en vivo si pasa la puerta y el VPS está listo |
 | ~2027-02-15 | Primera revisión de escalado (4 rebalanceos en vivo) |
+
+## 8. Enmienda del 2026-10-26: arranque acelerado
+
+Escrita el 2026-10-26, después del primer rebalanceo del paper y antes del segundo. **Motivo:** el
+dueño de la cuenta quiere la estrategia en producción en semanas y no en enero. No la motivan los
+resultados: a la fecha hay unas horas de P&L, que son ruido.
+
+Lo que cambia es solo **cuándo** empieza a operar dinero real. La puerta original de 12
+rebalanceos no medía rentabilidad, sino que la implementación reproduzca el modelo (§1). Aquí se
+verifica en menos tiempo, a cambio de más riesgo de ejecución, que se acota con capital chico y
+sin escalar hasta que la puerta original se cumpla.
+
+**Alcance:** solo la hipótesis principal (§0). Taker-flow, la variante del 10 % por lado y TSMOM
+siguen en paper con sus propias fechas y reglas, sin cambios.
+
+### Puerta acelerada (decisión el lunes 2026-11-09, tras el fill)
+
+Hay que cumplir **todos** los puntos:
+
+| Criterio | Umbral |
+|---|---|
+| Paper: rebalanceos ejecutados / perdidos | 3 (2026-10-26, 11-02, 11-09) / 0 |
+| Paper: slippage mediano por tramo | ≤ 3 / 6 / 12 bp |
+| Paper vs modelo | Mismas posiciones objetivo que el replay; correlación diaria ≥ 0.9 (indicativa con pocos días) |
+| Dry-run con la subcuenta fondeada al capital inicial | 2 rebalanceos (11-02 y 11-09) con órdenes generadas |
+| Dry-run: errores de órdenes, aborts, sanity aborts, errores Python sin explicar | 0 |
+| Dry-run vs paper | Mismos objetivos para el mismo decision_day |
+
+**Si falla un punto:** no se arranca. Se documenta la causa, se corrige y se repiten dos
+dry-runs.
+
+### Arranque
+
+- **Capital inicial: 300 USDT** (decidido el 2026-10-26; reemplaza la propuesta de §2).
+  - ~12.5 USDT por pata. Los ajustes semanales menores a ~5 USDT (mínimo de Bitget) se saltan,
+    así que el libro en vivo se desviará un poco del paper. Las revisiones contra el paper deben
+    considerarlo.
+  - Pérdida máxima antes del kill switch: ~105 USDT.
+- **Servidor: este Mac** (decidido el 2026-10-26), con launchd, el monitor y el keep-awake ya
+  instalados. Si se reinicia o falla, el rebalanceo se reintenta cada hora hasta el límite de
+  atraso. **El VPS es obligatorio antes de pasar de 1,000 USDT.**
+- **Primer rebalanceo en vivo:** decisión el domingo 2026-11-15, ejecución el lunes 2026-11-16
+  a la 01:00 UTC.
+- Pasos 3–5 de §2 sin cambios. El monitor agrega el libro en vivo como otro runner.
+
+### Escalado
+
+**No se escala** hasta que el paper apruebe la puerta original de §1 en la revisión del
+2027-01-11. Si la aprueba, el capital sube a 1,000 USDT y desde ahí rige §3. Si no la aprueba,
+se aplica §1 ("si falla un criterio") al libro en vivo: se detiene y se investiga.
+
+### Lo que no cambia
+
+- Criterios de parada de §4: kill switch del −35 % como pausa, −8 % diario, límites de sanidad.
+- Las reglas de estrategia de §4 (−15 % acumulado, Sharpe a 26 semanas, brecha vs paper).
+- El paper sigue corriendo como referencia.
+
+### Fechas
+
+| Fecha | Hito |
+|---|---|
+| Antes del 2026-11-01 | Fondear la subcuenta hasta 300 USDT |
+| 2026-11-02 | Primer dry-run con órdenes reales |
+| 2026-11-09 | Segundo dry-run y decisión de la puerta acelerada |
+| 2026-11-16 | Primer rebalanceo en vivo (si se aprueba) |
+| 2027-01-11 | Puerta original (§1) sobre el paper: condición para escalar a 1,000 USDT |
