@@ -118,6 +118,24 @@ class HealthcheckTests(unittest.TestCase):
         _, st = self._check("2026-11-02 01:20", st)
         self.assertEqual(st["runners"]["paper"]["pos_ref"]["px"], {"BR/USDT:USDT": 1.47})
 
+    def test_low_disk_alerts_once_then_clears(self):
+        check = lambda now, st, gb: hc.run_check([self.runner], st, ts(now), heartbeat_hour=9, local_tz="UTC",  # noqa: E731
+                                                 free_gb=gb, min_free_gb=15.0)
+        notices, st = check("2026-10-20 06:20", {}, 60.0)
+        self.assertEqual([n for n in notices if n.runner == "monitor"], [])
+        notices, st = check("2026-10-20 07:20", st, 12.4)
+        self.assertEqual(self.texts([n for n in notices if n.runner == "monitor"]),
+                         [("alert", "quedan 12.4 GB libres en disco (mínimo 15 GB)")])
+        notices, st = check("2026-10-20 08:20", st, 11.0)  # still low: no repeat
+        self.assertEqual([n for n in notices if n.runner == "monitor"], [])
+        notices, st = check("2026-10-20 09:20", st, 40.0)
+        self.assertEqual([n.level for n in notices if n.runner == "monitor"], ["ok", "info"])
+        self.assertIn("disco 40 GB libres", notices[-1].text)
+
+    def test_disk_free_ignores_missing_paths(self):
+        self.assertIsNone(hc.disk_free_gb([Path(self.tmp.name) / "nope"]))
+        self.assertGreater(hc.disk_free_gb([Path(self.tmp.name), Path(self.tmp.name) / "nope"]), 0)
+
     def test_daily_heartbeat_once_per_day(self):
         notices, st = self._check("2026-10-20 08:20", {})
         self.assertEqual([n for n in notices if n.runner == "monitor"], [])

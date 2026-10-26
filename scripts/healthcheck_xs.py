@@ -7,7 +7,9 @@ It only reads the runners' state, events and logs; it never touches them. Alerts
 - events: notable new events (rebalance, missed rebalance, kill switch, aborts, ...).
 - position loss: one position lost more than --position-loss of equity since the last rebalance
   (live runners report it as an event; for the paper book the monitor measures it itself).
-Condition alerts (stale, overdue) notify when they start and when they clear, not every hour.
+- disk: less than --min-free-gb free on the disk holding the runners' state (a full disk makes
+  every runner fail to save its state, as on 2026-10-23).
+Condition alerts (stale, overdue, disk) notify when they start and when they clear, not every hour.
 A daily heartbeat at --heartbeat-hour (local time) confirms the monitor itself is alive.
 
 Usage (launchd/cron, hourly):
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,9 +153,21 @@ def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float
     return notices, conditions, cursor
 
 
+def _transitions(name: str, before: dict, conditions: dict) -> list[Notice]:
+    """Alerts for conditions that just started and notices for those that just cleared."""
+    out = [Notice("alert", name, text) for k, text in conditions.items() if k not in before]
+    return out + [Notice("ok", name, f"resuelto: {text}") for k, text in before.items() if k not in conditions]
+
+
+def disk_free_gb(paths: list[Path]) -> float | None:
+    """Smallest free space (GB) among the disks holding these paths; None if none exists."""
+    free = [shutil.disk_usage(p).free / 1e9 for p in paths if p.exists()]
+    return min(free) if free else None
+
+
 def run_check(runners: list[Runner], hc_state: dict, now: pd.Timestamp, *, stale_hours: float = 2.25,
               overdue_hours: float = 3.0, position_loss: float = 0.015, heartbeat_hour: int = 9,
-              local_tz: str | None = None
+              local_tz: str | None = None, free_gb: float | None = None, min_free_gb: float = 15.0
               ) -> tuple[list[Notice], dict]:
     """One pass over every runner; returns (notices to send, new monitor state)."""
     out: list[Notice] = []
@@ -164,15 +179,17 @@ def run_check(runners: list[Runner], hc_state: dict, now: pd.Timestamp, *, stale
                                                    position_loss=position_loss)
         out += notices
         new_state["runners"][r.name] = cursor
-        before = hc_state.get("conditions", {}).get(r.name, {})
-        for k, text in conditions.items():
-            if k not in before:
-                out.append(Notice("alert", r.name, text))
-        for k in before:
-            if k not in conditions:
-                out.append(Notice("ok", r.name, f"resuelto: {before[k]}"))
+        out += _transitions(r.name, hc_state.get("conditions", {}).get(r.name, {}), conditions)
         new_state["conditions"][r.name] = conditions
         summary.append(f"{r.name} {'OK' if not conditions else 'con problemas'}")
+
+    monitor = {}
+    if free_gb is not None:
+        if free_gb < min_free_gb:
+            monitor["disk"] = f"quedan {free_gb:.1f} GB libres en disco (mínimo {min_free_gb:g} GB)"
+        summary.append(f"disco {free_gb:.0f} GB libres")
+    out += _transitions("monitor", hc_state.get("conditions", {}).get("monitor", {}), monitor)
+    new_state["conditions"]["monitor"] = monitor
 
     local_now = now.tz_convert(_local_tz(local_tz))
     today = str(local_now.date())
@@ -207,6 +224,7 @@ def main() -> None:
     ap.add_argument("--overdue-hours", type=float, default=3.0)
     ap.add_argument("--position-loss", type=float, default=0.015,
                     help="alert when one position loses this share of equity since the last rebalance")
+    ap.add_argument("--min-free-gb", type=float, default=15.0, help="alert when the disk has less free space")
     ap.add_argument("--heartbeat-hour", type=int, default=9, help="local hour of the daily 'all OK' notice")
     ap.add_argument("--no-notify", action="store_true", help="print only")
     ap.add_argument("--now", default="", help="override the clock (testing only)")
@@ -222,7 +240,8 @@ def main() -> None:
     hc_state = json.loads(path.read_text()) if path.exists() else {}
     notices, new_state = run_check(runners, hc_state, now, stale_hours=args.stale_hours,
                                    overdue_hours=args.overdue_hours, position_loss=args.position_loss,
-                                   heartbeat_hour=args.heartbeat_hour)
+                                   heartbeat_hour=args.heartbeat_hour,
+                                   free_gb=disk_free_gb([r.state_dir for r in runners]), min_free_gb=args.min_free_gb)
     for n in notices:
         print(f"[{now:%Y-%m-%dT%H:%M:%SZ}] {n.level.upper()} [{n.runner}] {n.text}", flush=True)
         if not args.no_notify:
