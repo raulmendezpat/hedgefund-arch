@@ -1,156 +1,156 @@
-# Hipótesis registrada: señales de open interest (apalancamiento acumulado)
+# Registered hypothesis: open-interest signals (accumulated leverage)
 
-Escrita el 2026-10-21, **antes de descargar los datos de open interest y de mirar ningún
-resultado**. Solo la señal primaria decide; las secundarias son exploratorias. La configuración y
-los criterios no se cambian después de ver los resultados.
+*English translation. The Spanish original in [`es/`](es/open_interest_hypothesis.md) is the
+dated record of the pre-registered rules.*
 
-## Datos
+Written on 2026-10-21, **before downloading the open-interest data or looking at any result**.
+Only the primary signal decides; the secondary ones are exploratory. The configuration and the
+criteria are not changed after seeing the results.
 
-Archivos públicos de Binance USDT-M: `data.binance.vision/data/futures/um/daily/metrics/`. Hay un
-archivo por símbolo y día, con filas cada 5 minutos:
-- `sum_open_interest`: contratos abiertos, en unidades del activo;
-- `sum_open_interest_value`: open interest en USDT;
-- `count_long_short_ratio`: cuentas en largo / cuentas en corto;
-- `sum_toptrader_long_short_ratio`: lo mismo, solo para los top traders;
-- `sum_taker_long_short_vol_ratio`: volumen de compradores agresivos / vendedores agresivos.
+## Data
 
-**Valor diario del día *d*:** la última fila del día UTC con marca ≤ 23:55. Se conoce antes del
-cierre de la señal (24:00) y del fill (01:00).
+Binance USDT-M public archives: `data.binance.vision/data/futures/um/daily/metrics/`. One file per
+symbol and day, with rows every 5 minutes:
+- `sum_open_interest`: open contracts, in units of the asset;
+- `sum_open_interest_value`: open interest in USDT;
+- `count_long_short_ratio`: long accounts / short accounts;
+- `sum_toptrader_long_short_ratio`: the same, for top traders only;
+- `sum_taker_long_short_vol_ratio`: aggressive buy volume / aggressive sell volume.
 
-**Universo:** se descargan solo los símbolos del top 60 mensual
-(`artifacts/research/universe_top60_v1`), desde un mes antes de su entrada. Un símbolo sin dato
-ese día no es elegible.
+**Daily value for day *d*:** the last row of the UTC day stamped ≤ 23:55. It is known before the
+signal close (24:00) and the fill (01:00).
 
-**Cobertura:**
-- Se informa la fracción del universo con dato cada mes.
-- El período de desarrollo empieza el primer mes con cobertura ≥ 80 %, pero nunca antes del
+**Universe:** only symbols in the monthly top 60 (`artifacts/research/universe_top60_v1`) are
+downloaded, from one month before they enter. A symbol with no data that day is not eligible.
+
+**Coverage:**
+- The fraction of the universe with data is reported each month.
+- The development period starts in the first month with coverage ≥ 80%, but never before
   2021-03-01.
 
-## Señal primaria: reversión del apalancamiento acumulado (cruzada)
+## Primary signal: reversal of accumulated leverage (cross-sectional)
 
 **Idea:**
-- Un crecimiento fuerte de contratos abiertos indica posiciones apalancadas nuevas que se
-  acumulan. Esas posiciones tienden a deshacerse (liquidaciones y cierres forzados), y eso
-  presiona el precio en contra de la dirección acumulada.
-- Medir en contratos, y no en USDT, separa el apalancamiento nuevo del simple movimiento del
-  precio.
+- Strong growth in open contracts indicates new leveraged positions building up. Those positions
+  tend to unwind (liquidations and forced closes), pushing price against the accumulated
+  direction.
+- Measuring in contracts rather than USDT separates new leverage from simple price moves.
 
-**Score:** score_i(d) = ln(OI_i(d) / OI_i(d−7)), con OI = `sum_open_interest` (contratos).
+**Score:** score_i(d) = ln(OI_i(d) / OI_i(d−7)), with OI = `sum_open_interest` (contracts).
 
-**Cartera:**
-- **Dirección pre-registrada:** contraria. Se **vende en corto el 20 % con mayor** crecimiento de
-  contratos y se **compra el 20 % con menor** crecimiento (desapalancamiento).
-- Construcción igual al momentum primario:
-  - pesos iguales, 0.5 largo / 0.5 corto;
-  - rebalanceo semanal con banda de 0.02;
-  - mínimo 8 activos con score.
-- Costos escalonados (3/6/12 bp + fee de 0.06 %) y funding real.
-- Decisión a las 23:00 UTC del día *d* y fill a la 01:00 del día *d*+1, con el mismo motor
+**Portfolio:**
+- **Pre-registered direction:** contrarian. **Short the 20% with the highest** contract growth
+  and **buy the 20% with the lowest** growth (deleveraging).
+- Construction identical to the primary momentum:
+  - equal weights, 0.5 long / 0.5 short;
+  - weekly rebalance with a 0.02 band;
+  - at least 8 assets with a score.
+- Tiered costs (3/6/12 bp + 0.06% fee) and actual funding.
+- Decision at 23:00 UTC on day *d* and fill at 01:00 on day *d*+1, with the same
   `hf_research.engine`.
 
-**Períodos:** desarrollo desde el inicio definido arriba hasta 2023-12-31; fuera de muestra desde
+**Periods:** development from the start defined above to 2023-12-31; out of sample from
 2024-01-01.
 
-### Criterios de éxito (todos requeridos)
+### Success criteria (all required)
 
-| # | Criterio |
+| # | Criterion |
 |---|---|
-| 1 | Sharpe fuera de muestra ≥ 0.7 |
-| 2 | Sharpe de desarrollo ≥ 0.4 |
-| 3 | Peor caída fuera de muestra ≥ −35 % |
-| 4 | Sharpe fuera de muestra sin los 5 símbolos que más aportaron ≥ 0.4 |
-| 5 | Bootstrap por bloques de 20 días: probabilidad de Sharpe fuera de muestra ≤ 0 menor a 10 % |
+| 1 | Out-of-sample Sharpe ≥ 0.7 |
+| 2 | Development Sharpe ≥ 0.4 |
+| 3 | Out-of-sample worst drawdown ≥ −35% |
+| 4 | Out-of-sample Sharpe without the 5 top-contributing symbols ≥ 0.4 |
+| 5 | 20-day block bootstrap: probability of out-of-sample Sharpe ≤ 0 below 10% |
 
-**Combinación con el momentum primario:**
-- Riesgo igual, con la escala calculada solo con datos de desarrollo.
-- Es útil si, fuera de muestra, Sharpe ≥ momentum + 0.15 **y** la peor caída es mejor.
-- Se informa la correlación diaria con el momentum.
+**Combination with the primary momentum:**
+- Equal risk, with the scale computed on development data only.
+- Useful if, out of sample, Sharpe ≥ momentum + 0.15 **and** the worst drawdown is better.
+- The daily correlation with momentum is reported.
 
-Si la dirección contraria falla y la dirección opuesta (seguir el crecimiento de OI) "funciona",
-eso **no** cuenta como hallazgo: requiere una pre-registración nueva y datos nuevos.
+If the contrarian direction fails and the opposite direction (following OI growth) "works", that
+does **not** count as a finding: it needs a new pre-registration and new data.
 
-## Señales secundarias (exploratorias, no deciden nada)
+## Secondary signals (exploratory, decide nothing)
 
-Se construyen igual que la primaria y se informan con la advertencia de que son 3 pruebas
-adicionales: alguna puede salir bien por azar.
+Built the same way as the primary and reported with the caveat that they are 3 extra tests: one
+may come out well by chance.
 
-| Señal | Score | Dirección |
+| Signal | Score | Direction |
 |---|---|---|
-| S1. Posicionamiento minorista | `count_long_short_ratio` del día *d* | corto al 20 % más largo, compra al 20 % más corto |
-| S2. Flujo agresivo | promedio de 7 días de ln(`sum_taker_long_short_vol_ratio`) | compra al 20 % más comprador, corto al 20 % más vendedor |
-| S3. OI que confirma el precio | score primario × signo del retorno de 7 días | corto donde el apalancamiento crece a favor del movimiento |
+| S1. Retail positioning | `count_long_short_ratio` on day *d* | short the 20% most long, buy the 20% most short |
+| S2. Aggressive flow | 7-day mean of ln(`sum_taker_long_short_vol_ratio`) | buy the 20% most buying, short the 20% most selling |
+| S3. OI confirming price | primary score × sign of 7-day return | short where leverage grows with the move |
 
-Una secundaria con Sharpe fuera de muestra ≥ 0.7 solo justifica una pre-registración nueva, que
-tendría que validarse en paper.
+A secondary with out-of-sample Sharpe ≥ 0.7 only justifies a new pre-registration, which would
+have to be validated in paper.
 
-## Sensibilidad de la primaria (solo robustez)
+## Primary sensitivity (robustness only)
 
-- Ventana: 3, 7 y 14 días.
-- Fracción por lado: 10 %, 20 % y 30 %.
-- Rebalanceo: semanal y cada 3 días.
-- Costos ×2.
+- Window: 3, 7 and 14 days.
+- Fraction per side: 10%, 20% and 30%.
+- Rebalance: weekly and every 3 days.
+- Costs ×2.
 
-Se informa la fracción de las 18 combinaciones con Sharpe fuera de muestra ≥ 0.5.
+The fraction of the 18 combinations with out-of-sample Sharpe ≥ 0.5 is reported.
 
-## Limitaciones conocidas
+## Known limitations
 
-- **Fuente:** el open interest es de Binance y la ejecución sería en Bitget. El posicionamiento
-  de Bitget puede diferir.
-- **Calidad de los datos:** Binance publica estos archivos con huecos ocasionales. Un hueco deja
-  al símbolo fuera ese día.
-- **Herencia del momentum:** se hereda el universo y la construcción del momentum, así que los
-  resultados pueden estar correlacionados con él. Por eso se informa la correlación y la
-  combinación.
+- **Source:** open interest is from Binance and execution would be on Bitget. Bitget positioning
+  may differ.
+- **Data quality:** Binance publishes these files with occasional gaps. A gap leaves the symbol
+  out that day.
+- **Inherited from momentum:** the universe and construction come from momentum, so results may
+  correlate with it. That is why correlation and the combination are reported.
 
-## Resultado (2026-10-21): primaria rechazada; una secundaria (flujo agresivo) amerita pre-registración nueva
+## Result (2026-10-21): primary rejected; one secondary (aggressive flow) merits a new pre-registration
 
-Corrida: `scripts/run_open_interest.py` → `artifacts/research/open_interest_v1/`. Datos:
-`scripts/fetch_binance_metrics.py`, 144,638 días-símbolo, 12.7 % sin dato.
+Run: `scripts/run_open_interest.py` → `artifacts/research/open_interest_v1/`. Data:
+`scripts/fetch_binance_metrics.py`, 144,638 symbol-days, 12.7% missing.
 
-**Cobertura:**
-- Antes de 2021-12 el archivo solo tiene datos de ~2 % del universo.
-- Por la regla del 80 %, el desarrollo empieza el **2021-12-01**: son 2 años.
+**Coverage:**
+- Before 2021-12 the archive only has data for ~2% of the universe.
+- Under the 80% rule, development starts on **2021-12-01**: 2 years.
 
-### Primaria: reversión del apalancamiento acumulado (rechazada en todo)
+### Primary: reversal of accumulated leverage (rejected on every criterion)
 
-| Criterio | Umbral | Resultado | ¿Cumple? |
+| Criterion | Threshold | Result | Met? |
 |---|---|---|---|
-| Sharpe fuera de muestra | ≥ 0.7 | −0.76 | no |
-| Sharpe de desarrollo | ≥ 0.4 | −0.67 | no |
-| Peor caída fuera de muestra | ≥ −35 % | −75 % | no |
-| Sharpe sin los 5 mejores símbolos | ≥ 0.4 | −1.43 | no |
-| Bootstrap P(Sharpe ≤ 0) | < 10 % | 86 % | no |
+| Out-of-sample Sharpe | ≥ 0.7 | −0.76 | no |
+| Development Sharpe | ≥ 0.4 | −0.67 | no |
+| Out-of-sample worst drawdown | ≥ −35% | −75% | no |
+| Sharpe without the 5 best symbols | ≥ 0.4 | −1.43 | no |
+| Bootstrap P(Sharpe ≤ 0) | < 10% | 86% | no |
 
-- **No hay señal en ninguna dirección:**
-  - La dirección opuesta, informada solo como control, también pierde: −0.81 en desarrollo y
-    −0.22 fuera de muestra.
-  - Con rotación de 88 veces el capital al año, los costos (~13 %/año) se comen todo.
-- **Grilla:** 0 de 18 combinaciones con Sharpe ≥ 0.5 y mediana −0.88. Con rebalanceo cada
-  3 días y un 10 % por lado, la cuenta se pierde entera.
-- **Combinación con momentum:** empeora. Sharpe 0.03 contra 1.00.
+- **No signal in either direction:**
+  - The opposite direction, reported only as a control, also loses: −0.81 in development and
+    −0.22 out of sample.
+  - With turnover of 88 times capital per year, costs (~13%/yr) eat everything.
+- **Grid:** 0 of 18 combinations with Sharpe ≥ 0.5, median −0.88. With rebalancing every 3 days
+  and 10% per side, the account is wiped out.
+- **Combination with momentum:** worse. Sharpe 0.03 vs 1.00.
 
-### Secundarias (exploratorias: 3 pruebas extra, no deciden nada)
+### Secondaries (exploratory: 3 extra tests, decide nothing)
 
-| Señal | Sharpe desarrollo | Sharpe fuera de muestra | Peor caída fuera | Precio / funding / costos fuera (%/año) | Correlación con momentum (fuera) |
+| Signal | Development Sharpe | Out-of-sample Sharpe | Worst drawdown (OOS) | Price / funding / costs OOS (%/yr) | Correlation with momentum (OOS) |
 |---|---|---|---|---|---|
-| S1 posicionamiento minorista (contraria) | 1.87 | 0.73 | −39 % | +8.7 / +16.8 / −5.4 | 0.38 |
-| S2 flujo agresivo (seguidora) | 1.28 | 0.93 | −25 % | +25.4 / +8.9 / −9.8 | 0.38 |
-| S3 OI × signo del precio | −0.51 | −1.18 | −76 % | −18.9 / −3.2 / −11.9 | — |
+| S1 retail positioning (contrarian) | 1.87 | 0.73 | −39% | +8.7 / +16.8 / −5.4 | 0.38 |
+| S2 aggressive flow (following) | 1.28 | 0.93 | −25% | +25.4 / +8.9 / −9.8 | 0.38 |
+| S3 OI × price sign | −0.51 | −1.18 | −76% | −18.9 / −3.2 / −11.9 | — |
 
-- **S2** (comprar las monedas con más presión compradora agresiva en 7 días y vender en corto
-  las de más presión vendedora):
-  - Es la única con retorno de precio consistente: +27 %/año en desarrollo y +25 %/año fuera de
-    muestra.
-  - Sharpe por año: 2022 1.51 · 2023 1.13 · 2024 −0.17 · 2025 0.66 · 2026 2.00.
-  - Combinada con momentum a la misma volatilidad (exploratorio): Sharpe 0.87 contra 0.22 en
-    desarrollo, y 1.19 contra 1.03 fuera de muestra.
-- **S1:** fuera de muestra vive casi solo del funding (+16.8 %/año). En la práctica es un carry
-  disfrazado. Además, 2024 tuvo Sharpe −1.39.
-- **S3:** igual de mala que la primaria.
+- **S2** (buy the coins with the most aggressive buying pressure over 7 days and short those with
+  the most selling pressure):
+  - The only one with a consistent price return: +27%/yr in development and +25%/yr out of
+    sample.
+  - Sharpe by year: 2022 1.51 · 2023 1.13 · 2024 −0.17 · 2025 0.66 · 2026 2.00.
+  - Combined with momentum at equal volatility (exploratory): Sharpe 0.87 vs 0.22 in
+    development, and 1.19 vs 1.03 out of sample.
+- **S1:** out of sample it lives almost entirely off funding (+16.8%/yr). In practice it is a
+  disguised carry. Also, 2024 had a Sharpe of −1.39.
+- **S3:** as bad as the primary.
 
-**Conclusión:**
-- La reversión del apalancamiento no existe en estos datos.
-- S2 cumple la regla de esta pre-registración (Sharpe fuera de muestra ≥ 0.7), pero salió de entre
-  4 pruebas y todo el historial disponible ya fue mirado.
-- La única validación honesta que queda es **un paper con una pre-registración nueva**, porque no
-  hay datos históricos sin mirar.
+**Conclusion:**
+- Leverage reversal does not exist in this data.
+- S2 meets this pre-registration's rule (out-of-sample Sharpe ≥ 0.7), but it came out of 4 tests
+  and the whole available history has already been seen.
+- The only honest validation left is **a paper test with a new pre-registration**, because there
+  is no unseen historical data.

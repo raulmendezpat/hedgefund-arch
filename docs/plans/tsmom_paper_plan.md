@@ -1,61 +1,63 @@
-# Plan registrado: paper de TSMOM BTC/ETH y su combinación con el momentum cruzado
+# Registered plan: TSMOM BTC/ETH paper test and its combination with cross-sectional momentum
 
-Escrito el 2026-10-21, antes de arrancar el paper. Nada de lo que sigue se cambia mientras
-corre.
+*English translation. The Spanish original in [`es/`](es/tsmom_paper_plan.md) is the dated record
+of the pre-registered rules.*
 
-## Por qué un paper de una hipótesis que no pasó
+Written on 2026-10-21, before the paper test started. Nothing below changes while it runs.
 
-La TSMOM no cumplió sus criterios pre-registrados (`tsmom_btc_eth_hypothesis.md`): Sharpe fuera de
-muestra 0.63 contra 0.7, y caída −33.7 % contra −30 %. Aun así, es la estrategia más robusta
-probada: positiva todos los años, en las 24 variantes y con costos ×2. No se bajan los umbrales.
-En cambio, se juntan **datos nuevos** con la configuración primaria intacta y luego se vuelven a
-aplicar **los mismos criterios** sobre un período fuera de muestra más largo.
+## Why paper-test a hypothesis that did not pass
 
-## Qué corre
+TSMOM did not meet its pre-registered criteria (`tsmom_btc_eth_hypothesis.md`): out-of-sample
+Sharpe 0.63 vs 0.7, and drawdown −33.7% vs −30%. Even so, it is the most robust strategy tested:
+positive every year, in all 24 variants and with costs ×2. The thresholds are not lowered.
+Instead, **new data** is collected with the primary configuration intact, and **the same
+criteria** are then reapplied over a longer out-of-sample period.
 
-**Libro TSMOM** (`runtime/paper/tsmom_btc_eth_v1`):
-- Capital simulado: 10,000 USDT.
-- Configuración: `TsmomConfig()` primaria, sin cambios.
-  - Señal 20/60/120 días sobre cierres de Binance a las 23:00 UTC.
-  - Volatilidad objetivo de 20 % por activo, tope de peso 1.0.
-  - Banda de 0.05, modo largo/corto.
-- Ejecución simulada contra el libro de órdenes de Bitget (BTC/USDT y ETH/USDT), con fee de
-  0.06 %. Se aplica el funding real de Bitget.
-- Rebalanceo diario: decisión el día *d*, fill el día *d*+1 a la 01:00 UTC. Un fill con más de
-  12 h de atraso se registra como perdido.
-- Nunca envía órdenes: solo usa datos públicos.
+## What runs
 
-**Combinación:**
-- Se evalúa a partir de los dos papers, sin un tercer libro: retorno diario = 0.5 × momentum
-  cruzado (`xs_momentum_v1`) + 0.5 × TSMOM.
-- La escala de la TSMOM es 1.0: en el backtest dio 0.98 para igualar la volatilidad de desarrollo.
-- Se compara con el momentum cruzado solo, en los mismos días.
+**TSMOM book** (`runtime/paper/tsmom_btc_eth_v1`):
+- Simulated capital: 10,000 USDT.
+- Configuration: primary `TsmomConfig()`, unchanged.
+  - 20/60/120-day signal on Binance 23:00 UTC closes.
+  - 20% target volatility per asset, weight cap 1.0.
+  - 0.05 band, long/short mode.
+- Execution simulated against the Bitget order book (BTC/USDT and ETH/USDT), with a 0.06% fee.
+  Actual Bitget funding is applied.
+- Daily rebalance: decision on day *d*, fill on day *d*+1 at 01:00 UTC. A fill more than 12 h
+  late is recorded as missed.
+- It never sends orders: it uses public data only.
 
-## Compuerta de implementación (2027-01-11, junto con la del momentum cruzado)
+**Combination:**
+- Evaluated from the two papers, without a third book: daily return = 0.5 × cross-sectional
+  momentum (`xs_momentum_v1`) + 0.5 × TSMOM.
+- The TSMOM scale is 1.0: in the backtest it came out at 0.98 to match development volatility.
+- Compared with cross-sectional momentum alone, on the same days.
 
-| Chequeo | Umbral |
+## Implementation gate (2027-01-11, together with cross-sectional momentum's)
+
+| Check | Threshold |
 |---|---|
-| Rebalanceos diarios hechos | ≥ 70 |
-| Rebalanceos perdidos | ≤ 3 |
-| Slippage mediano (BTC/ETH, tramo 1) | ≤ 3 bp |
-| Correlación diaria paper vs modelo (replay con datos de Binance) | ≥ 0.9 |
-| Brecha de implementación | ≥ −5 %/año |
+| Daily rebalances done | ≥ 70 |
+| Rebalances missed | ≤ 3 |
+| Median slippage (BTC/ETH, tier 1) | ≤ 3 bp |
+| Daily correlation paper vs model (replay on Binance data) | ≥ 0.9 |
+| Implementation gap | ≥ −5%/yr |
 
-Doce semanas no alcanzan para juzgar rentabilidad. Esta compuerta solo valida que el paper
-reproduce el modelo.
+Twelve weeks are not enough to judge profitability. This gate only validates that the paper
+reproduces the model.
 
-## Decisión sobre la combinación (2027-04-19, tras 26 semanas)
+## Decision on the combination (2027-04-19, after 26 weeks)
 
-1. Se repite `scripts/run_tsmom.py` sin cambios en el código ni en los criterios. El período
-   fuera de muestra se extiende de 2024-01-01 a la fecha del corte.
-2. La combinación pasa a producción (con el capital y las escalas del plan del momentum cruzado)
-   solo si se cumplen las dos condiciones:
-   - la compuerta de implementación de la TSMOM está aprobada;
-   - con el período extendido, **o** la TSMOM primaria cumple sus 4 criterios **o** la
-     combinación cumple los suyos: Sharpe ≥ momentum + 0.15, caída mejor y exposición
-     implementable.
-3. Si no, la TSMOM se descarta y queda solo el momentum cruzado.
+1. Re-run `scripts/run_tsmom.py` with no changes to code or criteria. The out-of-sample period is
+   extended from 2024-01-01 to the cut-off date.
+2. The combination goes to production (with the capital and scaling of the cross-sectional
+   momentum plan) only if both conditions hold:
+   - the TSMOM implementation gate has passed;
+   - with the extended period, **either** the primary TSMOM meets its 4 criteria **or** the
+     combination meets its own: Sharpe ≥ momentum + 0.15, better drawdown and implementable
+     exposure.
+3. Otherwise TSMOM is discarded and only cross-sectional momentum remains.
 
-**Advertencia:** volver a evaluar los mismos criterios con más datos es una prueba secuencial.
-Suma una segunda oportunidad de aprobar. Se acepta porque los criterios y el código no cambian,
-y porque la mitad de los datos nuevos (la del paper) es genuinamente fuera de muestra.
+**Caveat:** re-evaluating the same criteria with more data is a sequential test. It adds a second
+chance to pass. This is accepted because the criteria and the code do not change, and because half
+of the new data (the paper's) is genuinely out of sample.

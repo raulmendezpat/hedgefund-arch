@@ -1,136 +1,136 @@
-# Hipótesis registrada: momentum de series de tiempo (TSMOM) en BTC y ETH
+# Registered hypothesis: time-series momentum (TSMOM) on BTC and ETH
 
-Escrita el 2026-10-21, **antes de construir el backtest y de mirar ningún resultado** de esta
-estrategia. La configuración primaria y los criterios de éxito no se cambian después de ver los
-resultados. La grilla sirve para medir robustez, no para elegir parámetros.
+*English translation. The Spanish original in [`es/`](es/tsmom_btc_eth_hypothesis.md) is the
+dated record of the pre-registered rules.*
+
+Written on 2026-10-21, **before building the backtest or looking at any result** of this
+strategy. The primary configuration and the success criteria are not changed after seeing the
+results. The grid measures robustness; it is not used to choose parameters.
 
 ## Idea
 
-Cada activo se compra cuando su propia tendencia reciente es alcista y se vende en corto cuando es
-bajista (Moskowitz, Ooi & Pedersen, 2012). A diferencia del momentum cruzado, no compara activos
-entre sí: apuesta a que las tendencias de BTC y ETH persisten. Interesa por dos razones:
-- **Liquidez:** son los dos activos más líquidos, con costos mínimos y sin riesgo de delisting.
-- **Diversificación:** debería tener poca correlación con el momentum cruzado, que es neutral al
-  mercado, y por eso podría servir como segunda pata del portafolio.
+Each asset is bought when its own recent trend is up and shorted when it is down (Moskowitz, Ooi
+& Pedersen, 2012). Unlike cross-sectional momentum, it does not compare assets with each other: it
+bets that the BTC and ETH trends persist. It is interesting for two reasons:
+- **Liquidity:** they are the two most liquid assets, with minimal costs and no delisting risk.
+- **Diversification:** it should have little correlation with cross-sectional momentum, which is
+  market-neutral, so it could serve as a second leg of the portfolio.
 
-## Configuración primaria
+## Primary configuration
 
-**Activos:** perpetuos BTC/USDT y ETH/USDT de Binance USDT-M. Las velas de 1 hora y el funding
-están completados desde su listado (BTC 2019-09, ETH 2019-11).
+**Assets:** Binance USDT-M BTC/USDT and ETH/USDT perpetuals. Hourly candles and funding are
+complete since listing (BTC 2019-09, ETH 2019-11).
 
-**Señal** (al cierre de las 23:00 UTC del día *d*, solo con cierres ≤ *d*):
-- s_i = promedio de sign(r_20), sign(r_60) y sign(r_120), donde r_L es el retorno del activo en
-  L días.
+**Signal** (at the 23:00 UTC close of day *d*, using only closes ≤ *d*):
+- s_i = mean of sign(r_20), sign(r_60) and sign(r_120), where r_L is the asset's L-day return.
 - s ∈ {−1, −⅓, +⅓, +1}.
 
-**Tamaño:** w_i = s_i × 0.20 / σ_i, con tope de |w_i| ≤ 1.0.
-- σ_i es la volatilidad anualizada de los retornos diarios del activo en los últimos 60 días.
-- Cada activo apunta a ~20 % de volatilidad, y el portafolio a 25–30 %, parecido al momentum
-  cruzado.
+**Size:** w_i = s_i × 0.20 / σ_i, capped at |w_i| ≤ 1.0.
+- σ_i is the annualised volatility of the asset's daily returns over the last 60 days.
+- Each asset targets ~20% volatility and the portfolio 25–30%, similar to cross-sectional
+  momentum.
 
-**Ejecución:**
-- Decisión diaria y fill a la 01:00 UTC; es el mismo motor `hf_research.engine` del momentum.
-- Banda de 0.05: no se redimensiona una posición del mismo lado si el cambio es menor.
-- Modo largo/corto.
+**Execution:**
+- Daily decision and fill at 01:00 UTC; the same `hf_research.engine` as momentum.
+- 0.05 band: a same-side position is not resized if the change is smaller.
+- Long/short mode.
 
-**Costos:**
-- Fee de 0.06 % más 3 bp de slippage por lado. Es el tramo 1, porque BTC y ETH son los más
-  líquidos.
-- Funding real de cada activo.
+**Costs:**
+- 0.06% fee plus 3 bp slippage per side. This is tier 1, since BTC and ETH are the most liquid.
+- Actual funding for each asset.
 
-**Períodos:**
-- Desarrollo: 2020-04-01 a 2023-12-31. Empieza ahí porque ETH necesita 120 días de historia.
-- Fuera de muestra: desde 2024-01-01.
+**Periods:**
+- Development: 2020-04-01 to 2023-12-31. It starts there because ETH needs 120 days of history.
+- Out of sample: from 2024-01-01.
 
-## Criterios de éxito (todos requeridos)
+## Success criteria (all required)
 
-| # | Criterio |
+| # | Criterion |
 |---|---|
-| 1 | Sharpe fuera de muestra ≥ 0.7 |
-| 2 | Peor caída fuera de muestra ≥ −30 % |
-| 3 | Sharpe de desarrollo ≥ 0.5 |
-| 4 | Cada activo por separado (misma regla, solo BTC o solo ETH) con Sharpe fuera de muestra > 0 |
+| 1 | Out-of-sample Sharpe ≥ 0.7 |
+| 2 | Out-of-sample worst drawdown ≥ −30% |
+| 3 | Development Sharpe ≥ 0.5 |
+| 4 | Each asset on its own (same rule, BTC only or ETH only) with out-of-sample Sharpe > 0 |
 
-**Combinación con el momentum cruzado primario:**
-- Riesgo igual: la TSMOM se escala a la volatilidad de desarrollo del momentum.
-- Es útil si, fuera de muestra, el Sharpe combinado ≥ el del momentum solo + 0.15 **y** la peor
-  caída es mejor.
-- Se informa la exposición bruta implícita. Si para igualar el riesgo hace falta una exposición
-  bruta mayor que 2, se declara no implementable.
+**Combination with the primary cross-sectional momentum:**
+- Equal risk: TSMOM is scaled to momentum's development volatility.
+- Useful if, out of sample, the combined Sharpe ≥ momentum alone + 0.15 **and** the worst
+  drawdown is better.
+- The implied gross exposure is reported. If matching the risk needs gross exposure above 2, it is
+  declared not implementable.
 
-**Se informa también, sin ser criterio:**
-- Sharpe y peor caída de comprar y mantener 50/50 BTC/ETH con la misma volatilidad, y
-  correlación con esa posición.
-- Bootstrap por bloques de 20 días: probabilidad de que el Sharpe fuera de muestra sea ≤ 0.
-- Simulación horaria de la cuenta (`hf_research.vol_target`): peor caída horaria y si toca el
-  kill switch de −35 %.
-- Sharpe por año y separado por lado: aporte de los largos y de los cortos.
+**Also reported, not a criterion:**
+- Sharpe and worst drawdown of a 50/50 BTC/ETH buy-and-hold at the same volatility, and the
+  correlation with it.
+- 20-day block bootstrap: probability that the out-of-sample Sharpe is ≤ 0.
+- Hourly account simulation (`hf_research.vol_target`): worst hourly drawdown and whether it hits
+  the −35% kill switch.
+- Sharpe by year and by side: contribution of longs and of shorts.
 
-## Sensibilidad (solo para medir robustez)
+## Sensitivity (robustness only)
 
-- Ventanas: solo 20, solo 60, solo 120, y la combinación 20/60/120.
-- Banda: 0.02, 0.05 y 0.10.
-- Modo: largo/corto y solo largo.
-- Costos al doble en la configuración primaria.
+- Windows: 20 only, 60 only, 120 only, and the 20/60/120 combination.
+- Band: 0.02, 0.05 and 0.10.
+- Mode: long/short and long only.
+- Double costs on the primary configuration.
 
-Se informa qué fracción de las 24 combinaciones tiene Sharpe fuera de muestra ≥ 0.5.
+The fraction of the 24 combinations with out-of-sample Sharpe ≥ 0.5 is reported.
 
-## Limitaciones conocidas
+## Known limitations
 
-- **Pocas apuestas independientes:** son solo dos activos, muy correlacionados (~0.8). El número
-  de apuestas es bajo y los intervalos de confianza son anchos. Un resultado de 2–3 años puede
-  depender de una o dos tendencias.
-- **Régimen:** fuera de muestra (2024–2026) incluye un mercado mayormente alcista. Por eso se
-  separa el aporte de largos y cortos y se compara con comprar y mantener.
-- **Fuente de datos:** los datos son de Binance y la ejecución sería en Bitget. En BTC y ETH la
-  diferencia de precio y de funding es pequeña.
+- **Few independent bets:** only two assets, highly correlated (~0.8). The number of bets is low
+  and confidence intervals are wide. A 2–3 year result may depend on one or two trends.
+- **Regime:** out of sample (2024–2026) is mostly a bull market. That is why the contribution of
+  longs and shorts is split out and compared with buy-and-hold.
+- **Data source:** data is from Binance and execution would be on Bitget. For BTC and ETH the price
+  and funding differences are small.
 
-## Resultado (2026-10-21): rechazada por poco; es la candidata más robusta hasta ahora
+## Result (2026-10-21): narrowly rejected; the most robust candidate so far
 
-Corrida: `scripts/run_tsmom.py` → `artifacts/research/tsmom_btc_eth_v1/`.
+Run: `scripts/run_tsmom.py` → `artifacts/research/tsmom_btc_eth_v1/`.
 
-| Criterio | Umbral | Resultado | ¿Cumple? |
+| Criterion | Threshold | Result | Met? |
 |---|---|---|---|
-| Sharpe fuera de muestra | ≥ 0.7 | 0.63 | no |
-| Peor caída fuera de muestra | ≥ −30 % | −33.7 % | no |
-| Sharpe de desarrollo | ≥ 0.5 | 1.10 | sí |
-| Cada activo fuera de muestra > 0 | > 0 | BTC 0.46 · ETH 0.70 | sí |
+| Out-of-sample Sharpe | ≥ 0.7 | 0.63 | no |
+| Out-of-sample worst drawdown | ≥ −30% | −33.7% | no |
+| Development Sharpe | ≥ 0.5 | 1.10 | yes |
+| Each asset out of sample > 0 | > 0 | BTC 0.46 · ETH 0.70 | yes |
 
-| Combinación con momentum cruzado (fuera de muestra) | Momentum solo | Combinado | ¿Cumple? |
+| Combination with cross-sectional momentum (out of sample) | Momentum alone | Combined | Met? |
 |---|---|---|---|
 | Sharpe (≥ +0.15) | 1.00 | 1.11 (+0.11) | no |
-| Peor caída | −32.4 % | −24.6 % | sí |
-| Exposición bruta de la TSMOM a la escala (p95 ≤ 2) | — | 0.93 | sí |
+| Worst drawdown | −32.4% | −24.6% | yes |
+| TSMOM gross exposure at scale (p95 ≤ 2) | — | 0.93 | yes |
 
-En desarrollo, la combinación también mejora: Sharpe 0.55 contra 0.33 y peor caída −16 % contra
-−24 %. La correlación diaria con el momentum fuera de muestra es 0.12.
+In development the combination also improves: Sharpe 0.55 vs 0.33 and worst drawdown −16% vs
+−24%. The out-of-sample daily correlation with momentum is 0.12.
 
-**Por qué es la más robusta de todo lo probado** (aun sin pasar):
-- **Años:** Sharpe positivo en los 7, de 2020 a 2026: 2.14 · 1.03 · 0.41 · 0.66 · 0.43 · 0.58 · 1.01.
-- **Grilla:**
-  - Las 24 combinaciones tienen Sharpe positivo fuera de muestra; el 62 % supera 0.5.
-  - Medianas: 0.57 fuera de muestra y 1.19 en desarrollo.
-- **Costos ×2:** Sharpe fuera de muestra 0.52. La rotación es baja y los costos de BTC y ETH,
-  mínimos.
-- **Bootstrap:** probabilidad de que el Sharpe fuera de muestra sea ≤ 0 = 13 %.
-- **Sin depender de un activo:** BTC y ETH son positivos por separado.
-- **No es beta disfrazada:** la correlación con comprar y mantener fuera de muestra es −0.06.
-  Comprar y mantener tuvo Sharpe 0.39, con una caída de −38 % a la misma volatilidad.
-- **Cuenta horaria:** peor caída −34 % fuera de muestra, sin tocar el kill switch de −35 % por
-  muy poco.
+**Why it is the most robust of everything tested** (even without passing):
+- **Years:** positive Sharpe in all 7, from 2020 to 2026: 2.14 · 1.03 · 0.41 · 0.66 · 0.43 · 0.58 ·
+  1.01.
+- **Grid:**
+  - All 24 combinations have a positive out-of-sample Sharpe; 62% exceed 0.5.
+  - Medians: 0.57 out of sample and 1.19 in development.
+- **Costs ×2:** out-of-sample Sharpe 0.52. Turnover is low and BTC/ETH costs are minimal.
+- **Bootstrap:** probability that the out-of-sample Sharpe is ≤ 0 = 13%.
+- **Not dependent on one asset:** BTC and ETH are positive separately.
+- **Not disguised beta:** out-of-sample correlation with buy-and-hold is −0.06. Buy-and-hold had a
+  Sharpe of 0.39, with a −38% drawdown at the same volatility.
+- **Hourly account:** worst drawdown −34% out of sample, missing the −35% kill switch by very
+  little.
 
-**Debilidades:**
-- **Retorno por lado:**
-  - Desarrollo: largos +35 %/año, cortos +0.5 %/año.
-  - Fuera de muestra: largos +17 %/año, cortos +6.5 %/año.
-  - Los cortos solo aportaron en el período reciente.
-- **Funding:** cuesta 2.4–6.5 %/año, porque los largos pagan funding.
-- **Meses positivos:** 38 % fuera de muestra. Gana con pocas tendencias largas.
+**Weaknesses:**
+- **Return by side:**
+  - Development: longs +35%/yr, shorts +0.5%/yr.
+  - Out of sample: longs +17%/yr, shorts +6.5%/yr.
+  - Shorts only contributed in the recent period.
+- **Funding:** costs 2.4–6.5%/yr, because longs pay funding.
+- **Positive months:** 38% out of sample. It wins with a few long trends.
 
-**Lecturas posteriores a ver los datos (no habilitan a cambiar el primario):** la variante solo
-largo (0.85) y la de solo 60 días (0.92) tuvieron mejor Sharpe fuera de muestra. Elegirlas ahora
-sería sobreajuste a un período mayormente alcista.
+**Post-hoc readings (do not justify changing the primary):** the long-only variant (0.85) and the
+60-day-only variant (0.92) had better out-of-sample Sharpe. Choosing them now would be overfitting
+to a mostly bullish period.
 
-**Conclusión:** la hipótesis, tal como se registró, no pasa. Si se quiere seguir, lo honesto es
-validarla con datos nuevos: un paper de la configuración primaria sin cambios, con su propia
-compuerta pre-registrada. No corresponde ajustar los umbrales.
+**Conclusion:** the hypothesis, as registered, does not pass. To continue, the honest route is to
+validate it on new data: a paper test of the unchanged primary configuration, with its own
+pre-registered gate. Adjusting the thresholds is not appropriate.

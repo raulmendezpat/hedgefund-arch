@@ -1,83 +1,85 @@
-# Hipótesis registrada: momentum cruzado con 10 % por lado, validada solo con datos nuevos
+# Registered hypothesis: cross-sectional momentum at 10% per side, validated on new data only
 
-Escrita el 2026-10-24, antes del primer rebalanceo de su paper (2026-10-26). Como taker-flow, esta
-variante **ya se vio en todo el historial**: salió de un diagnóstico de la selección del momentum
-hecho sobre los mismos datos del backtest. El backtest no puede validarla. La validación es
-**exclusivamente el paper**, con datos posteriores a esta fecha y la configuración congelada aquí.
+*English translation. The Spanish original in [`es/`](es/xs_frac10_hypothesis.md) is the dated
+record of the pre-registered rules.*
 
-## De dónde sale
+Written on 2026-10-24, before its paper's first rebalance (2026-10-26). Like taker flow, this
+variant **has already been seen over the whole history**: it came from a diagnostic of momentum's
+selection run on the same backtest data. The backtest cannot validate it. Validation is
+**exclusively the paper test**, on data after this date and with the configuration frozen here.
 
-Diagnóstico de la selección de la hipótesis principal (`xs_momentum_production_plan.md`), semana a
-semana desde 2021-03, con el P&L a 7 días de cada token neto de funding y relativo al promedio del
-universo:
-- La ventaja se concentra en los extremos del ranking: el 5 % superior y el 5 % inferior. El tramo
-  del 5 al 20 % de cada lado aporta cerca de cero.
-- Lo que queda justo fuera del corte (percentiles 20–30 y 70–80) rinde como el centro del ranking:
-  el corte no deja fuera señales buenas.
-- Los puestos 61–120 por liquidez rinden peor que el top 60: ampliar el universo no ayuda.
+## Where it comes from
 
-Backtest con el motor compartido y costos del backtest (fee 0.06 %, slippage 3 bp), top 60:
+Diagnostic of the primary hypothesis's selection (`xs_momentum_production_plan.md`), week by week
+since 2021-03, with each token's 7-day P&L net of funding and relative to the universe average:
+- The edge is concentrated at the extremes of the ranking: the top 5% and the bottom 5%. The 5–20%
+  band on each side contributes about zero.
+- What sits just outside the cut (percentiles 20–30 and 70–80) performs like the middle of the
+  ranking: the cut does not leave good signals out.
+- Liquidity ranks 61–120 perform worse than the top 60: widening the universe does not help.
 
-| | Sharpe desarrollo (2021-03 a 2023) | Sharpe fuera de muestra (2024+) | Peor caída desarrollo / fuera | Costo anual |
+Backtest with the shared engine and backtest costs (0.06% fee, 3 bp slippage), top 60:
+
+| | Development Sharpe (2021-03 to 2023) | Out-of-sample Sharpe (2024+) | Worst drawdown dev / OOS | Annual cost |
 |---|---|---|---|---|
-| Principal (20 % por lado) | 0.42 | 1.07 | −24 % / −32 % | 4.0 % |
-| **Variante (10 % por lado)** | **0.51** | **1.38** | **−39 % / −32 %** | 4.7 % |
+| Primary (20% per side) | 0.42 | 1.07 | −24% / −32% | 4.0% |
+| **Variant (10% per side)** | **0.51** | **1.38** | **−39% / −32%** | 4.7% |
 
-- Por año, la variante gana en 2021, 2024 y 2026 y pierde en 2022, 2023 y 2025. La mejora viene de
-  pocos años buenos.
-- Correlación diaria con la principal: 0.82–0.87.
-- La caída de −39 % en desarrollo supera el kill switch de producción (−35 %).
+- By year, the variant wins in 2021, 2024 and 2026 and loses in 2022, 2023 and 2025. The
+  improvement comes from a few good years.
+- Daily correlation with the primary: 0.82–0.87.
+- The −39% development drawdown exceeds the production kill switch (−35%).
 
-**Lo que se sacrifica:** con ~55–60 símbolos operables quedan ~6 por lado y un peso de ~8.3 % por
-posición, el doble que la principal. El riesgo de cola por token (ver §5 del plan de producción)
-pesa el doble.
+**What is given up:** with ~55–60 tradable symbols there are ~6 per side and a weight of ~8.3% per
+position, double the primary's. Per-token tail risk (see §5 of the production plan) weighs twice
+as much.
 
-## Configuración (congelada)
+## Configuration (frozen)
 
-Idéntica a la hipótesis principal salvo la fracción por lado:
-- **Señal:** retorno de 30 días con 1 día de salto, sobre cierres de 1h de Binance a las 23:00 UTC.
-- **Universo:** top 60 mensual de Binance USDT-M por volumen, restringido a símbolos listados en Bitget.
-- **Cartera:** largo el **10 %** con mayor score y corto el **10 %** con menor score, mínimo 2 por
-  lado; pesos iguales 0.5 / −0.5; mínimo 8 activos con score; banda de 0.02.
-- **Calendario y ejecución:** idénticos al paper del momentum. Decisión el domingo, fill el lunes
-  a la 01:00 UTC, simulación contra el libro de Bitget, fee de 0.06 % y funding real de Bitget.
-- **Capital simulado:** 10,000 USDT.
+Identical to the primary hypothesis except for the fraction per side:
+- **Signal:** 30-day return with a 1-day skip, on Binance 1h closes at 23:00 UTC.
+- **Universe:** monthly Binance USDT-M top 60 by volume, restricted to symbols listed on Bitget.
+- **Portfolio:** long the **10%** with the highest score and short the **10%** with the lowest,
+  at least 2 per side; equal weights 0.5 / −0.5; at least 8 assets with a score; 0.02 band.
+- **Schedule and execution:** identical to the momentum paper. Decision on Sunday, fill on Monday
+  at 01:00 UTC, simulated against the Bitget order book, 0.06% fee and actual Bitget funding.
+- **Simulated capital:** 10,000 USDT.
 
-## Compuerta de implementación (2027-01-11, 12 rebalanceos)
+## Implementation gate (2027-01-11, 12 rebalances)
 
-Mismos umbrales que el paper del momentum:
-- ≥ 12 rebalanceos y ≤ 1 perdido;
-- slippage mediano por tramo ≤ 3 / 6 / 12 bp;
-- correlación diaria paper vs modelo ≥ 0.9;
-- brecha de implementación ≥ −5 %/año.
+Same thresholds as the momentum paper:
+- ≥ 12 rebalances and ≤ 1 missed;
+- median slippage per tier ≤ 3 / 6 / 12 bp;
+- daily correlation paper vs model ≥ 0.9;
+- implementation gap ≥ −5%/yr.
 
-## Decisión (solo con datos desde el primer rebalanceo, 2026-10-26)
+## Decision (only with data from the first rebalance, 2026-10-26)
 
-Se compara contra el paper de la principal (`xs_momentum_v1`) en los mismos días, porque la
-pregunta es si la variante es **mejor que la principal**, no solo si gana dinero.
+It is compared against the primary's paper (`xs_momentum_v1`) on the same days, because the
+question is whether the variant is **better than the primary**, not just whether it makes money.
 
-| Fecha | Regla |
+| Date | Rule |
 |---|---|
-| 2027-04-19 (26 semanas) | Se **descarta** si su peor caída es < −35 %, o si su Sharpe anualizado es < −0.5. Si no, sigue corriendo. |
-| 2027-10-25 (52 semanas) | **Reemplaza a la principal** en producción solo si cumple todo: Sharpe ≥ 0.7, Sharpe ≥ el de la principal + 0.3 en los mismos días, peor caída ≥ −35 % y compuerta de implementación aprobada. Si no, se descarta y la principal sigue igual. |
+| 2027-04-19 (26 weeks) | **Discarded** if its worst drawdown is < −35%, or its annualised Sharpe is < −0.5. Otherwise it keeps running. |
+| 2027-10-25 (52 weeks) | **Replaces the primary** in production only if it meets everything: Sharpe ≥ 0.7, Sharpe ≥ the primary's + 0.3 on the same days, worst drawdown ≥ −35% and implementation gate passed. Otherwise it is discarded and the primary stays as is. |
 
-**Requisito antes de producción:** el límite de sanidad del ejecutor aborta con pesos > 10 %. Con
-menos de 50 símbolos operables quedan 5 por lado (10 % exacto), y con menos de 45, 4 por lado
-(12.5 %), que abortaría el rebalanceo. Hay que revisar ese límite antes de pasarla a vivo.
+**Requirement before production:** the runner's sanity limit aborts on weights > 10%. With fewer
+than 50 tradable symbols there are 5 per side (exactly 10%), and with fewer than 45, 4 per side
+(12.5%), which would abort the rebalance. That limit must be reviewed before going live.
 
-**Advertencia de potencia:** la diferencia diaria entre ambas tiene un Sharpe histórico de 0.4–1.1.
-En 52 semanas eso da un estadístico t de 0.4–1.1: aun si la mejora fuera real, un año de paper
-probablemente no la distinga del ruido. La regla exige una mejora grande a propósito, porque la
-variante duplica la concentración y un falso positivo cuesta capital real.
+**Power caveat:** the daily difference between the two has a historical Sharpe of 0.4–1.1. Over 52
+weeks that gives a t-statistic of 0.4–1.1: even if the improvement were real, one year of paper
+probably cannot tell it from noise. The rule deliberately demands a large improvement, because the
+variant doubles concentration and a false positive costs real capital.
 
-## Variante descartada antes del paper: largos solo en tokens con menos de un año listados
+## Variant discarded before the paper: longs only in tokens listed for less than a year
 
-Salió del mismo diagnóstico. Los largos en tokens listados hace menos de 365 días (según
-`onboardDate` de Binance) rindieron más que los viejos: +79 bp/semana contra +1 en desarrollo y
-+401 contra −65 fuera de muestra. Como cartera (cortos iguales a la principal, largos solo en
-tokens jóvenes del 20 % superior), quedó **peor que la principal en desarrollo**: Sharpe 0.31
-contra 0.49, con caída de −42 % contra −18 %, sin costos. El motivo es que hay muy pocos: una
-mediana de 3 largos por semana, y menos de 2 en 54 de 289 semanas.
+It came from the same diagnostic. Longs in tokens listed less than 365 days ago (by Binance's
+`onboardDate`) outperformed older ones: +79 bp/week vs +1 in development and +401 vs −65 out of
+sample. As a portfolio (shorts as in the primary, longs only in young tokens from the top 20%), it
+was **worse than the primary in development**: Sharpe 0.31 vs 0.49, with a −42% vs −18% drawdown,
+before costs. The reason is that there are very few: a median of 3 longs per week, and fewer than
+2 in 54 of 289 weeks.
 
-Decisión del 2026-10-24: **no se registra**. Queda anotada para no volver a probarla sin una razón
-nueva.
+Decision of 2026-10-24: **not registered**. It is noted here so it is not retested without a new
+reason.

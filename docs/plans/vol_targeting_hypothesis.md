@@ -1,145 +1,146 @@
-# Hipótesis registrada: volatility targeting del momentum y apalancamiento x1–x4
+# Registered hypothesis: volatility targeting of momentum and x1–x4 leverage
 
-Escrita el 2026-10-21, **antes de construir el backtest y de mirar ningún resultado** de esta
-estrategia. La configuración primaria, los criterios de éxito y las reglas para aceptar un nivel
-de apalancamiento no se cambian después de ver los resultados. La grilla sirve para medir
-robustez, no para elegir parámetros.
+*English translation. The Spanish original in [`es/`](es/vol_targeting_hypothesis.md) is the
+dated record of the pre-registered rules.*
+
+Written on 2026-10-21, **before building the backtest or looking at any result** of this
+strategy. The primary configuration, the success criteria and the rules for accepting a leverage
+level are not changed after seeing the results. The grid measures robustness; it is not used to
+choose parameters.
 
 ## Idea
 
-El momentum cruzado tiene caídas fuertes y concentradas: las peores llegan cuando el mercado
-está más volátil. El volatility targeting achica la exposición cuando la volatilidad reciente
-de la estrategia sube y la agranda cuando baja, para mantener un riesgo aproximadamente
-constante (Barroso & Santa-Clara, 2015, "Momentum has its moments"). Si funciona, mejora el
-Sharpe y reduce las caídas sin cambiar la señal.
+Cross-sectional momentum has sharp, concentrated drawdowns: the worst ones arrive when the market
+is most volatile. Volatility targeting shrinks exposure when the strategy's recent volatility rises
+and grows it when volatility falls, to keep risk roughly constant (Barroso & Santa-Clara, 2015,
+"Momentum has its moments"). If it works, it improves the Sharpe and reduces drawdowns without
+changing the signal.
 
-## Configuración primaria
+## Primary configuration
 
-**Estrategia base:** el momentum primario (`PRIMARY_STRATEGY`), sin cambios:
-- universo top 60;
-- rebalanceo semanal;
-- costos escalonados de 3/6/12 bp más un fee de 0.06 %;
-- 0.5 largo / 0.5 corto (exposición bruta 1.0).
+**Base strategy:** the primary momentum (`PRIMARY_STRATEGY`), unchanged:
+- top-60 universe;
+- weekly rebalance;
+- tiered costs of 3/6/12 bp plus a 0.06% fee;
+- 0.5 long / 0.5 short (gross exposure 1.0).
 
-**Escala:** se fija en cada rebalanceo, al decidir el día *d*. Los pesos objetivo de la base
-se multiplican por
+**Scale:** set at each rebalance, when deciding on day *d*. The base's target weights are
+multiplied by
 
-  k_d = min(cap, objetivo / σ̂_d)
+  k_d = min(cap, target / σ̂_d)
 
-donde:
-- **σ̂_d** es la volatilidad anualizada (desviación diaria × √365) de los retornos netos diarios
-  de la estrategia base sin escalar, en los **60 días** previos. Usa solo filas ≤ *d*−1, cuyo
-  último fill es anterior a la decisión. Si hay menos de 30 días, k = 1.
-- **objetivo** = **25 %** anual. Es aproximadamente la volatilidad de la base en desarrollo (27.7 %),
-  así que la exposición promedio queda cerca de 1.
-- **cap** = **2.0**: la exposición bruta máxima es 2.
+where:
+- **σ̂_d** is the annualised volatility (daily deviation × √365) of the unscaled base strategy's
+  net daily returns over the previous **60 days**. It uses only rows ≤ *d*−1, whose last fill is
+  before the decision. With fewer than 30 days, k = 1.
+- **target** = **25%** annual. This is roughly the base's development volatility (27.7%), so
+  average exposure stays near 1.
+- **cap** = **2.0**: maximum gross exposure is 2.
 
-**Períodos:** desarrollo 2021-03-01 a 2023-12-31; fuera de muestra desde 2024-01-01.
+**Periods:** development 2021-03-01 to 2023-12-31; out of sample from 2024-01-01.
 
-## Criterios de éxito del volatility targeting (x1, todos requeridos)
+## Volatility-targeting success criteria (x1, all required)
 
-| # | Criterio |
+| # | Criterion |
 |---|---|
-| 1 | Sharpe fuera de muestra ≥ el de la base + 0.10 |
-| 2 | Sharpe de desarrollo ≥ el de la base (no empeora) |
-| 3 | La peor caída fuera de muestra, **a igual volatilidad realizada que la base**, es mejor que la de la base |
-| 4 | El peor mes fuera de muestra, a igual volatilidad, es mejor que el de la base |
+| 1 | Out-of-sample Sharpe ≥ base + 0.10 |
+| 2 | Development Sharpe ≥ base (no worse) |
+| 3 | Out-of-sample worst drawdown, **at the same realised volatility as the base**, better than the base's |
+| 4 | Out-of-sample worst month, at the same volatility, better than the base's |
 
-Para el criterio 3, la serie con targeting se reescala de forma estática a la volatilidad
-realizada de la base en el mismo período. Así no se premia simplemente tener menos riesgo.
+For criterion 3, the targeted series is statically rescaled to the base's realised volatility over
+the same period. That way it is not rewarded simply for taking less risk.
 
-También se informa, sin que sea criterio, un bootstrap por bloques de 20 días: la probabilidad
-de que la mejora del Sharpe fuera de muestra sea ≤ 0.
+Also reported, not a criterion: a 20-day block bootstrap of the probability that the
+out-of-sample Sharpe improvement is ≤ 0.
 
-## Apalancamiento x1, x2, x3, x4
+## Leverage x1, x2, x3, x4
 
-Se aplica a la base y al targeting (objetivo × L, cap × L). Los pesos se multiplican por L y
-pasan por el mismo motor: el fee, el slippage y el funding escalan con la exposición.
+Applied to the base and to the targeted version (target × L, cap × L). Weights are multiplied by L
+and go through the same engine: fee, slippage and funding scale with exposure.
 
-**Simulación horaria de la cuenta:**
-- Cada día se toman los pesos tenidos desde el último fill y los cierres horarios de cada
-  símbolo.
-- Con eso se reconstruye la equity hora a hora: el mínimo intradiario, no solo el cierre diario.
+**Hourly account simulation:**
+- Each day takes the weights held since the last fill and each symbol's hourly closes.
+- From those, equity is rebuilt hour by hour: the intraday minimum, not just the daily close.
 
-**Liquidación:**
-- Margen cruzado. Hay liquidación si en cualquier hora la equity ≤ margen de mantenimiento ×
-  notional bruto vigente.
-- Margen de mantenimiento: **2 %** del notional. Es conservador para alts en Bitget, cuyo
-  primer tramo está entre 0.5 % y 1.5 %.
-- Una liquidación termina la simulación de ese período.
+**Liquidation:**
+- Cross margin. Liquidation occurs if at any hour equity ≤ maintenance margin × current gross
+  notional.
+- Maintenance margin: **2%** of notional. This is conservative for alts on Bitget, whose first
+  tier is between 0.5% and 1.5%.
+- A liquidation ends the simulation for that period.
 
-**Kill switch del plan de producción:** se registra la primera hora en que la caída desde el
-máximo llega a −25 %.
+**Production plan kill switch:** the first hour at which drawdown from peak reaches −25% is
+recorded.
 
-**Métricas por período:**
-- CAGR, Sharpe, peor caída diaria y horaria, y peor día.
-- Fecha de liquidación, si la hay, y fecha del primer toque del kill switch.
-- Distribución de retornos en ventanas móviles de 30 días: mediana, percentil 5 y 95,
-  porcentaje de ventanas ≥ +10 % y ≤ −10 %.
+**Metrics per period:**
+- CAGR, Sharpe, worst daily and hourly drawdown, and worst day.
+- Liquidation date, if any, and date of the first kill-switch hit.
+- Distribution of 30-day rolling-window returns: median, 5th and 95th percentile, share of
+  windows ≥ +10% and ≤ −10%.
 
-**Un nivel de apalancamiento se considera aceptable para producción** solo si cumple las tres
-condiciones, **en desarrollo y fuera de muestra**:
-1. sin liquidación;
-2. peor caída horaria > −40 %;
-3. peor ventana de 30 días > −30 %.
+**A leverage level is considered acceptable for production** only if it meets all three
+conditions, **in development and out of sample**:
+1. no liquidation;
+2. worst hourly drawdown > −40%;
+3. worst 30-day window > −30%.
 
-## Sensibilidad (solo para medir robustez)
+## Sensitivity (robustness only)
 
-- Ventana de σ̂: 20, 60 y 120 días.
-- Cap: 1.5, 2 y 3.
-- Objetivo fijo en 25 %.
+- σ̂ window: 20, 60 and 120 days.
+- Cap: 1.5, 2 and 3.
+- Target fixed at 25%.
 
-Se informa en qué fracción de las 9 combinaciones el Sharpe fuera de muestra supera al de la
-base.
+The fraction of the 9 combinations whose out-of-sample Sharpe beats the base is reported.
 
-## Limitaciones conocidas
+## Known limitations
 
-- La volatilidad se estima sobre la estrategia base sin escalar (una sombra). Sus retornos
-  difieren levemente de los escalados por la banda y los costos.
-- Las velas horarias son de Binance; la ejecución sería en Bitget.
-- No se modelan los tramos de margen por tamaño de posición ni el ADL del exchange.
-- El slippage no crece con el tamaño. Con x3 y x4, una cuenta grande pagaría más impacto de lo
-  modelado.
+- Volatility is estimated on the unscaled base strategy (a shadow). Its returns differ slightly
+  from the scaled ones because of the band and costs.
+- Hourly candles are from Binance; execution would be on Bitget.
+- Margin tiers by position size and exchange ADL are not modelled.
+- Slippage does not grow with size. At x3 and x4, a large account would pay more impact than
+  modelled.
 
-## Resultado (2026-10-21): volatility targeting rechazado; apalancamiento > x1 no aceptable
+## Result (2026-10-21): volatility targeting rejected; leverage > x1 not acceptable
 
-Corrida: `scripts/run_vol_targeting.py` → `artifacts/research/vol_targeting_v1/`.
+Run: `scripts/run_vol_targeting.py` → `artifacts/research/vol_targeting_v1/`.
 
 ### Volatility targeting (x1)
 
-| Criterio | Base | Con targeting | ¿Cumple? |
+| Criterion | Base | Targeted | Met? |
 |---|---|---|---|
-| Sharpe fuera de muestra (≥ base + 0.10) | 1.00 | 0.71 | no |
-| Sharpe de desarrollo (≥ base) | 0.33 | 0.48 | sí |
-| Peor caída fuera de muestra, a igual volatilidad | −32.4 % | −36.5 % | no |
-| Peor mes fuera de muestra, a igual volatilidad | −11.9 % | −14.5 % | no |
+| Out-of-sample Sharpe (≥ base + 0.10) | 1.00 | 0.71 | no |
+| Development Sharpe (≥ base) | 0.33 | 0.48 | yes |
+| Out-of-sample worst drawdown, same volatility | −32.4% | −36.5% | no |
+| Out-of-sample worst month, same volatility | −11.9% | −14.5% | no |
 
-- **Bootstrap:** probabilidad de que la mejora del Sharpe fuera de muestra sea ≤ 0 = 98 %. La
-  mediana de la mejora es −0.28.
-- **Grilla:** ninguna de las 9 combinaciones supera a la base fuera de muestra; la mediana es 0.71.
-- **Lectura:** el momentum de este universo no tiene la estructura "volatilidad alta → retorno
-  malo" que el targeting explota. Sus mejores semanas (colas positivas) llegan con volatilidad
-  alta, y el targeting las recorta. Es coherente con el carácter de "lotería" ya observado: el
-  retorno depende de pocas subidas grandes.
+- **Bootstrap:** probability that the out-of-sample Sharpe improvement is ≤ 0 = 98%. The median
+  improvement is −0.28.
+- **Grid:** none of the 9 combinations beats the base out of sample; the median is 0.71.
+- **Reading:** momentum in this universe lacks the "high volatility → bad return" structure that
+  targeting exploits. Its best weeks (positive tails) come with high volatility, and targeting
+  trims them. This is consistent with the "lottery" character already observed: return depends on
+  a few large up-moves.
 
-### Apalancamiento (cuenta simulada hora a hora, mantenimiento 2 %, cada período desde 1)
+### Leverage (account simulated hour by hour, 2% maintenance, each period starting at 1)
 
-| Base | CAGR desarrollo | CAGR fuera de muestra | Peor caída horaria (desarrollo / fuera) | Peor ventana 30 d | Ventanas 30 d ≥ +10 % / ≤ −10 % (fuera) |
+| Base | Development CAGR | Out-of-sample CAGR | Worst hourly drawdown (dev / OOS) | Worst 30-day window | 30-day windows ≥ +10% / ≤ −10% (OOS) |
 |---|---|---|---|---|---|
-| x1 | 5.5 % | 31 % | −26 % / −35 % | −19 % | 19 % / 4 % |
-| x2 | 4.5 % | 51 % | −46 % / −59 % | −37 % | 32 % / 17 % |
-| x3 | 0.2 % | 63 % | −62 % / −76 % | −54 % | 37 % / 26 % |
-| x4 | −11 % | 63 % | −76 % / −86 % | −70 % | 41 % / 32 % |
+| x1 | 5.5% | 31% | −26% / −35% | −19% | 19% / 4% |
+| x2 | 4.5% | 51% | −46% / −59% | −37% | 32% / 17% |
+| x3 | 0.2% | 63% | −62% / −76% | −54% | 37% / 26% |
+| x4 | −11% | 63% | −76% / −86% | −70% | 41% / 32% |
 
-- **Liquidaciones:** ninguna. Las pérdidas llegan de a poco, no de golpe.
-- **Mismas caídas, sin más retorno:** las caídas crecen proporcionalmente, pero el retorno no
-  acompaña. En desarrollo, x3 y x4 terminan en cero o en pérdida por el arrastre de volatilidad.
-- **Veredicto:** solo x1, de la base y del targeting, cumple las reglas pre-registradas.
-  x2 a x4 se rechazan.
+- **Liquidations:** none. Losses arrive gradually, not all at once.
+- **Bigger drawdowns, no extra return:** drawdowns grow proportionally, but return does not keep
+  up. In development, x3 and x4 end at zero or at a loss because of volatility drag.
+- **Verdict:** only x1, for both the base and the targeted version, meets the pre-registered
+  rules. x2 to x4 are rejected.
 
-### Hallazgo para el plan de producción
+### Finding for the production plan
 
-Con x1, el kill switch de −25 % se habría disparado en ambos períodos: 2021-08-26 en desarrollo
-y 2024-08-28 fuera de muestra (peor caída horaria −26 % y −35 %). Con ese umbral, la estrategia
-se habría detenido antes de su mejor tramo (2025–2026). Queda como decisión abierta en
+At x1, the −25% kill switch would have fired in both periods: 2021-08-26 in development and
+2024-08-28 out of sample (worst hourly drawdown −26% and −35%). With that threshold, the strategy
+would have stopped before its best stretch (2025–2026). This is left as an open decision in
 `xs_momentum_production_plan.md` §4.

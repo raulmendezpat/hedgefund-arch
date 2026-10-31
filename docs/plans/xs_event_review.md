@@ -1,60 +1,63 @@
-# Revisión semanal de eventos y de mapeo del momentum (solo alertas)
+# Weekly event and mapping review of the momentum book (alerts only)
 
-Escrita el 2026-10-28, antes de su primera corrida. Es un monitor: **no cambia la estrategia
-registrada ni las órdenes**. Corre aparte del ejecutor, y si falla, el rebalanceo sigue igual.
+*English translation. The Spanish original is in [`es/`](es/xs_event_review.md).*
 
-## Qué hace
+Written on 2026-10-28, before its first run. It is a monitor: **it does not change the registered
+strategy or the orders**. It runs separately from the runner, and if it fails, the rebalance goes
+ahead as usual.
 
-Cada lunes, entre que cierra la vela de las 23:00 UTC del domingo (00:00 UTC) y el fill de la
-01:00 UTC, calcula la cartera objetivo de la semana con el mismo código que el paper y el ejecutor
-(`xs_signal.compute_targets`) y revisa dos cosas:
+## What it does
 
-1. **Mapeo Binance ↔ Bitget** (todos los miembros operables del universo, ~60):
-   - compara el precio en los dos exchanges;
-   - el cociente debe ser 1, o la potencia de 10 que indica el prefijo (`1000PEPE` en Binance contra
-     `PEPE` en Bitget da 1/1000);
-   - si se aleja más de un 2 %, los dos símbolos probablemente no son el mismo activo
-     (ticker reutilizado, redenominación o alias equivocado) y avisa.
-   - Es una regla fija, sin LLM: es más confiable que preguntarle a un modelo.
-2. **Eventos** (cada posición de la cartera, ~24):
-   - Claude (`claude-haiku-5-5`, esfuerzo `low`, hasta 2 búsquedas web por token) busca eventos
-     discretos de los últimos 14 días o programados para los próximos 7: delistings y listings,
-     hackeos, unlocks, migraciones o redenominaciones, acciones regulatorias, depegs, ventas
-     del equipo, airdrops y upgrades;
-   - ignora comentarios de precio y análisis técnico;
-   - califica el riesgo **para el lado de la posición** (un listing nuevo es riesgo para un corto;
-     un unlock, para un largo) como `none`, `low`, `medium` o `high`, citando la fuente.
+Every Monday, between the close of the Sunday 23:00 UTC candle (00:00 UTC) and the 01:00 UTC
+fill, it computes the week's target portfolio with the same code as the paper and the runner
+(`xs_signal.compute_targets`) and checks two things:
 
-**Notificaciones:** un resumen en cada corrida, y una alerta con sonido por cada mapeo dudoso y
-por cada posición con riesgo `medium` o `high`. Si corre después del fill (por ejemplo, porque el
-Mac estuvo apagado), lo indica.
+1. **Binance ↔ Bitget mapping** (every tradable member of the universe, ~60):
+   - compares the price on both exchanges;
+   - the ratio must be 1, or the power of 10 implied by the prefix (`1000PEPE` on Binance against
+     `PEPE` on Bitget gives 1/1000);
+   - if it deviates by more than 2%, the two symbols are probably not the same asset (reused
+     ticker, redenomination or wrong alias) and it alerts.
+   - This is a fixed rule, with no LLM: more reliable than asking a model.
+2. **Events** (each position in the portfolio, ~24):
+   - Claude (`claude-haiku-5-5`, `low` effort, up to 2 web searches per token) looks for discrete
+     events in the last 14 days or scheduled for the next 7: delistings and listings, hacks,
+     unlocks, migrations or redenominations, regulatory actions, depegs, team sales, airdrops and
+     upgrades;
+   - it ignores price commentary and technical analysis;
+   - it rates the risk **for the position's side** (a new listing is a risk for a short; an
+     unlock, for a long) as `none`, `low`, `medium` or `high`, citing the source.
 
-## Qué hacer con una alerta
+**Notifications:** a summary on every run, and an alert with sound for each doubtful mapping and
+each position rated `medium` or `high`. If it runs after the fill (for example, because the Mac
+was off), it says so.
 
-No existe un mecanismo para excluir una posición, y no se agrega: sería cambiar la estrategia.
-Con una alerta grave antes del fill, la única acción disponible es pausar el ejecutor en vivo esa
-semana (`launchctl unload` de su agente), lo que cuenta como rebalanceo perdido. Es una decisión
-manual del dueño de la cuenta.
+## What to do with an alert
 
-## Costo
+There is no mechanism to exclude a position, and none is added: that would change the strategy.
+With a serious alert before the fill, the only available action is to pause the live runner that
+week (`launchctl unload` of its agent), which counts as a missed rebalance. It is a manual decision
+by the account owner.
 
-- **Hasta el 2026-10-31** usaba `claude-sonnet-5-5` con hasta 3 búsquedas: ~0.035–0.045 USD por
-  posición, unos 1.04 USD por semana (~54 USD al año). Con 300 USDT en vivo eso es ~18 % del
-  capital al año, casi todo el retorno esperado.
-- **Desde el 2026-10-31** usa `claude-haiku-5-5` con hasta 2 búsquedas. Se midió en 6 posiciones:
-  0.006–0.010 USD por posición, unos 0.15–0.25 USD por semana (~8–13 USD al año): ~3–4 % de 300 USDT
-  y ~1 % de 1,000.
-- Las calificaciones de los dos modelos varían entre corridas (un mismo token puede salir `none`,
-  `low` o `medium`), así que se pierde poco al cambiar de modelo.
-- Cada corrida guarda su costo estimado en el reporte. Es una estimación: algunas búsquedas corren
-  dentro de la herramienta de código y el contador de búsquedas puede no reflejarlas. El gasto real
-  se ve en la consola de Anthropic.
+## Cost
 
-## Cómo se mide
+- **Until 2026-10-31** it used `claude-sonnet-5-5` with up to 3 searches: ~0.035–0.045 USD per
+  position, about 1.04 USD per week (~54 USD a year). With 300 USDT live that is ~18% of capital
+  a year, nearly all the expected return.
+- **Since 2026-10-31** it uses `claude-haiku-5-5` with up to 2 searches. Measured on 6 positions:
+  0.006–0.010 USD per position, about 0.15–0.25 USD per week (~8–13 USD a year): ~3–4% of 300 USDT
+  and ~1% of 1,000.
+- Both models' ratings vary between runs (the same token can come out `none`, `low` or `medium`),
+  so little is lost by switching models.
+- Each run stores its estimated cost in the report. It is an estimate: some searches run inside the
+  code tool and the search counter may not reflect them. Actual spend is visible in the Anthropic
+  console.
 
-Cada revisión queda en `runtime/event_review/reviews/<decision_day>.json`, con la cartera, las
-calificaciones y las fuentes. **El 2027-05-03 (26 semanas):** se compara el P&L semanal del paper
-de las posiciones marcadas (`medium`/`high`) contra las demás.
-- Es descriptivo: con pocas alertas por semana no habrá potencia estadística.
-- Usar las alertas para operar (por ejemplo, excluir posiciones marcadas) sería una hipótesis
-  nueva, con su propio registro y su propio paper.
+## How it is measured
+
+Each review is stored in `runtime/event_review/reviews/<decision_day>.json`, with the portfolio,
+the ratings and the sources. **On 2027-05-03 (26 weeks):** the paper's weekly P&L of flagged
+positions (`medium`/`high`) is compared with the rest.
+- It is descriptive: with few alerts per week there will be no statistical power.
+- Using the alerts to trade (for example, excluding flagged positions) would be a new hypothesis,
+  with its own registration and its own paper test.

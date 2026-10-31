@@ -1,59 +1,61 @@
-# Hipótesis registrada: flujo agresivo (taker flow) cruzado, validada solo con datos nuevos
+# Registered hypothesis: cross-sectional taker flow, validated on new data only
 
-Escrita el 2026-10-21. A diferencia de las hipótesis anteriores, esta señal **ya se vio en todo el
-historial disponible**: es la secundaria S2 de `open_interest_hypothesis.md`, que salió con Sharpe
-1.28 en desarrollo y 0.93 fuera de muestra, elegida entre 4 pruebas. El backtest no puede
-validarla. La validación es **exclusivamente el paper**, con datos posteriores a esta fecha y la
-configuración congelada aquí.
+*English translation. The Spanish original in [`es/`](es/taker_flow_hypothesis.md) is the dated
+record of the pre-registered rules.*
 
-## Configuración (congelada; es la misma del backtest S2)
+Written on 2026-10-21. Unlike the earlier hypotheses, this signal **has already been seen over the
+whole available history**: it is secondary S2 of `open_interest_hypothesis.md`, which came out
+with a Sharpe of 1.28 in development and 0.93 out of sample, chosen from 4 tests. The backtest
+cannot validate it. Validation is **exclusively the paper test**, on data after this date and with
+the configuration frozen here.
 
-**Universo:** el top 60 mensual de Binance USDT-M (mismo cálculo que el momentum), restringido a
-símbolos listados en Bitget.
+## Configuration (frozen; identical to the S2 backtest)
 
-**Dato:**
-- `buySellRatio` = volumen comprador agresivo / volumen vendedor agresivo, en barras de 5 minutos.
-- Fuente: la API de Binance (`/futures/data/takerlongshortRatio`).
-- Coincide con el archivo `sum_taker_long_short_vol_ratio` del backtest a la misma marca de tiempo
-  (diferencia máxima 0.0016, por redondeo).
+**Universe:** the monthly Binance USDT-M top 60 (same calculation as momentum), restricted to
+symbols listed on Bitget.
 
-**Score** al cierre del domingo (día *d*):
-- Para cada día UTC, el promedio de ln(ratio) de sus barras de 5 minutos.
-- Luego, el promedio de esos valores diarios en los 7 días *d*−6..*d*, con al menos 5 días con
-  dato.
+**Data:**
+- `buySellRatio` = aggressive buy volume / aggressive sell volume, in 5-minute bars.
+- Source: the Binance API (`/futures/data/takerlongshortRatio`).
+- It matches the backtest's `sum_taker_long_short_vol_ratio` archive at the same timestamp
+  (maximum difference 0.0016, from rounding).
 
-**Cartera:**
-- Se compra el 20 % con mayor score y se vende en corto el 20 % con menor score.
-- Pesos iguales, 0.5 largo / 0.5 corto.
-- Mínimo 8 activos con score; un símbolo sin score no es elegible.
-- Banda de 0.02.
+**Score** at the Sunday close (day *d*):
+- For each UTC day, the mean of ln(ratio) over its 5-minute bars.
+- Then the mean of those daily values over the 7 days *d*−6..*d*, with at least 5 days of data.
 
-**Calendario y ejecución:** idénticos al paper del momentum.
-- Decisión el domingo y fill el lunes a la 01:00 UTC.
-- Simulación contra el libro de Bitget, fee de 0.06 % y funding real de Bitget.
-- Capital simulado: 10,000 USDT.
+**Portfolio:**
+- Buy the 20% with the highest score and short the 20% with the lowest.
+- Equal weights, 0.5 long / 0.5 short.
+- At least 8 assets with a score; a symbol without a score is not eligible.
+- 0.02 band.
 
-## Compuerta de implementación (2027-01-11, 12 rebalanceos)
+**Schedule and execution:** identical to the momentum paper.
+- Decision on Sunday and fill on Monday at 01:00 UTC.
+- Simulated against the Bitget order book, 0.06% fee and actual Bitget funding.
+- Simulated capital: 10,000 USDT.
 
-Mismos umbrales que el paper del momentum:
-- ≥ 12 rebalanceos y ≤ 1 perdido;
-- slippage mediano por tramo ≤ 3 / 6 / 12 bp;
-- correlación diaria paper vs modelo ≥ 0.9;
-- brecha de implementación ≥ −5 %/año.
+## Implementation gate (2027-01-11, 12 rebalances)
 
-El modelo de comparación usa los pesos que el paper decidió cada semana, con los precios de fill de
-Binance y los costos del backtest. Así mide solo la ejecución.
+Same thresholds as the momentum paper:
+- ≥ 12 rebalances and ≤ 1 missed;
+- median slippage per tier ≤ 3 / 6 / 12 bp;
+- daily correlation paper vs model ≥ 0.9;
+- implementation gap ≥ −5%/yr.
 
-## Decisión sobre la señal (solo con datos desde el primer rebalanceo, 2026-10-26)
+The comparison model uses the weights the paper decided each week, with Binance fill prices and
+the backtest's costs. That way it measures execution only.
 
-| Fecha | Regla |
+## Decision on the signal (only with data from the first rebalance, 2026-10-26)
+
+| Date | Rule |
 |---|---|
-| 2027-04-19 (26 semanas) | Se **descarta** si el Sharpe anualizado del paper es < −0.5. Si no, sigue corriendo. |
-| 2027-10-25 (52 semanas) | Pasa a producción, como segunda pata junto al momentum con mitad del riesgo cada una, solo si el paper tiene **Sharpe ≥ 0.7** y **peor caída ≥ −30 %**, y la compuerta de implementación está aprobada. Si no, se descarta. |
+| 2027-04-19 (26 weeks) | **Discarded** if the paper's annualised Sharpe is < −0.5. Otherwise it keeps running. |
+| 2027-10-25 (52 weeks) | Goes to production, as a second leg next to momentum with half the risk each, only if the paper has **Sharpe ≥ 0.7** and **worst drawdown ≥ −30%**, and the implementation gate has passed. Otherwise it is discarded. |
 
-**Se informa además, sin que decida nada:** la combinación 50/50 con el paper del momentum en los
-mismos días, y la correlación entre ambos.
+**Also reported, without deciding anything:** the 50/50 combination with the momentum paper on the
+same days, and the correlation between the two.
 
-**Advertencia de potencia:** un año de datos semanales es poco. Con un Sharpe real de 0.7, la
-probabilidad de observar ≥ 0.7 en 52 semanas es ~50 %. La regla es exigente a propósito: un falso
-positivo cuesta capital real, y un falso negativo solo cuesta una oportunidad.
+**Power caveat:** one year of weekly data is little. With a true Sharpe of 0.7, the probability of
+observing ≥ 0.7 over 52 weeks is ~50%. The rule is deliberately demanding: a false positive costs
+real capital, while a false negative only costs an opportunity.
