@@ -1,0 +1,79 @@
+{
+  "leverage": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "maintenance": 0.02,
+  "kill_dd": -0.35,
+  "accept_rule": {
+    "max_dd_hourly_min": -0.4,
+    "roll30_worst_min": -0.3
+  },
+  "oos_start": "2024-01-01",
+  "end": "2026-10-19",
+  "acceptable": {
+    "xs_momentum": {
+      "1": true,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false,
+      "10": false
+    },
+    "xs_frac10": {
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false,
+      "10": false
+    },
+    "taker_flow": {
+      "1": true,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false,
+      "10": false
+    },
+    "tsmom": {
+      "1": true,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false,
+      "10": false
+    }
+  },
+  "max_acceptable": {
+    "xs_momentum": 1,
+    "xs_frac10": 0,
+    "taker_flow": 1,
+    "tsmom": 1
+  },
+  "seconds": 254.5
+}
