@@ -57,12 +57,38 @@ def update_yahoo(tickers, cache_dir: str | Path, start: str = "1995-01-01", max_
         time.sleep(0.3)
 
 
-def load_closes(tickers, cache_dir: str | Path, column: str = "close") -> pd.DataFrame:
-    """Trading-day closes, one column per ticker, indexed by date (tz-naive, union of calendars)."""
+def drop_bad_ticks(close: pd.Series, fx: bool = False, window: int = 60) -> pd.Series:
+    """Remove one-day spikes that revert the next day: bad prints in Yahoo's history.
+
+    The trailing robust daily deviation is sigma = median absolute log return / 0.6745 over the
+    prior `window` days. A close is dropped when the next day takes back most of its move and:
+    - FX (Yahoo's FX series carry spurious prints, e.g. EURUSD on the 8th of several months of
+      2008): the move exceeds 6 sigma and 3%, the next day takes back 70% of it, and the five days
+      before were calm (all within 3 sigma);
+    - anything else (exchange-traded, so prints are real unless absurd, e.g. CPER -33% then +50%):
+      the move exceeds 12 sigma and 20%, and the next day takes back 90% of it.
+    Real one-day shocks that revert (TSLA 2012-01-13, the natural gas squeeze of 2018-11-14) stay."""
+    c = close.dropna()
+    lr = np.log(c).diff()
+    sigma = (lr.abs().rolling(window, min_periods=20).median() / 0.6745).shift(1)
+    nxt = lr.shift(-1)
+    reverts = np.sign(nxt) == -np.sign(lr)
+    if fx:
+        calm_before = lr.abs().rolling(5).max().shift(1) < 3.0 * sigma
+        bad = (lr.abs() > 6.0 * sigma) & (lr.abs() > 0.03) & reverts & (nxt.abs() >= 0.7 * lr.abs()) & calm_before
+    else:
+        bad = (lr.abs() > 12.0 * sigma) & (lr.abs() > 0.20) & reverts & (nxt.abs() >= 0.9 * lr.abs())
+    return c[~bad]
+
+
+def load_closes(tickers, cache_dir: str | Path, column: str = "close", clean: bool = True) -> pd.DataFrame:
+    """Trading-day closes, one column per ticker, indexed by date (tz-naive, union of calendars),
+    with reverting bad ticks removed unless clean=False."""
     cols = {}
     for t in tickers:
         df = pd.read_csv(yahoo_cache_path(cache_dir, t))
-        cols[t] = df.set_index(pd.to_datetime(df["date"]))[column].astype(float)
+        s = df.set_index(pd.to_datetime(df["date"]))[column].astype(float)
+        cols[t] = drop_bad_ticks(s, fx=t.endswith("=X")) if clean else s
     return pd.DataFrame(cols).sort_index()
 
 

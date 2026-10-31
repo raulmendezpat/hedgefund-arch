@@ -166,3 +166,72 @@ Only if H1 passes. If only H2 passes, nothing goes live: H2 can at most become a
   backtest carries the last close (no weekend moves), while live positions bear weekend gaps.
 - **Rates:** constant funding ignores that interest rates were near zero from 2009 to 2021, when
   the carry part of equity funding would have been lower.
+
+## Result (2026-10-31): both hypotheses rejected
+
+Run: `scripts/run_tradfi_study.py` → `artifacts/research/tradfi_v1/`.
+
+**Data correction (not a parameter change).** Yahoo's history has bad prints: one-day spikes that
+revert the next day, for example EURUSD on the 8th of five months of 2008 (+6% to +17%) and CPER
+−33% then +50% (2014-12-04). The first run used the raw data. `tradfi.drop_bad_ticks` now removes
+isolated reverting spikes in FX series (> 6σ and > 3%, calm days before) and absurd ones elsewhere
+(> 12σ and > 20%). It removes 5 EURUSD and 2 CPER closes, and keeps real reverting shocks (March
+2020, TSLA 2012-01-13, natural gas 2018-11-14). All of them fall in the development period; the
+out-of-sample results are identical before and after.
+
+### H1: multi-asset trend (rejected on every criterion)
+
+| Criterion | Threshold | Result | Met? |
+|---|---|---|---|
+| Out-of-sample Sharpe | ≥ 0.5 | −0.27 | no |
+| Development Sharpe | ≥ 0.3 | −0.48 | no |
+| Out-of-sample worst drawdown | ≥ −20% | −61% | no |
+| Sharpe without the best class (equities) | ≥ 0.25 | −0.48 | no |
+| Bootstrap P(Sharpe ≤ 0) | < 10% | 79% | no |
+
+- **The signal works; Bitget's costs do not let it pay.** Out of sample: gross +8.3%/yr (gross
+  Sharpe 0.46, in line with published trend indices over the same years), funding −7.3%/yr, fees
+  and slippage −5.8%/yr.
+  - Turnover is 46–49 times capital a year, at a mean gross exposure of 2.2. At 0.06% fee plus
+    ~5 bp of slippage, that is ~5.5%/yr. A futures trend fund pays well under 1%/yr for the same
+    trades.
+  - 2022, the best trend year in decades: the book was correctly short bonds, the euro, the pound
+    and Asian equities and long oil, and made +10.8% gross; funding (−4.7%) and costs (−4.5%) took
+    85% of it.
+- **Symmetric funding** (crediting the receiving side): out-of-sample Sharpe 0.04, development
+  −0.10. Still fails.
+- **By class, out of sample (cumulative):** equities +6.6%, energy −0.6%, bonds −1.4%, metals
+  −19.7% (longs pay 12–25%/yr), FX −27.8%.
+- **Grid:** none of the 20 combinations reaches an out-of-sample Sharpe of 0.3; the best is the
+  365-day signal alone, weekly (−0.03).
+- **Combination with crypto momentum:** correlation −0.04, but the combined Sharpe falls from 1.03
+  to 0.76. Not useful.
+
+**Optimistic bound (exploratory, `exploratory_upper_bound.txt`):** even with maker fees (0.02%), no
+slippage and symmetric funding, the primary has an out-of-sample Sharpe of 0.31 (drawdown −41%).
+With no costs at all, the best variant (365 days) reaches 0.59 out of sample, 0.30 in development,
+with a −34% drawdown: well below crypto momentum even before paying anything.
+
+### H2: single-stock 12–1 momentum (rejected, despite the bias in its favour)
+
+| Criterion | Threshold | Result | Met? |
+|---|---|---|---|
+| Out-of-sample Sharpe | ≥ 0.5 | −0.24 | no |
+| Development Sharpe | ≥ 0.3 | −0.26 | no |
+| Out-of-sample worst drawdown | ≥ −30% | −52% | no |
+| Sharpe without the 3 best stocks (MSTR, NVDA, AMD) | ≥ 0.25 | −0.66 | no |
+
+- The longs earned +14.9%/yr out of sample, but the shorts lost −17.7%/yr: in a 29-stock universe of
+  today's winners, the shorts are also winners.
+- Funding cost 6.8%/yr out of sample, more than the gross return (+4.0%/yr). Symmetric funding:
+  Sharpe −0.01.
+- Since the survivor bias flatters this test, the failure is conclusive.
+- **Exploratory (crypto configuration, 30-day return):** Sharpe −0.38 in development and −0.30
+  out of sample, as expected from short-term reversal in stocks.
+
+**Conclusion:** on Bitget, trading traditional assets through perpetuals costs too much for these
+strategies. The fee is the same as for crypto, but these assets move 3–5 times less, so it is a far
+larger share of their return. Funding premia make it worse, mostly for metals and popular stocks.
+Nothing goes to paper, and no runner is built. Worth revisiting only if Bitget's fees on these
+perpetuals or their funding premia fall a lot. In that case, re-measure the inputs and register a
+new test.

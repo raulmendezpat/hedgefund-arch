@@ -1,0 +1,6 @@
+30/90/365  maker, sym funding   dev SR +0.18  oos SR +0.31  oos CAGR +4.0%  oos DD -41%
+30/90/365  maker, no funding    dev SR +0.24  oos SR +0.41  oos CAGR +5.9%  oos DD -40%
+30/90/365  no costs at all      dev SR +0.29  oos SR +0.46  oos CAGR +6.9%  oos DD -38%
+365        maker, sym funding   dev SR +0.22  oos SR +0.49  oos CAGR +7.9%  oos DD -33%
+365        maker, no funding    dev SR +0.27  oos SR +0.56  oos CAGR +9.5%  oos DD -34%
+365        no costs at all      dev SR +0.30  oos SR +0.59  oos CAGR +10.1%  oos DD -34%

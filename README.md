@@ -11,7 +11,7 @@ A systematic trading research and execution platform, built and run end to end b
 **Research**
 - A backtest engine (`src/hf_research/engine.py`) charges exchange fees, tiered slippage and historical funding on every change in position. It also handles assets that get delisted.
 - Each hypothesis is written down before it is tested. The plans in `docs/plans/` set the test windows, the pass/fail criteria and the decision dates in advance.
-- Strategies studied include cross-sectional momentum, time-series momentum, funding carry, open interest, taker flow and volatility targeting. Rejected hypotheses are kept on record together with the reason they failed.
+- Strategies studied include cross-sectional momentum, time-series momentum, funding carry, open interest, taker flow, volatility targeting, and trend and stock momentum on Bitget's traditional-asset perpetuals (stocks, ETFs, metals, energy, FX). Rejected hypotheses are kept on record together with the reason they failed.
 
 **Validation**
 - Paper-trading runners (`scripts/paper_*.py`) track each candidate strategy in real time, on live market data and with simulated fills. They check whether the backtest's cost assumptions hold in live markets.
