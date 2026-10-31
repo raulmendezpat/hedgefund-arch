@@ -14,6 +14,11 @@ Subcommands:
   report  equity, costs, tracking versus the model replay, and the 50/50 combination with the
           cross-sectional momentum paper (--xs-paper-dir)
 
+Each book stores its frozen strategy in its state; `init --name` picks one of VARIANTS:
+  tsmom_btc_eth_v1   primary TsmomConfig() (docs/plans/tsmom_paper_plan.md)
+  tsmom_band25_v1    band 0.25 (docs/plans/tsmom_band25_hypothesis.md); its report also compares it
+                     with the primary paper on the same days (--tsmom-paper-dir)
+
 Example (cron, every hour at minute 10):
   10 * * * * cd /path/to/hedgefund-arch && PYTHONPATH=src .venv/bin/python scripts/paper_tsmom.py run
 """
@@ -24,7 +29,7 @@ import fcntl
 import json
 import sys
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +46,14 @@ from hf_research.xs_momentum import load_daily_panels
 
 BINANCE = xs_signal.BINANCE
 STRATEGY = TsmomConfig()
+PRIMARY_NAME = "tsmom_btc_eth_v1"
+VARIANTS = {PRIMARY_NAME: STRATEGY, "tsmom_band25_v1": replace(STRATEGY, band=0.25)}
+
+
+def strategy_of(state: dict) -> TsmomConfig:
+    """The book's frozen strategy (books created before it was stored use the primary)."""
+    s = state.get("strategy")
+    return TsmomConfig(**{**s, "lookbacks": tuple(s["lookbacks"])}) if s else STRATEGY
 
 
 def _bitget():
@@ -63,7 +76,8 @@ def _mids(ex, symbols: list[str]) -> dict[str, float]:
     return out
 
 
-def compute_targets(decision_day: pd.Timestamp, cfg: TsmomPaperConfig, cache_dir: str, log) -> dict:
+def compute_targets(decision_day: pd.Timestamp, cfg: TsmomPaperConfig, cache_dir: str, log,
+                    strategy: TsmomConfig = STRATEGY) -> dict:
     """Target weights (Binance symbols) for the decision day; RuntimeError if a signal close is missing."""
     ex = xs_signal.binance_exchange()
     since_ms = int((decision_day - pd.Timedelta(days=cfg.history_days)).value // 1_000_000)
@@ -72,7 +86,7 @@ def compute_targets(decision_day: pd.Timestamp, cfg: TsmomPaperConfig, cache_dir
     sig = load_daily_panels(list(ASSETS), cache_dir=cache_dir, exchange=BINANCE)["signal_close"]
     if decision_day not in sig.index or sig.loc[decision_day].isna().any():
         raise RuntimeError(f"signal closes for {decision_day.date()} not available yet")
-    w = tsmom_targets(sig, STRATEGY).loc[decision_day]
+    w = tsmom_targets(sig, strategy).loc[decision_day]
     return {"weights": {s: float(v) for s, v in w.items() if v != 0.0},
             "signal_close": {s: float(sig.loc[decision_day, s]) for s in ASSETS}}
 
@@ -80,6 +94,7 @@ def compute_targets(decision_day: pd.Timestamp, cfg: TsmomPaperConfig, cache_dir
 def run_cycle(store: Store, args) -> None:
     state = store.load_state()
     cfg = TsmomPaperConfig(**state["config"])
+    strategy = strategy_of(state)
     book = PaperBook.from_dict(state["book"])
     now = pd.Timestamp.now(tz="UTC") if not args.now else pd.Timestamp(args.now, tz="UTC")
     events, fills, funding_rows = [], [], []
@@ -126,14 +141,14 @@ def run_cycle(store: Store, args) -> None:
         state["last_decision_day"] = str(d.date())
     elif status == "due":
         try:
-            tgt = compute_targets(d, cfg, args.cache_dir, log)
+            tgt = compute_targets(d, cfg, args.cache_dir, log, strategy=strategy)
         except Exception as exc:  # noqa: BLE001 - retried next hour until the fill window closes
             log(f"rebalance postponed: {type(exc).__name__}: {exc}")
             tgt = None
         if tgt is not None:
             to_bg = {s: bitget_symbol(s, listed) for s in ASSETS}
             targets = {to_bg[s]: w for s, w in tgt["weights"].items()}
-            plan = plan_weights(targets, book.weights(), STRATEGY.band)
+            plan = plan_weights(targets, book.weights(), strategy.band)
             equity0 = book.equity
             for s, (w_cur, w_new) in plan.items():
                 ob = ex.fetch_order_book(s, limit=100)
@@ -202,6 +217,7 @@ def _summary(r: pd.Series) -> dict:
 def report(store: Store, args) -> dict:
     state = store.load_state()
     cfg = TsmomPaperConfig(**state["config"])
+    strategy = strategy_of(state)
     eq, ev, fills, fund = (store.read(n) for n in ("equity.jsonl", "events.jsonl", "fills.jsonl", "funding.jsonl"))
     out: dict = {"name": cfg.name, "start": state["start"], "last_run": state.get("last_run"),
                  "equity": state["book"]["equity"], "capital": cfg.capital_usdt,
@@ -223,8 +239,8 @@ def report(store: Store, args) -> dict:
     if len(reb) and len(paper) >= 2:
         days = pd.DatetimeIndex(pd.to_datetime(reb["decision_day"])).tz_localize("UTC")
         panels = load_daily_panels(list(ASSETS), cache_dir=args.cache_dir, exchange=BINANCE)
-        model = backtest_weights(panels, tsmom_targets(panels["signal_close"], STRATEGY), fee=STRATEGY.fee,
-                                 slippage_bps=STRATEGY.slippage_bps, band=STRATEGY.band, rebalance_on=days)
+        model = backtest_weights(panels, tsmom_targets(panels["signal_close"], strategy), fee=strategy.fee,
+                                 slippage_bps=strategy.slippage_bps, band=strategy.band, rebalance_on=days)
         model = model[model.index >= days.min()]["net"]
         both = pd.concat([paper.rename("paper"), model.rename("model")], axis=1, sort=True).dropna()
         if len(both) >= 2:
@@ -247,6 +263,19 @@ def report(store: Store, args) -> dict:
                               "combined": _summary(combined),
                               "daily_corr": float(both["xs"].corr(both["tsmom"])) if len(both) >= 7 else None}
 
+    # A variant book is judged against the primary TSMOM paper on the same days.
+    primary_dir = Path(args.tsmom_paper_dir)
+    if cfg.name != PRIMARY_NAME and (primary_dir / "state.json").exists():
+        p_store = Store(primary_dir)
+        p_state = p_store.load_state()
+        prim = daily_returns(p_store.read("equity.jsonl"), p_state["config"]["capital_usdt"], p_state["config"]["fill_hour_utc"])
+        both = pd.concat([prim.rename("primary"), paper.rename("variant")], axis=1, sort=True).dropna()
+        v, p = _summary(both["variant"]), _summary(both["primary"])
+        out["vs_primary"] = {"rules": "docs/plans/tsmom_band25_hypothesis.md", "variant": v, "primary": p,
+                             "sharpe_minus_primary": (v["sharpe_ann"] - p["sharpe_ann"])
+                             if v.get("sharpe_ann") is not None and p.get("sharpe_ann") is not None else None,
+                             "daily_corr": float(both["variant"].corr(both["primary"])) if len(both) >= 7 else None}
+
     c = PREREGISTERED_CHECKS
     verdict = {}
     if out["rebalances"] >= c["min_rebalances"]:
@@ -262,27 +291,30 @@ def report(store: Store, args) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("command", choices=["init", "run", "report"])
-    ap.add_argument("--state-dir", default="runtime/paper/tsmom_btc_eth_v1")
+    ap.add_argument("--name", choices=sorted(VARIANTS), default=PRIMARY_NAME, help="init: which frozen strategy")
+    ap.add_argument("--state-dir", default="", help="default runtime/paper/<name>")
     ap.add_argument("--cache-dir", default="data/cache")
     ap.add_argument("--capital", type=float, default=TsmomPaperConfig.capital_usdt)
+    ap.add_argument("--tsmom-paper-dir", default=str(Path.home() / "Projects/hedgefund-arch-paper-tsmom/runtime/paper/tsmom_btc_eth_v1"))
     ap.add_argument("--xs-paper-dir", default=str(Path.home() / "Projects/hedgefund-arch-paper/runtime/paper/xs_momentum_v1"))
     ap.add_argument("--dry-run", action="store_true", help="run: print what would happen, save nothing")
     ap.add_argument("--now", default="", help="override the clock (testing only)")
     args = ap.parse_args()
 
-    store = Store(Path(args.state_dir))
+    store = Store(Path(args.state_dir or f"runtime/paper/{args.name}"))
     store.root.mkdir(parents=True, exist_ok=True)
 
     if args.command == "init":
         if store.path("state.json").exists():
             sys.exit(f"paper book already exists at {store.root}")
-        cfg = TsmomPaperConfig(capital_usdt=args.capital)
+        cfg = TsmomPaperConfig(name=args.name, capital_usdt=args.capital)
         now = pd.Timestamp.now(tz="UTC")
-        state = {"config": asdict(cfg), "strategy": STRATEGY.to_dict(), "start": _iso(now),
+        state = {"config": asdict(cfg), "strategy": VARIANTS[args.name].to_dict(), "start": _iso(now),
                  "book": PaperBook(equity=cfg.capital_usdt).to_dict(), "last_decision_day": None,
                  "last_run_ms": int(now.value // 1_000_000), "funding_cursor": {}}
         store.save_state(state)
-        print(f"paper book created at {store.root} with {cfg.capital_usdt:.0f} USDT; first fill: next 01:00 UTC after now")
+        print(f"paper book {cfg.name} (band {VARIANTS[args.name].band}) created at {store.root} with "
+              f"{cfg.capital_usdt:.0f} USDT; first fill: next 01:00 UTC after now")
         return
 
     if args.command == "report":

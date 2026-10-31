@@ -76,9 +76,11 @@ class RunCycleTests(unittest.TestCase):
         self.ex = FakeBitget()
         self.weights = {BTC: 0.4, ETH: -0.3}
         self.calls = 0
+        self.strategies = []
 
-        def fake_targets(d, cfg, cache_dir, log):
+        def fake_targets(d, cfg, cache_dir, log, strategy=None):
             self.calls += 1
+            self.strategies.append(strategy)
             return {"weights": dict(self.weights), "signal_close": {}}
 
         self._orig = (runner._bitget, runner.compute_targets)
@@ -117,6 +119,21 @@ class RunCycleTests(unittest.TestCase):
         self.assertAlmostEqual(fund["pnl_usdt"].iloc[0], 0.75 * 4_000.0 * 0.0001)  # the short receives
         types = self.store.read("events.jsonl")["type"].tolist()
         self.assertEqual(types, ["rebalance", "rebalance"])
+
+    def test_band25_book_uses_its_own_frozen_band(self):
+        state = self.store.load_state()
+        state["strategy"] = runner.VARIANTS["tsmom_band25_v1"].to_dict()
+        self.store.save_state(state)
+        self._run("2026-10-22 01:10")
+        self.assertEqual(self.strategies[-1].band, 0.25)
+        self.assertEqual(self.strategies[-1].lookbacks, (20, 60, 120))
+        self.weights = {BTC: 0.6, ETH: -0.3}  # +0.2: trades under the primary's 0.05 band, not under 0.25
+        s = self._run("2026-10-23 01:10")
+        self.assertAlmostEqual(s["book"]["qty"][BTC], 0.04, places=4)
+
+    def test_books_without_a_stored_strategy_use_the_primary(self):
+        self.assertEqual(runner.strategy_of({}), runner.STRATEGY)
+        self.assertEqual(runner.strategy_of({"strategy": runner.STRATEGY.to_dict()}), runner.STRATEGY)
 
     def test_gap_days_are_logged_as_missed(self):
         self._run("2026-10-22 01:10")
