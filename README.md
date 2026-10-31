@@ -6,6 +6,8 @@
 
 A systematic trading research and execution platform, built and run end to end by one person in Python.
 
+**Core architecture** (`src/hf`, `src/hf_core`): signal engines (bots), a market regime engine, a capital allocator and a portfolio engine, with machine-learning scoring (scikit-learn gradient boosting and logistic regression, validated walk-forward with an embargo; `src/hf_score`, `src/hf_core/ml`).
+
 **Research**
 - A backtest engine (`src/hf_research/engine.py`) charges exchange fees, tiered slippage and historical funding on every change in position. It also handles assets that get delisted.
 - Each hypothesis is written down before it is tested. The plans in `docs/plans/` set the test windows, the pass/fail criteria and the decision dates in advance.
@@ -30,7 +32,7 @@ A systematic trading research and execution platform, built and run end to end b
 
 **Documentation:** the research and production plans are in [`docs/plans/`](docs/plans/), translated from the dated Spanish originals in [`docs/plans/es/`](docs/plans/es/). Start with [`xs_momentum_production_plan.md`](docs/plans/xs_momentum_production_plan.md).
 
-**Tests:** `python -m pytest tests/`
+**Tests:** `python -m pytest tests/`, run on every push by GitHub Actions (`.github/workflows/tests.yml`).
 
 ## Español
 
