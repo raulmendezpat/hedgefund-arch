@@ -30,6 +30,11 @@ A systematic trading research and execution platform, built and run end to end b
 - An hourly health check (`scripts/healthcheck_xs.py`) alerts on missed runs, overdue rebalances, errors in the logs, outsized position losses and low disk space.
 - A weekly review (`scripts/event_review_xs.py`) uses the Claude API to check news and contract mappings for each open position. It only raises alerts and never places trades.
 
+**History**
+- The first version, an ML-scored multi-bot portfolio, ran live on AWS EC2 until August 2026.
+- It was shut down because it was losing money, and the instance was deleted.
+- The current strategies replaced it. Each was pre-registered with fixed pass/fail criteria before testing, then validated in paper trading and a live dry-run before any capital goes back in.
+
 **Documentation:** the research and production plans are in [`docs/plans/`](docs/plans/), translated from the dated Spanish originals in [`docs/plans/es/`](docs/plans/es/). Start with [`xs_momentum_production_plan.md`](docs/plans/xs_momentum_production_plan.md).
 
 **Tests:** `python -m pytest tests/`, run on every push by GitHub Actions (`.github/workflows/tests.yml`).
@@ -41,4 +46,5 @@ Plataforma de investigación y ejecución de trading sistemático:
 - **Investigación:** el motor de backtest descuenta comisiones, slippage y funding. Cada hipótesis se registra antes de probarla. Los planes originales en español están en `docs/plans/es/`; `docs/plans/` tiene la traducción al inglés.
 - **Validación:** ejecutores en paper (`scripts/paper_*.py`).
 - **Ejecución:** ejecutor en vivo con dry-run por defecto y controles de riesgo (`scripts/live_xs_momentum.py`).
+- **Historia:** la primera versión operó en vivo en AWS EC2 hasta agosto de 2026. Se apagó porque daba pérdida y se reemplazó por estrategias registradas antes de probarlas y validadas en paper.
 - **Operación:** agentes programados (`deploy/`), healthcheck horario y revisión semanal de eventos con la API de Claude.
