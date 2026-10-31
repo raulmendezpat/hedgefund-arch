@@ -31,11 +31,13 @@ from hf_research.liquid_universe import bitget_symbol  # noqa: E402
 from hf_research.paper_xs import PaperConfig  # noqa: E402
 
 KEY_FILE = Path.home() / ".config/hedgefund/anthropic.env"
-MODEL = "claude-sonnet-5-5"
+# Haiku since 2026-10-31: Sonnet cost ~0.035 USD per position (~54 USD/year), too much for a
+# 300 USDT live book; Haiku measured 0.006-0.010 on the same positions.
+MODEL = "claude-haiku-5-5"
 EFFORT = "low"
-MAX_SEARCHES = 3
-# Sonnet 5.5 list prices (USD per million tokens) and web search (USD per search), 2026-10-28.
-PRICE_INPUT, PRICE_OUTPUT, PRICE_SEARCH = 2.0, 10.0, 0.01
+MAX_SEARCHES = 2
+# Haiku 5.5 list prices (USD per million tokens, prompts under 100K) and web search (USD per search), 2026-10-31.
+PRICE_INPUT, PRICE_OUTPUT, PRICE_SEARCH = 0.10, 0.50, 0.01
 READY_AFTER = pd.Timedelta(days=1, minutes=5)  # the 23:00 bar closes at 00:00 UTC Monday
 GIVE_UP_AFTER = pd.Timedelta(days=2)  # a review this late is no longer useful for the week
 

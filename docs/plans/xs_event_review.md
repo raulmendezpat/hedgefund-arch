@@ -17,7 +17,7 @@ Cada lunes, entre que cierra la vela de las 23:00 UTC del domingo (00:00 UTC) y 
      (ticker reutilizado, redenominación o alias equivocado) y avisa.
    - Es una regla fija, sin LLM: es más confiable que preguntarle a un modelo.
 2. **Eventos** (cada posición de la cartera, ~24):
-   - Claude (`claude-sonnet-5-5`, esfuerzo `low`, hasta 3 búsquedas web por token) busca eventos
+   - Claude (`claude-haiku-5-5`, esfuerzo `low`, hasta 2 búsquedas web por token) busca eventos
      discretos de los últimos 14 días o programados para los próximos 7: delistings y listings,
      hackeos, unlocks, migraciones o redenominaciones, acciones regulatorias, depegs, ventas
      del equipo, airdrops y upgrades;
@@ -38,8 +38,17 @@ manual del dueño de la cuenta.
 
 ## Costo
 
-~0.08 USD por posición revisada (tokens más búsquedas): unos 2 USD por semana. Cada corrida
-guarda su costo en el reporte.
+- **Hasta el 2026-10-31** usaba `claude-sonnet-5-5` con hasta 3 búsquedas: ~0.035–0.045 USD por
+  posición, unos 1.04 USD por semana (~54 USD al año). Con 300 USDT en vivo eso es ~18 % del
+  capital al año, casi todo el retorno esperado.
+- **Desde el 2026-10-31** usa `claude-haiku-5-5` con hasta 2 búsquedas. Se midió en 6 posiciones:
+  0.006–0.010 USD por posición, unos 0.15–0.25 USD por semana (~8–13 USD al año): ~3–4 % de 300 USDT
+  y ~1 % de 1,000.
+- Las calificaciones de los dos modelos varían entre corridas (un mismo token puede salir `none`,
+  `low` o `medium`), así que se pierde poco al cambiar de modelo.
+- Cada corrida guarda su costo estimado en el reporte. Es una estimación: algunas búsquedas corren
+  dentro de la herramienta de código y el contador de búsquedas puede no reflejarlas. El gasto real
+  se ve en la consola de Anthropic.
 
 ## Cómo se mide
 
