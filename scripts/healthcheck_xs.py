@@ -118,7 +118,8 @@ def check_runner(r: Runner, now: pd.Timestamp, seen: dict, *, stale_hours: float
 
     cfg = SimpleNamespace(**state["config"])
     last_dd = pd.Timestamp(state["last_decision_day"], tz="UTC") if state.get("last_decision_day") else None
-    daily = not hasattr(cfg, "decision_weekday")  # weekly momentum books carry a decision weekday
+    # Weekly momentum books carry a decision weekday; the live TSMOM config does too, so it says so.
+    daily = state.get("schedule") == "daily" or not hasattr(cfg, "decision_weekday")
     if daily:
         d, status, _ = due_daily_decision(now, pd.Timestamp(state["start"]), last_dd, cfg)
     else:

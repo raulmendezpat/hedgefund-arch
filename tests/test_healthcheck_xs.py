@@ -11,6 +11,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import healthcheck_xs as hc  # noqa: E402
 
+from hf_research.live_xs import LiveConfig  # noqa: E402
 from hf_research.paper_tsmom import TsmomPaperConfig  # noqa: E402
 from hf_research.paper_xs import PaperConfig  # noqa: E402
 
@@ -89,6 +90,14 @@ class HealthcheckTests(unittest.TestCase):
         notices, st = self._check("2026-10-22 05:20", st)
         got = self.texts([n for n in notices if n.runner == "paper"])
         self.assertEqual([level for level, _ in got], ["ok"])  # resolved, and no daily rebalance notice
+
+    def test_live_tsmom_book_is_daily_despite_its_weekday_field(self):
+        self.state = {"config": LiveConfig(max_fill_delay_hours=12).to_dict(), "schedule": "daily",
+                      "start": "2026-10-21T08:00:00Z", "last_decision_day": None, "last_run": "2026-10-22T04:10:00Z"}
+        self._save()
+        _, st = self._check("2026-10-22 00:20", {})
+        notices, _ = self._check("2026-10-22 04:20", st)
+        self.assertTrue(any("rebalanceo 2026-10-21 pendiente" in n.text for n in notices))
 
     def test_existing_history_is_not_replayed_and_tracebacks_alert(self):
         self._events({"type": "missed_rebalance", "decision_day": "2026-10-18"})

@@ -203,19 +203,19 @@ def _account(args) -> BitgetAccount:
     return BitgetAccount(load_credentials(args.secret_file))
 
 
-def client_oid(decision_day: str, o: OrderIntent) -> str:
+def client_oid(decision_day: str, o: OrderIntent, prefix: str = "xs") -> str:
     """Deterministic per (rebalance, symbol, leg): a retried run cannot submit the same leg twice."""
     h = hashlib.sha1(f"{o.symbol}|{o.reason}".encode()).hexdigest()[:12]
-    return f"xs{decision_day.replace('-', '')}{h}"
+    return f"{prefix}{decision_day.replace('-', '')}{h}"
 
 
 # ---------------------------------------------------------------- run cycle
 
 def execute(acct, orders: list[OrderIntent], live: bool, tag: str, cfg: LiveConfig, held: dict[str, float],
-            now: pd.Timestamp) -> list[dict]:
+            now: pd.Timestamp, oid_prefix: str = "xs") -> list[dict]:
     rows = []
     for o in orders:
-        row = {"ts": _iso(now), "tag": tag, **o.to_dict(), "client_oid": client_oid(tag, o), "sent": live}
+        row = {"ts": _iso(now), "tag": tag, **o.to_dict(), "client_oid": client_oid(tag, o, oid_prefix), "sent": live}
         if live:
             try:
                 if not o.reduce_only and held.get(o.symbol, 0.0) == 0.0:

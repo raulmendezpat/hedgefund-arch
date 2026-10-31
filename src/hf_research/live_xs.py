@@ -9,7 +9,7 @@ Guardrails (all evaluated before any order is built):
   until an operator reviews it and runs reset-risk (a review pause, not a retirement).
 - Daily loss: equity below the UTC day-start equity by >= max_daily_loss -> reduce-only until
   the next UTC day (positions can shrink or close, never grow or open).
-- Sanity limits: a target weight above max_symbol_weight, gross exposure above gross_leverage,
+- Sanity limits: a target weight above max_symbol_weight, gross exposure above max_gross_weight,
   or any single order above max_order_usdt aborts the whole rebalance (it signals a bug or bad
   data; it is never silently clipped).
 - Foreign positions (symbols this executor never traded) or hedge-mode positions abort the run:
@@ -40,6 +40,7 @@ class LiveConfig:
     exchange_leverage: int = 3  # Bitget leverage setting per symbol (margin headroom, not exposure)
     margin_mode: str = "cross"
     max_symbol_weight: float = 0.10  # primary targets are ~0.04 per symbol
+    max_gross_weight: float = 1.0  # sum of |scaled target weights|; the momentum book is fully invested at 1.0
     max_order_usdt: float = 5_000.0
     min_order_usdt: float = 5.0
     max_drawdown: float = 0.35  # ~ the worst hourly drawdown of the x1 backtest (-26% IS, -35% OOS)
@@ -203,8 +204,8 @@ def build_orders(targets: dict[str, float], positions: dict[str, float], mids: d
         if abs(w) > cfg.max_symbol_weight + 1e-12:
             raise SanityError(f"target weight {w:.4f} for {s} exceeds max_symbol_weight {cfg.max_symbol_weight}")
     gross = sum(abs(w) for w in scaled.values())
-    if gross > cfg.gross_leverage + 1e-9:
-        raise SanityError(f"gross target {gross:.3f} exceeds gross_leverage {cfg.gross_leverage}")
+    if gross > cfg.max_gross_weight + 1e-9:
+        raise SanityError(f"gross target {gross:.3f} exceeds max_gross_weight {cfg.max_gross_weight}")
     missing = [s for s in set(scaled) | set(positions) if not (mids.get(s) and math.isfinite(mids[s]))]
     if missing:
         raise SanityError(f"no price for {sorted(missing)}")
