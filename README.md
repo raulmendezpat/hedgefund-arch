@@ -31,6 +31,7 @@ A systematic trading research and execution platform, built and run end to end b
 - A weekly review (`scripts/event_review_xs.py`) uses the Claude API to check news and contract mappings for each open position. It only raises alerts and never places trades.
 
 **History**
+- Work started in February 2026 in [LiveTradingBots](https://github.com/raulmendezpat/LiveTradingBots), building on the open-source bot template by Robot Traders (its 2024–2025 commits are theirs). It was carried into this repo in March 2026.
 - The first version, an ML-scored multi-bot portfolio, ran live on AWS EC2 until August 2026.
 - It was shut down because it was losing money, and the instance was deleted.
 - The current strategies replaced it. Each was pre-registered with fixed pass/fail criteria before testing, then validated in paper trading and a live dry-run before any capital goes back in.
@@ -46,5 +47,5 @@ Plataforma de investigación y ejecución de trading sistemático:
 - **Investigación:** el motor de backtest descuenta comisiones, slippage y funding. Cada hipótesis se registra antes de probarla. Los planes originales en español están en `docs/plans/es/`; `docs/plans/` tiene la traducción al inglés.
 - **Validación:** ejecutores en paper (`scripts/paper_*.py`).
 - **Ejecución:** ejecutor en vivo con dry-run por defecto y controles de riesgo (`scripts/live_xs_momentum.py`).
-- **Historia:** la primera versión operó en vivo en AWS EC2 hasta agosto de 2026. Se apagó porque daba pérdida y se reemplazó por estrategias registradas antes de probarlas y validadas en paper.
+- **Historia:** el trabajo empezó en febrero de 2026 en LiveTradingBots, a partir de la plantilla abierta de Robot Traders. La primera versión operó en vivo en AWS EC2 hasta agosto de 2026. Se apagó porque daba pérdida y se reemplazó por estrategias registradas antes de probarlas y validadas en paper.
 - **Operación:** agentes programados (`deploy/`), healthcheck horario y revisión semanal de eventos con la API de Claude.
