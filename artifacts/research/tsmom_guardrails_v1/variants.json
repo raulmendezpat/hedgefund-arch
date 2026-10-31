@@ -1,0 +1,218 @@
+{
+  "no_guards": {
+    "kill_dd": null,
+    "pause_days": 7,
+    "daily_loss": null,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "current (kill 35%, pause 7d, daily 8%)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 15%, pause 7d": {
+    "kill_dd": 0.15,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 20%, pause 7d": {
+    "kill_dd": 0.2,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 25%, pause 7d": {
+    "kill_dd": 0.25,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 30%, pause 7d": {
+    "kill_dd": 0.3,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 40%, pause 7d": {
+    "kill_dd": 0.4,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 50%, pause 7d": {
+    "kill_dd": 0.5,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 20%, pause 30d": {
+    "kill_dd": 0.2,
+    "pause_days": 30,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 25%, pause 30d": {
+    "kill_dd": 0.25,
+    "pause_days": 30,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 35%, pause 30d": {
+    "kill_dd": 0.35,
+    "pause_days": 30,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 25%, stop for good": {
+    "kill_dd": 0.25,
+    "pause_days": null,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "kill 35%, stop for good": {
+    "kill_dd": 0.35,
+    "pause_days": null,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "daily 3% (live rule)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.03,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "daily 5% (live rule)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.05,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "daily 12% (live rule)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.12,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "daily 3% (rolling 24h)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.03,
+    "daily_rule": "rolling_24h",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "daily 5% (rolling 24h)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.05,
+    "daily_rule": "rolling_24h",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "daily 8% (rolling 24h)": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "rolling_24h",
+    "max_weight": 1.0,
+    "band": 0.05
+  },
+  "max weight 0.25": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 0.25,
+    "band": 0.05
+  },
+  "max weight 0.5": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 0.5,
+    "band": 0.05
+  },
+  "max weight 0.75": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 0.75,
+    "band": 0.05
+  },
+  "max weight 1.5": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.5,
+    "band": 0.05
+  },
+  "band 0.0": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.0
+  },
+  "band 0.02": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.02
+  },
+  "band 0.1": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.1
+  },
+  "band 0.2": {
+    "kill_dd": 0.35,
+    "pause_days": 7,
+    "daily_loss": 0.08,
+    "daily_rule": "utc_day",
+    "max_weight": 1.0,
+    "band": 0.2
+  }
+}
