@@ -41,17 +41,22 @@ FUNDING_X = [0.5, 1.0, 2.0]
 IS_START = "2021-03-01"
 
 
-def stats(daily_net: pd.Series) -> dict:
+def as_daily(net: pd.Series) -> pd.DataFrame:
+    """A combined book's net returns in the engine's daily layout (always active)."""
+    return pd.DataFrame({"net": net, "gross_exposure": 1.0, "turnover": 0.0, "gross": 0.0, "funding": 0.0, "cost": 0.0})
+
+
+def stats(df: pd.DataFrame, is_start: str = IS_START) -> dict:
+    """Engine summary per period; days before a book first trades are left out, as in summarize."""
     out = {}
-    df = pd.DataFrame({"net": daily_net})
-    for p, (a, b) in {"is": (IS_START, OOS_START), "oos": (OOS_START, END)}.items():
+    for p, (a, b) in {"is": (is_start, OOS_START), "oos": (OOS_START, END)}.items():
         s = summarize(df, a, b)
         out.update({f"{p}_cagr": s.get("cagr"), f"{p}_sharpe": s.get("sharpe"), f"{p}_max_dd": s.get("max_dd"),
-                    f"{p}_vol": float(df.loc[(df.index >= a) & (df.index < b), "net"].std() * np.sqrt(365))})
+                    f"{p}_vol": s.get("vol")})
     return out
 
 
-def run_book(s: dict, targets=None, fee=0.0006, slip_mult=1.0) -> pd.Series:
+def run_book(s: dict, targets=None, fee=0.0006, slip_mult=1.0) -> pd.DataFrame:
     panels = dict(s["panels"])
     slip = panels.get("slippage_bps")
     if slip is not None:
@@ -59,7 +64,7 @@ def run_book(s: dict, targets=None, fee=0.0006, slip_mult=1.0) -> pd.Series:
     daily = backtest_weights(panels, s["targets"] if targets is None else targets, fee=fee,
                              slippage_bps=s.get("slippage_bps", 3.0) * slip_mult, band=s["band"],
                              rebalance_days=s["rebalance_days"])
-    return daily["net"]
+    return daily
 
 
 def funding_filtered(signal_close, cfg, members, fund_ann, x) -> pd.DataFrame:
@@ -97,12 +102,12 @@ def main() -> None:
     S = strategies(membership, args.cache_dir)
     rows, nets = [], {}
 
-    def add(book, idea, net, base=None):
-        r = {"book": book, "idea": idea, **stats(net)}
+    def add(book, idea, daily, base=None, is_start=IS_START):
+        r = {"book": book, "idea": idea, **stats(daily, is_start)}
         if base is not None:
             r.update(verdict(r, base))
         rows.append(r)
-        nets[f"{book}|{idea}"] = net
+        nets[f"{book}|{idea}"] = daily["net"]
         print(f"{book:<12} {idea:<34} dev CAGR {r['is_cagr']:+.1%} SR {r['is_sharpe']:+.2f} DD {r['is_max_dd']:.0%} | "
               f"oos CAGR {r['oos_cagr']:+.1%} SR {r['oos_sharpe']:+.2f} DD {r['oos_max_dd']:.0%}"
               + (f"  {'PASS' if r.get('passes_both') else ''}" if base is not None else ""), flush=True)
@@ -129,15 +134,16 @@ def main() -> None:
         add(n, "B maker bound (fee 2bp, no slip)", run_book(s, fee=0.0002, slip_mult=0.0), base[n])
         add(n, "B half maker (fee 4bp, half slip)", run_book(s, fee=0.0004, slip_mult=0.5), base[n])
 
-    # C. combinations
+    # C. combinations, from the taker book's first development day (2021-12-01) so every leg trades
+    c0 = "2021-12-01"
     xs, ts, tk = nets["xs_momentum|current"], nets["tsmom|current"], nets["taker_flow|current"]
     combos = {"C XS+TSMOM": (xs + ts) / 2, "C XS+taker": (xs + tk) / 2, "C XS+TSMOM+taker": (xs + ts + tk) / 3}
-    xs_vol = base["xs_momentum"]["is_vol"]
+    xs_c = add("xs_momentum", "current from 2021-12", as_daily(xs[xs.index >= c0]), is_start=c0)
     for name, c in combos.items():
-        c = c.dropna()
-        add("combo", name, c, base["xs_momentum"])
-        k = xs_vol / (c.loc[(c.index >= IS_START) & (c.index < OOS_START)].std() * np.sqrt(365))
-        r = add("combo", f"{name} at XS dev vol (x{k:.2f})", c * k, base["xs_momentum"])
+        c = c[c.index >= c0].dropna()
+        add("combo", name, as_daily(c), xs_c, is_start=c0)
+        k = xs_c["is_vol"] / (c.loc[c.index < OOS_START].std() * np.sqrt(365))
+        r = add("combo", f"{name} at XS dev vol (x{k:.2f})", as_daily(c * k), xs_c, is_start=c0)
         r["scale"] = float(k)
     both = pd.concat([xs.rename("xs"), ts.rename("tsmom"), tk.rename("taker")], axis=1).dropna()
     corr = {p: both.loc[(both.index >= a) & (both.index < b)].corr().round(3).to_dict()

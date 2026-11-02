@@ -1,0 +1,48 @@
+{
+  "rule": {
+    "cagr_gain_min": 0.02,
+    "dd_worse_max": 0.03
+  },
+  "funding_x": [
+    0.5,
+    1.0,
+    2.0
+  ],
+  "daily_corr": {
+    "is": {
+      "xs": {
+        "xs": 1.0,
+        "tsmom": 0.21,
+        "taker": 0.267
+      },
+      "tsmom": {
+        "xs": 0.21,
+        "tsmom": 1.0,
+        "taker": -0.007
+      },
+      "taker": {
+        "xs": 0.267,
+        "tsmom": -0.007,
+        "taker": 1.0
+      }
+    },
+    "oos": {
+      "xs": {
+        "xs": 1.0,
+        "tsmom": 0.118,
+        "taker": 0.377
+      },
+      "tsmom": {
+        "xs": 0.118,
+        "tsmom": 1.0,
+        "taker": -0.005
+      },
+      "taker": {
+        "xs": 0.377,
+        "tsmom": -0.005,
+        "taker": 1.0
+      }
+    }
+  },
+  "seconds": 190.8
+}
