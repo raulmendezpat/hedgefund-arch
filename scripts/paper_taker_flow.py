@@ -77,14 +77,7 @@ def compute_targets(decision_day: pd.Timestamp, members: list[str], listed: set[
 
 def logged_targets_replay(reb: pd.DataFrame, days: pd.Series, args) -> pd.DataFrame:
     """The weights the paper decided each week, filled at Binance exec prices with backtest costs."""
-    syms = sorted({s for t in reb["targets"] for s in t})
-    ex = xs_signal.binance_exchange()
-    since_ms = int((days.min() - pd.Timedelta(days=2)).value // 1_000_000)
-    for s in syms:
-        try:
-            update_cache(ex, s, "1h", since_ms, args.cache_dir, BINANCE)
-        except Exception:  # noqa: BLE001 - the replay then simply lacks that symbol's last bars
-            pass
+    syms = sorted({s for t in reb["targets"] for s in t})  # the report refreshed their cache
     panels = load_daily_panels(syms, cache_dir=args.cache_dir, exchange=BINANCE)
     targets = pd.DataFrame(0.0, index=panels["exec_close"].index, columns=syms)
     for d, t in zip(days, reb["targets"]):

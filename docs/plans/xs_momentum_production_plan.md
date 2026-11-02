@@ -58,6 +58,17 @@ Review after the paper's 12th rebalance (fill of **2027-01-11**). **All** items 
 **If a criterion fails:** no move to production. The cause is documented. If it is fixable (for
 example, an execution problem), it is fixed and 12 weeks of paper are repeated.
 
+**Measurement fix (2026-11-02).** The report's model replay read a Binance cache that the runner
+only refreshes for the current month's universe. Four symbols held in the week of 2026-10-26 (LSK,
+FLOCK, JUP, FARTCOIN) left the November top 60, their cache stopped on 10-26, and the backtest took
+their missing prices as zero returns. The replay therefore missed a +30% move of the LSK short and
+showed a −61%/yr gap for the XS paper (−89%/yr for frac10) that was not in the execution. The
+replay had no funding either. The report now refreshes 1h closes and funding of every symbol the
+book has held (`hf_research.replay_data`), and stops the comparison at any row where a held symbol
+still lacks a price (`vs_model.missing_prices`). Thresholds are unchanged. Corrected first eight
+days: XS gap +3%/yr with correlation 0.998, frac10 +14%/yr (0.996), taker flow +14%/yr (0.993).
+The report is run from `main` against the pinned paper books' state, so no runner moves.
+
 ## 2. Start
 
 - **Initial capital: 1,000 USDT** *(proposal, to be confirmed; alternatives: 300 or 3,000)*.

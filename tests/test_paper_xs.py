@@ -225,5 +225,79 @@ class ReportAlignmentTests(unittest.TestCase):
         self.assertAlmostEqual(vm["implementation_gap_ann"], 0.0, places=9)
 
 
+class ReplayDataTests(unittest.TestCase):
+    def test_missing_held_prices_flags_only_rows_of_held_symbols(self):
+        from hf_research.replay_data import held_symbols, missing_held_prices
+
+        idx = pd.date_range("2026-10-25", "2026-11-03", freq="D", tz="UTC")
+        exe = pd.DataFrame({"A": 1.0, "B": 1.0}, index=idx)
+        exe.loc[T("2026-10-30"):, "B"] = np.nan  # B left the universe: its cache stopped
+        days = pd.Series([T("2026-10-25"), T("2026-11-01")])
+        targets = [{"A": 0.5, "B": -0.5}, {"A": 0.5, "C": -0.5}]
+        rows = pd.date_range("2026-10-25", "2026-11-02", freq="D", tz="UTC")
+        got = missing_held_prices(exe, days, targets, rows)
+        self.assertEqual(list(got), ["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"])
+        self.assertEqual(got["2026-10-30"], ["B"])
+        self.assertEqual(got["2026-11-02"], ["C"])  # C is held after the 11-01 fill and was never cached
+        self.assertEqual(held_symbols(pd.DataFrame({"targets": targets})), ["A", "B", "C"])
+        self.assertEqual(held_symbols(pd.DataFrame({"eligible": [["A"]]})), [])
+
+
+class ReportMissingPriceTests(unittest.TestCase):
+    def test_comparison_stops_where_a_held_symbol_lacks_prices(self):
+        from hf_research.xs_momentum import MomentumConfig, backtest, load_daily_panels
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cache"
+            (cache / "binanceusdm" / "1h").mkdir(parents=True)
+            t = pd.date_range("2026-08-01", "2026-10-31 23:00", freq="h", tz="UTC")
+            rng = np.random.default_rng(5)
+            syms = [f"S{k}/USDT:USDT" for k in range(10)]
+            paths = {}
+            for k, sym in enumerate(syms):
+                px = 100 * np.exp(np.cumsum(rng.normal(0.0002 * (k - 5), 0.004, len(t))))
+                paths[sym] = cache / "binanceusdm" / "1h" / f"{sym.replace('/', '_').replace(':', '_')}.csv.gz"
+                pd.DataFrame({"timestamp": t.as_unit("ms").asi8, "open": px, "high": px, "low": px, "close": px,
+                              "volume": 1.0}).to_csv(paths[sym], index=False, compression="gzip")
+            days = [T("2026-10-04"), T("2026-10-11"), T("2026-10-18")]
+            panels = load_daily_panels(syms, cache_dir=str(cache), exchange="binanceusdm")
+            elig = pd.DataFrame(True, index=panels["signal_close"].index, columns=syms)
+            cfg = MomentumConfig(**runner.PRIMARY_STRATEGY)
+            from hf_research.xs_momentum import target_weights
+            w = target_weights(panels["signal_close"], cfg, elig)
+            targets = [{s: float(v) for s, v in w.loc[d].items() if v} for d in days]
+            model = backtest(dict(panels, eligible=elig), cfg, rebalance_on=days)
+            model = model[model.index >= days[0]]["net"]
+            # A symbol held from the 10-11 decision stops being cached on 10-14, as when it leaves the universe.
+            gone = sorted(set(targets[1]) - set(targets[0]) or set(targets[1]))[0]
+            df = pd.read_csv(paths[gone])
+            df[df["timestamp"] < T("2026-10-14").value // 1_000_000].to_csv(paths[gone], index=False, compression="gzip")
+
+            store = runner.Store(Path(tmp) / "paper")
+            store.root.mkdir()
+            store.save_state({"config": {**runner.asdict(CFG), "capital_usdt": 1.0}, "start": "2026-10-04T00:00:00Z",
+                              "book": {"equity": 1.0}, "last_run": None})
+            eq = (1.0 + model).cumprod()
+            store.append("equity.jsonl", [{"ts": runner._iso(d + pd.Timedelta(days=1, hours=1, minutes=5)), "equity": float(v)}
+                                          for d, v in eq.items()])
+            store.append("events.jsonl", [{"type": "rebalance", "decision_day": str(d.date()), "delay_hours": 0.0,
+                                           "eligible": syms, "bitget_map": {}, "targets": tg} for d, tg in zip(days, targets)])
+            refreshed = []
+            orig = runner.refresh_replay_cache
+            runner.refresh_replay_cache = lambda ex, s, since, *a, **k: refreshed.extend(s)
+            orig_ex = runner.xs_signal.binance_exchange
+            runner.xs_signal.binance_exchange = lambda: None
+            try:
+                out = runner.report(store, SimpleNamespace(cache_dir=str(cache)))
+            finally:
+                runner.refresh_replay_cache, runner.xs_signal.binance_exchange = orig, orig_ex
+        vm = out["vs_model"]
+        self.assertEqual(sorted(set(refreshed)), sorted({s for tg in targets for s in tg}))
+        self.assertEqual(min(vm["missing_prices"]), "2026-10-13")  # row 10-13 needs the 10-13 exec close (10-14 00:00)
+        self.assertIn(gone, vm["missing_prices"]["2026-10-13"])
+        self.assertEqual(vm["days"], 9)  # rows 10-04 .. 10-12
+        self.assertAlmostEqual(vm["implementation_gap_ann"], 0.0, places=9)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,7 @@ from hf_research.paper_xs import (
     scheduled_fill,
     walk_book,
 )
+from hf_research.replay_data import held_symbols, missing_held_prices, refresh_replay_cache
 from hf_research.xs_momentum import MomentumConfig, backtest, load_daily_panels
 
 BINANCE = xs_signal.BINANCE
@@ -291,9 +292,18 @@ def report(store: Store, args, model_fn=None) -> dict:
     if len(reb) and len(paper) >= 2:
         days = pd.to_datetime(reb["decision_day"]).dt.tz_localize("UTC")
         start = days.min()
+        held = held_symbols(reb)
+        if held:  # symbols that left the universe are no longer refreshed by the runner
+            refresh_replay_cache(xs_signal.binance_exchange(), held, start - pd.Timedelta(days=2), args.cache_dir, BINANCE)
         model = (model_fn or _momentum_replay)(reb, days, args)
         model = model[model.index >= start]["net"]
         both = pd.concat([paper.rename("paper"), model.rename("model")], axis=1, sort=True).dropna()
+        missing = {}
+        if held and len(both):
+            exe = load_daily_panels(held, cache_dir=args.cache_dir, exchange=BINANCE)["exec_close"]
+            missing = missing_held_prices(exe, days, list(reb["targets"]), both.index)
+            if missing:  # a missing price is a zero return in the backtest: compare only before it
+                both = both[both.index < pd.Timestamp(min(missing), tz="UTC")]
         if len(both) >= 2:
             gap = both["paper"] - both["model"]
             out["vs_model"] = {
@@ -303,6 +313,8 @@ def report(store: Store, args, model_fn=None) -> dict:
                 "daily_corr": float(both["paper"].corr(both["model"])) if len(both) >= 5 else None,
                 "implementation_gap_ann": float(gap.mean() * 365),
             }
+        if missing:
+            out.setdefault("vs_model", {})["missing_prices"] = missing
 
     checks = PREREGISTERED_CHECKS
     verdict = {}
